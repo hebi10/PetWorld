@@ -18,6 +18,7 @@ import com.haebi.petworld.data.chooseActivePet
 import com.haebi.petworld.data.room.CareEntity
 import com.haebi.petworld.data.room.PetWorldDatabase
 import com.haebi.petworld.ui.theme.ThemeMode
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
@@ -65,20 +66,26 @@ class MainViewModel(
     fun retryCare() { reloadCare.value += 1L }
 
     suspend fun restoreBackup(source: Uri, password: CharArray): Result<Unit> {
-        if (restoring.value) return Result.failure(IllegalStateException("복원 작업이 이미 진행 중입니다."))
-        restoring.value = true
-        return try {
-            PetWorldBackupRestorer(appContext).restoreFromUri(source, password)
-            pets.refresh()
-            retryCare()
-            Result.success(Unit)
-        } catch (error: Exception) {
-            pets.refresh()
-            retryCare()
-            Result.failure(error)
-        } finally {
-            restoring.value = false
+        if (restoring.value) {
+            return Result.failure(IllegalStateException("복원 작업이 이미 진행 중입니다."))
         }
+        val secret = password.copyOf()
+        return viewModelScope.async {
+            restoring.value = true
+            try {
+                PetWorldBackupRestorer(appContext).restoreFromUri(source, secret)
+                pets.refresh()
+                retryCare()
+                Result.success(Unit)
+            } catch (error: Exception) {
+                pets.refresh()
+                retryCare()
+                Result.failure(error)
+            } finally {
+                secret.fill('\u0000')
+                restoring.value = false
+            }
+        }.await()
     }
 
     suspend fun saveCare(draft: CareDraft): Result<CareEntity> = runCatching {
