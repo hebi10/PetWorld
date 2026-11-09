@@ -203,17 +203,19 @@ class PetWorldBackupRestorer(
 
     private fun filesMatch(first: File, second: File): Boolean {
         if (first.length() != second.length()) return false
-        first.inputStream().buffered().use { left ->
-            second.inputStream().buffered().use { right ->
-                val a = ByteArray(32 * 1024)
-                val b = ByteArray(32 * 1024)
+        fun hash(file: File): ByteArray {
+            val digest = MessageDigest.getInstance("SHA-256")
+            file.inputStream().use { stream ->
+                val buffer = ByteArray(32 * 1024)
                 while (true) {
-                    val count = left.read(a)
-                    if (count < 0) return right.read() < 0
-                    if (right.readNBytes(b, 0, count) != count || !a.copyOf(count).contentEquals(b.copyOf(count))) return false
+                    val read = stream.read(buffer)
+                    if (read < 0) break
+                    if (read > 0) digest.update(buffer, 0, read)
                 }
             }
+            return digest.digest()
         }
+        return hash(first).contentEquals(hash(second))
     }
 
     private fun JSONObject.requiredString(key: String): String =
