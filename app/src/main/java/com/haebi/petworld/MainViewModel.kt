@@ -1,6 +1,8 @@
 package com.haebi.petworld
 
 import android.content.Context
+import android.net.Uri
+import com.haebi.petworld.data.backup.PetWorldBackupRestorer
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -45,8 +47,10 @@ class MainViewModel(
     private val pets: PetRepository,
     private val care: CareRepository,
 ) : ViewModel() {
+    private val appContext: Context,
     val photoStore: PetPhotoStore = pets.photoStore
     private val reloadCare = MutableStateFlow(0L)
+    val restoring = MutableStateFlow(false)
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val careFeed = reloadCare.flatMapLatest { care.observeAll() }
@@ -59,6 +63,23 @@ class MainViewModel(
         )
 
     fun retryCare() { reloadCare.value += 1L }
+
+    suspend fun restoreBackup(source: Uri, password: CharArray): Result<Unit> {
+        if (restoring.value) return Result.failure(IllegalStateException("복원 작업이 이미 진행 중입니다."))
+        restoring.value = true
+        return try {
+            PetWorldBackupRestorer(appContext).restoreFromUri(source, password)
+            pets.refresh()
+            retryCare()
+            Result.success(Unit)
+        } catch (error: Exception) {
+            pets.refresh()
+            retryCare()
+            Result.failure(error)
+        } finally {
+            restoring.value = false
+        }
+    }
 
     suspend fun saveCare(draft: CareDraft): Result<CareEntity> = runCatching {
         care.save(draft)
@@ -133,6 +154,7 @@ class MainViewModel(
                     val app = context.applicationContext
                     val db = PetWorldDatabase.get(app)
                     return MainViewModel(
+                        app,
                         ThemePreferences(app),
                         PetRepository(app, db),
                         CareRepository(app, db),
