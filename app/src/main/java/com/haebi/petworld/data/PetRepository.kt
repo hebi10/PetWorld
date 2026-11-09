@@ -102,11 +102,13 @@ class PetRepository(
     /** Care entries are deleted only through the user's two-stage delete confirmation. */
     suspend fun deleteForever(id: String) = mutex.withLock {
         val target = dao.find(id) ?: error("프로필을 찾을 수 없습니다.")
+        val attachments = database.careDao().listForPet(id).mapNotNull { it.photoFile }
         val snapshot = database.withTransaction {
             check(dao.delete(id) == 1)
             dao.list().map { it.toDomain() }
         }
         _profiles.value = snapshot
         photos.delete(target.photoFile)
+        attachments.forEach { photos.delete(it) }
     }
 }

@@ -36,6 +36,8 @@ data class CareDraft(
     val activityKind: ActivityKind = ActivityKind.PLAY,
     val weightUnit: WeightUnit = WeightUnit.KG,
     val note: String = "",
+    val newPhotoUri: String? = null,
+    val removePhoto: Boolean = false,
 )
 
 private fun scaled(raw: String, factor: Int): Long? = runCatching {
@@ -86,7 +88,11 @@ object CareValidation {
     }
 }
 
-fun CareDraft.toEntity(previous: CareEntity? = null, now: Long = System.currentTimeMillis()): CareEntity {
+fun CareDraft.toEntity(
+    previous: CareEntity? = null,
+    now: Long = System.currentTimeMillis(),
+    photoFile: String? = previous?.photoFile,
+): CareEntity {
     require(CareValidation.error(this, now) == null) {
         CareValidation.error(this, now) ?: "잘못된 기록입니다."
     }
@@ -111,6 +117,7 @@ fun CareDraft.toEntity(previous: CareEntity? = null, now: Long = System.currentT
             if (weightUnit == WeightUnit.KG) 1_000 else 1) else null,
         weightInputUnit = if (type == CareType.WEIGHT) weightUnit.name else null,
         note = note.trim(),
+        photoFile = if (type == CareType.ELIMINATION) photoFile else null,
         createdAt = previous?.createdAt ?: now,
         updatedAt = now,
     )

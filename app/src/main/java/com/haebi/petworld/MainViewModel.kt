@@ -135,7 +135,7 @@ class MainViewModel(
                     return MainViewModel(
                         ThemePreferences(app),
                         PetRepository(app, db),
-                        CareRepository(db),
+                        CareRepository(app, db),
                     ) as T
                 }
             }

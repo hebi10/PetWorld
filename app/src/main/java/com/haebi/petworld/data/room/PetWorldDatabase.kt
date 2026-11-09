@@ -74,6 +74,7 @@ data class CareEntity(
     @ColumnInfo(name = "activity_minutes") val activityMinutes: Int?,
     @ColumnInfo(name = "weight_grams") val weightGrams: Long?,
     @ColumnInfo(name = "weight_input_unit") val weightInputUnit: String?,
+    @ColumnInfo(name = "photo_file") val photoFile: String? = null,
     val note: String,
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
@@ -117,6 +118,9 @@ interface CareDao {
     @Query("DELETE FROM care_entries WHERE id = :id AND pet_id = :petId")
     suspend fun delete(id: String, petId: String): Int
 
+    @Query("SELECT * FROM care_entries WHERE pet_id = :petId")
+    suspend fun listForPet(petId: String): List<CareEntity>
+
     @Query("SELECT COUNT(*) FROM care_entries WHERE pet_id = :petId")
     suspend fun countForPet(petId: String): Int
 }
@@ -143,6 +147,7 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
                 `activity_minutes` INTEGER,
                 `weight_grams` INTEGER,
                 `weight_input_unit` TEXT,
+                `photo_file` TEXT,
                 `note` TEXT NOT NULL,
                 `created_at` INTEGER NOT NULL,
                 `updated_at` INTEGER NOT NULL,
