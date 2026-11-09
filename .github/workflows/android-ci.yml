@@ -4,12 +4,11 @@ on:
   push:
     branches:
       - main
-      - feature/1a-android-foundation
   pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -41,23 +40,9 @@ jobs:
           "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install "platforms;android-37.0" "build-tools;36.0.0"
           echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
 
-      - name: Generate Gradle wrapper
+      - name: Verify Gradle wrapper
         run: |
-          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
-            gradle wrapper --gradle-version 9.5.0 --distribution-type bin
-          fi
-          chmod +x gradlew
-
-      - name: Commit initial wrapper to feature branch
-        if: github.event_name == 'push' && github.ref_name == 'feature/1a-android-foundation'
-        run: |
-          if ! git ls-tree -r --name-only HEAD | grep -qx 'gradle/wrapper/gradle-wrapper.jar'; then
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add gradle/wrapper/gradle-wrapper.jar gradlew gradlew.bat
-            git commit -m "build: include official Gradle wrapper"
-            git push origin HEAD:feature/1a-android-foundation
-          fi
+          echo "497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7  gradle/wrapper/gradle-wrapper.jar" | sha256sum --check
 
       - name: Unit tests
         run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace

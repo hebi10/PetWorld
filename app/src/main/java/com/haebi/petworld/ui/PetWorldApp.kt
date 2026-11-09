@@ -1,11 +1,13 @@
 package com.haebi.petworld.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -34,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.haebi.petworld.ui.components.PetEmptyState
 import com.haebi.petworld.ui.components.PetStatus
@@ -91,7 +94,7 @@ fun PetWorldApp(
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = MaterialTheme.colorScheme.primary,
                             selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                            indicatorColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            indicatorColor = MaterialTheme.colorScheme.surface,
                             unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         ),
@@ -180,7 +183,7 @@ private fun HomeFoundationScreen() {
 private fun FeatureFoundationScreen(title: String, description: String) {
     Text(title, style = MaterialTheme.typography.headlineLarge)
     PetEmptyState(
-        title = "아직 기록이 없습니다",
+        title = "화면 준비 중",
         detail = description,
     )
 }
@@ -208,13 +211,19 @@ private fun SettingsFoundationScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(min = PetSpacing.minTouchTarget)
+                    .selectable(
+                        selected = themeMode == mode,
+                        role = Role.RadioButton,
+                        onClick = { onThemeModeChange(mode) },
+                    )
                     .padding(vertical = PetSpacing.xSmall),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
             ) {
                 RadioButton(
                     selected = themeMode == mode,
-                    onClick = { onThemeModeChange(mode) },
+                    onClick = null,
                 )
                 Text(
                     label,

@@ -16,6 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.unit.dp
 import com.haebi.petworld.ui.theme.PetSpacing
@@ -111,10 +112,11 @@ fun PetStatusLabel(
     status: PetStatus,
     modifier: Modifier = Modifier,
 ) {
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val color = when (status) {
         PetStatus.NEUTRAL -> MaterialTheme.colorScheme.onSurfaceVariant
-        PetStatus.SUCCESS -> Color(0xFF187447)
-        PetStatus.WARNING -> Color(0xFF966217)
+        PetStatus.SUCCESS -> if (isDark) Color(0xFF78D9AA) else Color(0xFF187447)
+        PetStatus.WARNING -> if (isDark) Color(0xFFFFD28B) else Color(0xFF966217)
         PetStatus.ERROR -> MaterialTheme.colorScheme.error
     }
 
@@ -122,12 +124,6 @@ fun PetStatusLabel(
         text = text,
         modifier = modifier,
         style = MaterialTheme.typography.labelMedium,
-        color = if (status == PetStatus.SUCCESS && androidx.compose.foundation.isSystemInDarkTheme()) {
-            Color(0xFF78D9AA)
-        } else if (status == PetStatus.WARNING && androidx.compose.foundation.isSystemInDarkTheme()) {
-            Color(0xFFFFD28B)
-        } else {
-            color
-        },
+        color = color,
     )
 }
