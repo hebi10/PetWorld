@@ -2,6 +2,10 @@ package com.haebi.petworld.ui.screens
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -37,10 +41,12 @@ import com.haebi.petworld.data.CareValidation
 import com.haebi.petworld.data.EliminationKind
 import com.haebi.petworld.data.FoodKind
 import com.haebi.petworld.data.PetProfile
+import com.haebi.petworld.data.PetPhotoStore
 import com.haebi.petworld.data.PortionUnit
 import com.haebi.petworld.data.WeightUnit
 import com.haebi.petworld.data.room.CareEntity
 import com.haebi.petworld.data.toDraft
+import com.haebi.petworld.ui.components.PetAvatar
 import com.haebi.petworld.ui.components.PetPrimaryButton
 import com.haebi.petworld.ui.components.PetSecondaryButton
 import com.haebi.petworld.ui.theme.PetSpacing
@@ -78,6 +84,7 @@ fun CareRecordEditor(
     pet: PetProfile,
     type: CareType,
     existing: CareEntity?,
+    photoStore: PetPhotoStore,
     onSave: suspend (CareDraft) -> Result<CareEntity>,
     onSaved: () -> Unit,
     onBack: () -> Unit,
@@ -120,11 +127,16 @@ fun CareRecordEditor(
     var occurredAt by rememberSaveable(pet.id, type, existing?.id) {
         mutableStateOf(original.occurredAt)
     }
+    var photoUri by rememberSaveable(pet.id, type, existing?.id) { mutableStateOf<String?>(null) }
+    var removePhoto by rememberSaveable(pet.id, type, existing?.id) { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var confirmExit by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
+        if (uri != null) { photoUri = uri.toString(); removePhoto = false }
+    }
     val zone = remember(original.timezoneId) {
         runCatching { ZoneId.of(original.timezoneId) }.getOrDefault(ZoneId.systemDefault())
     }
@@ -145,6 +157,8 @@ fun CareRecordEditor(
         activityKind = activityKind,
         weightUnit = weightUnit,
         note = note,
+        newPhotoUri = photoUri,
+        removePhoto = removePhoto,
     )
 
     fun dismiss() {
@@ -221,6 +235,27 @@ fun CareRecordEditor(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true, modifier = Modifier.fillMaxWidth(),
                 )
+                Text("관찰 사진 (선택)", style = MaterialTheme.typography.labelLarge)
+                PetAvatar(
+                    photoStore = photoStore,
+                    name = "배변 관찰",
+                    photoFile = existing?.photoFile.takeUnless { removePhoto },
+                    previewUri = photoUri,
+                    size = 104.dp,
+                )
+                PetSecondaryButton(
+                    label = "사진 선택",
+                    onClick = {
+                        picker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    },
+                )
+                if (photoUri != null || (existing?.photoFile != null && !removePhoto)) {
+                    TextButton(onClick = { photoUri = null; removePhoto = true }) {
+                        Text("관찰 사진 제거")
+                    }
+                }
             }
             CareType.ACTIVITY -> {
                 ChoiceRow("활동", activityKind, ActivityKind.entries,

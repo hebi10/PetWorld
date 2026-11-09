@@ -34,6 +34,8 @@ import com.haebi.petworld.data.localDate
 import com.haebi.petworld.data.milliText
 import com.haebi.petworld.data.summarizeCare
 import com.haebi.petworld.data.room.CareEntity
+import com.haebi.petworld.data.PetPhotoStore
+import com.haebi.petworld.ui.components.PetAvatar
 import com.haebi.petworld.ui.components.PetEmptyState
 import com.haebi.petworld.ui.components.PetPrimaryButton
 import com.haebi.petworld.ui.components.PetSecondaryButton
@@ -159,6 +161,7 @@ fun CareRecordRow(record: CareEntity, onClick: () -> Unit) {
 @Composable
 fun CareRecordDetail(
     record: CareEntity,
+    photoStore: PetPhotoStore,
     onBack: () -> Unit,
     onEdit: () -> Unit,
     onDelete: suspend (String, String) -> Result<Unit>,
@@ -172,6 +175,10 @@ fun CareRecordDetail(
     PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
         Text(record.displayDateTime(), style = MaterialTheme.typography.bodyMedium)
         Text(record.displayValue(), style = MaterialTheme.typography.titleLarge)
+        if (record.photoFile != null) {
+            Text("관찰 사진", style = MaterialTheme.typography.labelLarge)
+            PetAvatar(photoStore, "관찰 사진", record.photoFile, size = 112.dp)
+        }
         if (record.note.isNotBlank()) {
             HorizontalDivider()
             Text("관찰 메모", style = MaterialTheme.typography.labelLarge)

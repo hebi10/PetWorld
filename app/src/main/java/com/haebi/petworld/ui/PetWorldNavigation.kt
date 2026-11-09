@@ -291,6 +291,7 @@ fun PetWorldApp(
                             pet = current,
                             type = chosenType,
                             existing = existingCare,
+                            photoStore = photoStore,
                             onSave = onSaveCare,
                             onSaved = {
                                 careDetailId = careEditId
@@ -317,6 +318,7 @@ fun PetWorldApp(
                                 PetSecondaryButton(label = "목록으로", onClick = { careDetailId = null })
                             } else CareRecordDetail(
                                 record = record,
+                                photoStore = photoStore,
                                 onBack = { careDetailId = null },
                                 onEdit = { startCare(CareType.valueOf(record.type), record.id) },
                                 onDelete = onDeleteCare,
