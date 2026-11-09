@@ -19,7 +19,7 @@ class PetPhotoStore(private val context: Context) {
         return File(directory, name)
     }
 
-    suspend fun import(uriString: String): String = withContext(Dispatchers.IO) {
+    suspend fun importPhoto(uriString: String): String = withContext(Dispatchers.IO) {
         val uri = Uri.parse(uriString)
         val type = context.contentResolver.getType(uri)
         require(type == null || type.startsWith("image/")) { "이미지 파일만 선택할 수 있습니다." }

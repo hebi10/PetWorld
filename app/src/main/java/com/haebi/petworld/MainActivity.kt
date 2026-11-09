@@ -21,11 +21,19 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val themeMode = viewModel.themeMode.collectAsStateWithLifecycle().value
+            val state = viewModel.petUiState.collectAsStateWithLifecycle().value
 
             PetWorldTheme(themeMode = themeMode) {
                 PetWorldApp(
                     themeMode = themeMode,
+                    petState = state,
+                    photoStore = viewModel.photoStore,
                     onThemeModeChange = viewModel::setThemeMode,
+                    onSelectPet = viewModel::selectPet,
+                    onSavePet = viewModel::savePet,
+                    onArchivedChange = viewModel::setArchived,
+                    onDeletePet = viewModel::deletePet,
+                    onRetry = viewModel::refreshPets,
                 )
             }
         }

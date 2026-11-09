@@ -120,7 +120,7 @@ fun PetWorldApp(
                     )
                     Text("PetWorld", style = MaterialTheme.typography.titleLarge)
                 }
-                if (showTabs) {
+                if (showTabs && current != null) {
                     Row(
                         modifier = Modifier.fillMaxWidth()
                             .heightIn(min = PetSpacing.minTouchTarget)
@@ -129,7 +129,7 @@ fun PetWorldApp(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(PetSpacing.medium),
                     ) {
-                        PetAvatar(photoStore, current!!.name, current.photoFile, size = 36.dp)
+                        PetAvatar(photoStore, current.name, current.photoFile, size = 36.dp)
                         Text(current.name, style = MaterialTheme.typography.titleMedium,
                             modifier = Modifier.weight(1f))
                         Icon(PetIcons.More, contentDescription = "반려동물 전환",

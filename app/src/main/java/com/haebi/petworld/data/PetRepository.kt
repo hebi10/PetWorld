@@ -72,7 +72,7 @@ class PetRepository(context: Context) {
             val db = database.writableDatabase
             val previous = draft.id?.let { findOne(db, it) }
             require(draft.id == null || previous != null) { "수정할 프로필을 찾을 수 없습니다." }
-            val freshPhoto = draft.newPhotoUri?.let { photos.import(it) }
+            val freshPhoto = draft.newPhotoUri?.let { photos.importPhoto(it) }
             val photo = freshPhoto ?: if (draft.removePhoto) null else previous?.photoFile
             val now = System.currentTimeMillis()
             val value = PetProfile(

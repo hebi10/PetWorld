@@ -78,14 +78,15 @@ fun PetProfile.birthMode(): BirthMode = when {
     else -> BirthMode.UNKNOWN
 }
 
-fun PetProfile.ageLabel(today: LocalDate = LocalDate.now()): String = when {
-    birthday != null -> {
-        val birth = try { LocalDate.parse(birthday) } catch (_: Exception) { return "나이 미상" }
+fun PetProfile.ageLabel(today: LocalDate = LocalDate.now()): String {
+    if (birthday != null) {
+        val birth = runCatching { LocalDate.parse(birthday) }.getOrNull()
+            ?: return "나이 미상"
         val years = java.time.Period.between(birth, today).years
-        if (years >= 0) "만 ${years}세" else "나이 미상"
+        return if (years >= 0) "만 ${years}세" else "나이 미상"
     }
-    estimatedAgeYears != null -> "약 ${estimatedAgeYears}세 (등록 시점)"
-    else -> "나이 미상"
+    return if (estimatedAgeYears != null) "약 ${estimatedAgeYears}세 (등록 시점)"
+    else "나이 미상"
 }
 
 fun chooseActivePet(profiles: List<PetProfile>, preferredId: String?): PetProfile? =
