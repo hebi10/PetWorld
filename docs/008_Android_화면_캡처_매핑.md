@@ -23,6 +23,8 @@
 | S09 | S09-activity-form | 활동 입력 |
 | S10 | S10-weight-form | 체중 입력 |
 | S11 | S11-record-list | 기록 타임라인 |
+| S13 | S13-range-picker | 기록 조회 기간 선택 |
+| S13 | S13-type-picker | 기록 유형 선택 |
 | S12 | S12-record-detail | 기록 상세 |
 | S12 | S12-record-edit | 기존 기록 편집 |
 | S33 | S33-record-delete-dialog | 기록 삭제 확인 |
@@ -34,7 +36,7 @@
 | S16 | S16-profile-manager | 프로필 관리 |
 | S33 | S33-profile-delete-dialog | 프로필 삭제 확인 |
 
-각 파일은 `light`, `dark` 2종을 수집합니다. **총 22개 상태 × 2 = 44장**을 목표로 합니다.
+각 파일은 `light`, `dark` 2종을 수집합니다. **총 24개 상태 × 2 = 48장**을 목표로 합니다.
 
 ## 이후 디자인 비교 기준
 
