@@ -160,6 +160,7 @@ class PetWorldBackupRestorer(
         }
         var dbReplaced = false
         var completed = false
+        var rollbackSafe = true
         try {
             for ((name, staging) in archive.photos) {
                 val target = File(photoDirectory, name)
@@ -168,8 +169,8 @@ class PetWorldBackupRestorer(
                         "같은 이름의 사진 파일이 다릅니다. 기존 사진을 덮어쓰지 않습니다."
                     }
                 } else {
-                    staging.copyTo(target, overwrite = false)
                     newPhotos.add(target)
+                    staging.copyTo(target, overwrite = false)
                 }
             }
             database.withTransaction {
@@ -192,12 +193,13 @@ class PetWorldBackupRestorer(
                     preferences.setThemeMode(oldMode)
                     preferences.selectPet(oldSelected)
                 } catch (rollback: Exception) {
+                    rollbackSafe = false
                     error.addSuppressed(rollback)
                 }
             }
             throw error
         } finally {
-            if (!completed) newPhotos.forEach { it.delete() }
+            if (!completed && rollbackSafe) newPhotos.forEach { it.delete() }
         }
     }
 
