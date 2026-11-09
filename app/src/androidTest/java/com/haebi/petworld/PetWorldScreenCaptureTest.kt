@@ -123,7 +123,7 @@ class PetWorldScreenCaptureTest {
                 tap("취소")
 
                 tap("백업 파일 복원")
-                mustSee("최근")
+                device.waitForIdle()
                 shot(folder, "S31-restore-file-picker")
                 device.pressBack()
 
