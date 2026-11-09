@@ -8,6 +8,7 @@ import com.haebi.petworld.data.room.PetEntity
 import com.haebi.petworld.data.room.PetWorldDatabase
 import com.haebi.petworld.ui.theme.ThemeMode
 import kotlinx.coroutines.flow.first
+import java.io.File
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.withLock
 import org.junit.Assert.assertEquals
@@ -29,12 +30,17 @@ class PetWorldRecoveryJournalTest {
         var reopened: PetWorldDatabase? = null
         val prefs = ThemePreferences(context)
         val journal = PetWorldRecoveryJournal(context)
+        val photos = File(context.filesDir, "pet_photos").apply { mkdirs() }
+        val originalPhoto = File(photos, "pet_${java.util.UUID.randomUUID()}.jpg")
+        val interruptedPhoto = File(photos, "pet_${java.util.UUID.randomUUID()}.jpg")
         try {
+            originalPhoto.writeBytes(byteArrayOf(1, 2, 3))
             db.petDao().insert(pet("before"))
             prefs.setThemeMode(ThemeMode.DARK)
             prefs.selectPet("before")
             PetWorldMutationGate.mutex.withLock {
                 journal.begin(db, prefs)
+                interruptedPhoto.writeBytes(byteArrayOf(4, 5, 6))
                 db.petDao().deleteAll()
                 db.petDao().insert(pet("after"))
                 prefs.applyRestoredSettings(ThemeMode.LIGHT, "after")
@@ -49,11 +55,15 @@ class PetWorldRecoveryJournalTest {
             assertEquals("before", prefs.selectedPetId.first())
             assertEquals(ThemeMode.DARK, prefs.themeMode.first())
             assertFalse(journal.hasPending())
+            assertTrue(originalPhoto.exists())
+            assertFalse(interruptedPhoto.exists())
             assertFalse(journal.recoverIfPending(reopened!!, prefs))
         } finally {
             reopened?.close()
             db.close()
             context.deleteDatabase(dbName)
+            originalPhoto.delete()
+            interruptedPhoto.delete()
             prefs.setThemeMode(ThemeMode.SYSTEM)
             prefs.selectPet(null)
             if (journal.hasPending()) journal.complete()
