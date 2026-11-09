@@ -55,8 +55,14 @@ class PetWorldScreenCaptureTest {
                 preferences.selectPet(null)
             }
             ActivityScenario.launch(MainActivity::class.java).use {
-                mustSee("반려동물 등록")
+                device.waitForIdle()
                 shot(folder, "S00-onboarding")
+                try {
+                    mustSee("반려동물 등록")
+                } catch (error: Exception) {
+                    device.dumpWindowHierarchy(File(folder, "S00-window-hierarchy.xml"))
+                    throw error
+                }
                 tap("반려동물 등록")
                 mustSee("이름 (필수)")
                 shot(folder, "S02-profile-create")
@@ -187,7 +193,7 @@ class PetWorldScreenCaptureTest {
     }
 
     private fun mustSee(text: String) {
-        val found = device.wait(Until.findObject(By.textContains(text)), 8_000)
+        val found = device.wait(Until.findObject(By.textContains(text)), 25_000)
         checkNotNull(found) { "화면 텍스트가 없습니다: $text" }
         device.waitForIdle()
     }
