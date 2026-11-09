@@ -35,14 +35,15 @@ class BackupRestoreDeviceTest {
     private lateinit var name: String
     private val settings by lazy { ThemePreferences(context) }
 
-    @Before fun initialize() = runBlocking {
+    @Before fun initialize() { runBlocking {
         name = "petworld-device-qa-${UUID.randomUUID()}.db"
         database = Room.databaseBuilder(context, PetWorldDatabase::class.java, name).build()
         settings.setThemeMode(ThemeMode.SYSTEM)
         settings.selectPet(null)
     }
+    }
 
-    @After fun cleanup() = runBlocking {
+    @After fun cleanup() { runBlocking {
         database.close()
         context.deleteDatabase(name)
         settings.setThemeMode(ThemeMode.SYSTEM)
@@ -50,8 +51,9 @@ class BackupRestoreDeviceTest {
         val pending = PetWorldRecoveryJournal(context)
         if (pending.hasPending()) pending.complete()
     }
+    }
 
-    @Test fun encryptedRoundTripAndRefreshFromRoom() = runBlocking {
+    @Test fun encryptedRoundTripAndRefreshFromRoom() { runBlocking {
         val id = UUID.randomUUID().toString()
         val photoName = "pet_${UUID.randomUUID()}.jpg"
         val photo = File(context.filesDir, "pet_photos/$photoName")
@@ -83,8 +85,9 @@ class BackupRestoreDeviceTest {
         photo.delete()
         assertFalse(PetWorldRecoveryJournal(context).hasPending())
     }
+    }
 
-    @Test fun interruptedRestoreRecoversPreviousStateAfterDatabaseReopen() = runBlocking {
+    @Test fun interruptedRestoreRecoversPreviousStateAfterDatabaseReopen() { runBlocking {
         val original = UUID.randomUUID().toString()
         database.petDao().insert(pet(original))
         settings.selectPet(original)
@@ -104,8 +107,9 @@ class BackupRestoreDeviceTest {
         assertEquals(original, settings.selectedPetId.first())
         assertFalse(journal.hasPending())
     }
+    }
 
-    @Test fun wrongPasswordDoesNotReplaceData() = runBlocking {
+    @Test fun wrongPasswordDoesNotReplaceData() { runBlocking {
         val original = UUID.randomUUID().toString()
         database.petDao().insert(pet(original))
         val output = ByteArrayOutputStream()
@@ -121,6 +125,7 @@ class BackupRestoreDeviceTest {
         assertTrue(result.isFailure)
         assertEquals(original, database.petDao().list().single().id)
         assertFalse(PetWorldRecoveryJournal(context).hasPending())
+    }
     }
 
     private fun pet(id: String, photo: String? = null) = PetEntity(
