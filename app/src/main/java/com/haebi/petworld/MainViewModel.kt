@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.haebi.petworld.data.CareDraft
+import com.haebi.petworld.data.CareRepository
 import com.haebi.petworld.data.PetDraft
 import com.haebi.petworld.data.PetLoadStatus
 import com.haebi.petworld.data.PetPhotoStore
@@ -11,8 +13,14 @@ import com.haebi.petworld.data.PetProfile
 import com.haebi.petworld.data.PetRepository
 import com.haebi.petworld.data.ThemePreferences
 import com.haebi.petworld.data.chooseActivePet
+import com.haebi.petworld.data.room.CareEntity
+import com.haebi.petworld.data.room.PetWorldDatabase
 import com.haebi.petworld.ui.theme.ThemeMode
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
@@ -26,11 +34,39 @@ data class PetUiState(
     val activeProfiles: List<PetProfile> get() = profiles.filterNot { it.isArchived }
 }
 
+sealed interface CareFeedState {
+    data object Loading : CareFeedState
+    data class Ready(val entries: List<CareEntity>) : CareFeedState
+    data class Failed(val message: String) : CareFeedState
+}
+
 class MainViewModel(
     private val preferences: ThemePreferences,
     private val pets: PetRepository,
+    private val care: CareRepository,
 ) : ViewModel() {
     val photoStore: PetPhotoStore = pets.photoStore
+    private val reloadCare = MutableStateFlow(0L)
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val careFeed = reloadCare.flatMapLatest { care.observeAll() }
+        .map<List<CareEntity>, CareFeedState> { CareFeedState.Ready(it) }
+        .catch { emit(CareFeedState.Failed(it.message ?: "기록을 불러오지 못했습니다.")) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
+            initialValue = CareFeedState.Loading,
+        )
+
+    fun retryCare() { reloadCare.value += 1L }
+
+    suspend fun saveCare(draft: CareDraft): Result<CareEntity> = runCatching {
+        care.save(draft)
+    }
+
+    suspend fun deleteCare(id: String, petId: String): Result<Unit> = runCatching {
+        care.delete(id, petId)
+    }
 
     val themeMode = preferences.themeMode.stateIn(
         scope = viewModelScope,
@@ -94,9 +130,12 @@ class MainViewModel(
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
                     require(modelClass.isAssignableFrom(MainViewModel::class.java))
                     @Suppress("UNCHECKED_CAST")
+                    val app = context.applicationContext
+                    val db = PetWorldDatabase.get(app)
                     return MainViewModel(
-                        ThemePreferences(context.applicationContext),
-                        PetRepository(context.applicationContext),
+                        ThemePreferences(app),
+                        PetRepository(app, db),
+                        CareRepository(app, db),
                     ) as T
                 }
             }
