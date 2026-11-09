@@ -49,12 +49,7 @@ class PetWorldRecoveryJournalTest {
             db.close()
             prefs.setThemeMode(ThemeMode.SYSTEM)
             prefs.selectPet(null)
-            if (journal.hasPending()) {
-                journal.recoverIfPending(
-                    Room.inMemoryDatabaseBuilder(context, PetWorldDatabase::class.java)
-                        .allowMainThreadQueries().build(), prefs
-                )
-            }
+            if (journal.hasPending()) journal.complete()
         }
     }
 
