@@ -92,6 +92,9 @@ class PetWorldScreenCaptureTest {
                 mustSee("나비의 기록 추가")
                 shot(folder, "S05-quick-record-sheet")
                 device.pressBack()
+                check(device.wait(Until.gone(By.text("나비의 기록 추가")), 10_000)) {
+                    "빠른 기록 시트가 닫히지 않았습니다."
+                }
 
                 val forms = listOf(
                     "식사" to "S06-food-form",
@@ -102,7 +105,9 @@ class PetWorldScreenCaptureTest {
                 )
                 forms.forEach { (label, name) ->
                     tap("빠른 기록 추가")
+                    mustSee("나비의 기록 추가")
                     tap(label)
+                    mustSee("나비 · $label 기록")
                     mustSee("닫기")
                     shot(folder, name)
                     tap("닫기")
@@ -319,7 +324,13 @@ class PetWorldScreenCaptureTest {
     private fun mustSee(text: String) {
         dismissLauncherAnr()
         val found = device.wait(Until.findObject(By.textContains(text)), 25_000)
-        checkNotNull(found) { "화면 텍스트가 없습니다: $text" }
+        if (found == null) {
+            val diagnostics = File(root, "diagnostics").apply { mkdirs() }
+            val id = System.currentTimeMillis().toString()
+            device.takeScreenshot(File(diagnostics, "$id.png"))
+            device.dumpWindowHierarchy(File(diagnostics, "$id.xml"))
+            throw IllegalStateException("화면 텍스트가 없습니다: $text (diagnostics/$id)")
+        }
         device.waitForIdle()
     }
 
