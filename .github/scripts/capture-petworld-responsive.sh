@@ -58,18 +58,19 @@ case "$MODE" in
     states=$(adb shell cmd device_state print-states 2>&1 || true)
     printf '%s\n' "$states" > "$BASE_DIR/foldable-device-states.txt"
     if printf '%s' "$states" | grep -q "name='HALF_OPENED'"; then
-      adb shell cmd device_state state 1
+      adb shell cmd device_state state 1 || overall=1
       sleep 4
       capture_state "foldable-half-opened" || overall=1
       adb shell cmd device_state state reset || overall=1
       sleep 3
-      adb emu unfold || true
+      adb emu unfold || overall=1
       sleep 3
     else
-      echo "HALF_OPENED posture is not exposed by this AVD; unfolded/folded checks remain required."
+      echo "HALF_OPENED posture is not exposed by this AVD."
+      overall=1
     fi
 
-    adb emu fold
+    adb emu fold || overall=1
     sleep 4
     capture_state "foldable-folded" || overall=1
     adb emu unfold || overall=1
