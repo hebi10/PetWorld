@@ -23,8 +23,10 @@ import org.robolectric.annotation.Config
 class PetWorldRecoveryJournalTest {
     @Test fun restartRecoversOriginalProfilesAndSettingsOnlyOnce() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val db = Room.inMemoryDatabaseBuilder(context, PetWorldDatabase::class.java)
+        val dbName = "recovery-test-${java.util.UUID.randomUUID()}.db"
+        val db = Room.databaseBuilder(context, PetWorldDatabase::class.java, dbName)
             .allowMainThreadQueries().build()
+        var reopened: PetWorldDatabase? = null
         val prefs = ThemePreferences(context)
         val journal = PetWorldRecoveryJournal(context)
         try {
@@ -39,14 +41,19 @@ class PetWorldRecoveryJournalTest {
             }
             assertTrue(journal.hasPending())
             assertEquals("after", db.petDao().list().single().id)
-            assertTrue(journal.recoverIfPending(db, prefs))
-            assertEquals("before", db.petDao().list().single().id)
+            db.close()
+            reopened = Room.databaseBuilder(context, PetWorldDatabase::class.java, dbName)
+                .allowMainThreadQueries().build()
+            assertTrue(journal.recoverIfPending(reopened!!, prefs))
+            assertEquals("before", reopened!!.petDao().list().single().id)
             assertEquals("before", prefs.selectedPetId.first())
             assertEquals(ThemeMode.DARK, prefs.themeMode.first())
             assertFalse(journal.hasPending())
-            assertFalse(journal.recoverIfPending(db, prefs))
+            assertFalse(journal.recoverIfPending(reopened!!, prefs))
         } finally {
+            reopened?.close()
             db.close()
+            context.deleteDatabase(dbName)
             prefs.setThemeMode(ThemeMode.SYSTEM)
             prefs.selectPet(null)
             if (journal.hasPending()) journal.complete()
