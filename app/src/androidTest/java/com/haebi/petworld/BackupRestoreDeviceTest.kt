@@ -1,6 +1,8 @@
 package com.haebi.petworld
 
 import android.content.Context
+import android.graphics.Bitmap
+import java.io.File
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -51,7 +53,15 @@ class BackupRestoreDeviceTest {
 
     @Test fun encryptedRoundTripAndRefreshFromRoom() = runBlocking {
         val id = UUID.randomUUID().toString()
-        database.petDao().insert(pet(id))
+        val photoName = "pet_${UUID.randomUUID()}.jpg"
+        val photo = File(context.filesDir, "pet_photos/$photoName")
+        photo.parentFile!!.mkdirs()
+        Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888).also { bitmap ->
+            photo.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+            bitmap.recycle()
+        }
+        val originalPhoto = photo.readBytes()
+        database.petDao().insert(pet(id, photoName))
         settings.selectPet(id)
         settings.setThemeMode(ThemeMode.DARK)
         val bytes = ByteArrayOutputStream().also {
@@ -60,6 +70,7 @@ class BackupRestoreDeviceTest {
         }.toByteArray()
 
         database.petDao().deleteAll()
+        photo.delete()
         settings.selectPet(null)
         settings.setThemeMode(ThemeMode.LIGHT)
         PetWorldBackupRestorer(context, database, settings)
@@ -68,6 +79,8 @@ class BackupRestoreDeviceTest {
         assertEquals(id, database.petDao().list().single().id)
         assertEquals(id, settings.selectedPetId.first())
         assertEquals(ThemeMode.DARK, settings.themeMode.first())
+        assertTrue(photo.readBytes().contentEquals(originalPhoto))
+        photo.delete()
         assertFalse(PetWorldRecoveryJournal(context).hasPending())
     }
 
@@ -110,10 +123,10 @@ class BackupRestoreDeviceTest {
         assertFalse(PetWorldRecoveryJournal(context).hasPending())
     }
 
-    private fun pet(id: String) = PetEntity(
+    private fun pet(id: String, photo: String? = null) = PetEntity(
         id = id, name = "QA 고양이", species = "CAT", breed = "",
         birthday = null, estimatedAgeYears = null, sex = "UNKNOWN",
-        neuterStatus = "UNKNOWN", notes = "", photoFile = null,
+        neuterStatus = "UNKNOWN", notes = "", photoFile = photo,
         isArchived = false, createdAt = 1L, updatedAt = 1L,
     )
 }
