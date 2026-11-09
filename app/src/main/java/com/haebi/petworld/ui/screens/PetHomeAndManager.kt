@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -60,92 +61,113 @@ fun PetHomeScreen(
     val day = LocalDate.now()
     val todayLabel = day.format(DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREAN))
     val todayRecords = records.filter { it.localDate() == day }
-    Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
-        Text(todayLabel, style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall)) {
+        Text(
+            todayLabel,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Text("${selected.name}의 하루", style = MaterialTheme.typography.headlineLarge)
     }
+
     PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(PetSpacing.large),
+            horizontalArrangement = Arrangement.spacedBy(PetSpacing.medium),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             PetAvatar(
                 photoStore = photoStore,
                 name = selected.name,
                 photoFile = selected.photoFile,
-                size = 72.dp,
+                size = 48.dp,
             )
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall),
             ) {
-                Text(selected.name, style = MaterialTheme.typography.titleLarge)
+                Text(selected.name, style = MaterialTheme.typography.titleMedium)
                 Text(
-                    listOf(
+                    listOfNotNull(
                         selected.species.label,
                         selected.breed.takeIf { it.isNotBlank() },
                         selected.ageLabel(),
-                    ).filterNotNull().joinToString(" · "),
+                    ).joinToString(" · "),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            TextButton(onClick = onEdit) { Text("수정") }
         }
         if (selected.notes.isNotBlank()) {
-            Text("주의사항", style = MaterialTheme.typography.labelLarge)
-            Text(selected.notes, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "주의사항 · ${selected.notes}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
         }
-        PetSecondaryButton(label = "프로필 수정", onClick = onEdit)
     }
-    Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.medium)) {
+
+    Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
         Text("오늘의 돌봄", style = MaterialTheme.typography.titleLarge)
         PetPrimaryButton(
             label = "빠른 기록 추가",
             onClick = onQuickAdd,
             modifier = Modifier.fillMaxWidth(),
         )
-        listOf(
-            CareType.FOOD to PetIcons.Food,
-            CareType.WATER to PetIcons.Water,
-            CareType.ELIMINATION to PetIcons.Elimination,
-            CareType.ACTIVITY to PetIcons.Activity,
-            CareType.WEIGHT to PetIcons.Weight,
-        ).forEach { (type, glyph) ->
-            PetSurfaceCard(
-                modifier = Modifier.fillMaxWidth()
-                    .clickable { onViewType(type) },
-            ) {
+        PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
+            val types = listOf(
+                CareType.FOOD to PetIcons.Food,
+                CareType.WATER to PetIcons.Water,
+                CareType.ELIMINATION to PetIcons.Elimination,
+                CareType.ACTIVITY to PetIcons.Activity,
+                CareType.WEIGHT to PetIcons.Weight,
+            )
+            types.forEachIndexed { index, (type, glyph) ->
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(PetSpacing.medium),
+                    modifier = Modifier.fillMaxWidth()
+                        .heightIn(min = PetSpacing.minTouchTarget)
+                        .clickable(role = androidx.compose.ui.semantics.Role.Button) {
+                            onViewType(type)
+                        },
+                    horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     PetIcon(imageVector = glyph, contentDescription = null)
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(type.label, style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            summarizeCare(type, todayRecords),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    Text(
+                        type.label,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.width(40.dp),
+                    )
+                    Text(
+                        summarizeCare(type, todayRecords),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 2,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
                     Text(
                         "${todayRecords.count { it.type == type.name }}건",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                if (index < types.lastIndex) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
             }
         }
         Text(
-            "기록이 없는 날은 0이나 미수행으로 간주하지 않습니다.",
-            style = MaterialTheme.typography.bodyMedium,
+            "미기록은 0이나 미수행을 의미하지 않습니다.",
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
-    Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.medium)) {
+
+    Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
         Text("최근 기록", style = MaterialTheme.typography.titleLarge)
         val recent = records.sortedWith(
             compareByDescending<CareEntity> { it.occurredAt }.thenByDescending { it.createdAt }
