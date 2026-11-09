@@ -74,7 +74,7 @@ class PetWorldScreenCaptureTest {
             seed()
             ActivityScenario.launch(MainActivity::class.java).use {
                 mustSee("나비의 하루")
-                assertSystemBarState(theme)
+                assertSystemBarState(theme, it)
                 shot(folder, "S03-home")
                 val switcher = device.wait(Until.findObject(By.desc("반려동물 전환")), 3000)
                 checkNotNull(switcher) { "프로필 전환 아이콘을 찾지 못했습니다." }.click()
