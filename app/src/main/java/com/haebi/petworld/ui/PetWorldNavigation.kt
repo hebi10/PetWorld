@@ -472,36 +472,71 @@ private fun SettingsContent(
 ) {
     Text("설정", style = MaterialTheme.typography.headlineLarge)
     PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
-        Text("반려동물 프로필", style = MaterialTheme.typography.titleMedium)
-        Text("등록된 프로필 ${profileCount}개",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        PetPrimaryButton(label = "프로필 관리", onClick = onManage, modifier = Modifier.fillMaxWidth())
-        PetPrimaryButton(label = "반려동물 추가", onClick = onAdd, modifier = Modifier.fillMaxWidth())
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+        ) {
+            Text(
+                "반려동물 프로필",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                "등록 ${profileCount}개",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+        ) {
+            PetPrimaryButton(
+                label = "프로필 관리",
+                onClick = onManage,
+                modifier = Modifier.weight(1f),
+            )
+            PetSecondaryButton(
+                label = "반려동물 추가",
+                onClick = onAdd,
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
     PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
         Text("화면 모드", style = MaterialTheme.typography.titleMedium)
-        Text("기기 설정을 따르거나 라이트·다크 모드를 직접 선택할 수 있습니다.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        listOf(
-            ThemeMode.SYSTEM to "시스템 설정",
-            ThemeMode.LIGHT to "라이트",
-            ThemeMode.DARK to "다크",
-        ).forEach { (mode, label) ->
-            Row(
-                modifier = Modifier.fillMaxWidth().heightIn(min = PetSpacing.minTouchTarget)
-                    .selectable(
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+        ) {
+            listOf(
+                ThemeMode.SYSTEM to "시스템",
+                ThemeMode.LIGHT to "라이트",
+                ThemeMode.DARK to "다크",
+            ).forEach { (mode, label) ->
+                Row(
+                    modifier = Modifier.weight(1f)
+                        .heightIn(min = PetSpacing.minTouchTarget)
+                        .selectable(
+                            selected = themeMode == mode,
+                            role = Role.RadioButton,
+                            onClick = { onThemeModeChange(mode) },
+                        ),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(PetSpacing.xSmall),
+                ) {
+                    RadioButton(
                         selected = themeMode == mode,
-                        role = Role.RadioButton,
-                        onClick = { onThemeModeChange(mode) },
-                    ).padding(vertical = PetSpacing.xSmall),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
-            ) {
-                RadioButton(selected = themeMode == mode, onClick = null)
-                Text(label, style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.weight(1f))
+                        onClick = null,
+                        modifier = Modifier.size(24.dp),
+                    )
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                    )
+                }
             }
         }
     }
