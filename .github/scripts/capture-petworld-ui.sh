@@ -5,6 +5,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk || exit 1
 adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk || exit 1
 adb shell am instrument -w -e class com.haebi.petworld.PetWorldScreenCaptureTest com.haebi.petworld.test/androidx.test.runner.AndroidJUnitRunner | tee qa/captures/instrumentation.log
 status=${PIPESTATUS[0]}
+adb logcat -d -t 1500 > qa/captures/logcat.txt || true
 adb pull /sdcard/Android/data/com.haebi.petworld/files/ui-captures qa/captures/screenshots || true
 files=$(find qa/captures/screenshots -type f -name '*.png' 2>/dev/null | wc -l)
 echo "Captured PNG count: $files"
