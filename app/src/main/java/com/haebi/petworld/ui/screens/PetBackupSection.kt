@@ -90,7 +90,7 @@ fun PetBackupSection(
     PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
         Text("데이터 관리", style = MaterialTheme.typography.titleMedium)
         Text(
-            "반려동물 프로필, 생활 기록, 사진, 화면 설정을 암호화 파일로 보관하거나 복원합니다.",
+            "프로필·생활 기록·사진·화면 설정을 암호화하여 보관하거나 복원합니다.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
