@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'app/src/main/java/com/haebi/petworld/ui/screens/PetHomeAndManager.kt'
+      - 'app/src/main/java/com/haebi/petworld/ui/PetWorldNavigation.kt'
+      - 'app/src/main/java/com/haebi/petworld/ui/screens/PetBackupSection.kt'
       - 'app/src/androidTest/java/com/haebi/petworld/PetWorldSettingsCaptureTest.kt'
       - '.github/scripts/capture-petworld-settings.sh'
       - '.github/workflows/android-settings-qa.yml'
