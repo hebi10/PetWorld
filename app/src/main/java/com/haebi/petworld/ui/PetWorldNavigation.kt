@@ -1,5 +1,10 @@
 package com.haebi.petworld.ui
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -34,6 +39,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -439,6 +445,7 @@ private fun SettingsContent(
     onManage: () -> Unit,
     onAdd: () -> Unit,
 ) {
+    val context = LocalContext.current
     Text("설정", style = MaterialTheme.typography.headlineLarge)
     PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
         Text("반려동물 프로필", style = MaterialTheme.typography.titleMedium)
@@ -474,6 +481,18 @@ private fun SettingsContent(
             }
         }
     }
+    PetSecondaryButton(
+        label = "개인정보처리방침",
+        modifier = Modifier.fillMaxWidth(),
+        onClick = {
+            try {
+                context.startActivity(Intent(Intent.ACTION_VIEW,
+                    Uri.parse("https://hebi10.github.io/PetWorld/privacy-policy.html")))
+            } catch (_: ActivityNotFoundException) {
+                Toast.makeText(context, "브라우저 앱을 찾을 수 없습니다.", Toast.LENGTH_SHORT).show()
+            }
+        },
+    )
     Text(
         "로컬 프로필 데이터는 기기에만 저장됩니다. 백업·복원은 다음 단계에서 추가됩니다.",
         style = MaterialTheme.typography.bodyMedium,

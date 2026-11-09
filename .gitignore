@@ -16,3 +16,6 @@ service-account*.json
 google-services.json
 .DS_Store
 Thumbs.db
+__pycache__/
+*.py[cod]
+output/

@@ -1,0 +1,29 @@
+name: Play exact-source verification
+
+on:
+  pull_request:
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Exact-source Publisher and signing checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify deployment guards without cloud API calls
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_*.py' -v
+          python3 -m unittest discover -s scripts/play/tests -v
