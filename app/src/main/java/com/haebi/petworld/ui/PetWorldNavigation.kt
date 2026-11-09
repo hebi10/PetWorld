@@ -1,5 +1,6 @@
 package com.haebi.petworld.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +17,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -38,8 +41,12 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.haebi.petworld.PetUiState
+import com.haebi.petworld.CareFeedState
 import com.haebi.petworld.R
+import com.haebi.petworld.data.CareDraft
+import com.haebi.petworld.data.CareType
 import com.haebi.petworld.data.PetDraft
+import com.haebi.petworld.data.room.CareEntity
 import com.haebi.petworld.data.PetLoadStatus
 import com.haebi.petworld.data.PetPhotoStore
 import com.haebi.petworld.data.PetProfile
@@ -47,7 +54,14 @@ import com.haebi.petworld.ui.components.PetAvatar
 import com.haebi.petworld.ui.components.PetEmptyState
 import com.haebi.petworld.ui.components.PetPrimaryButton
 import com.haebi.petworld.ui.components.PetSurfaceCard
+import com.haebi.petworld.ui.components.PetSecondaryButton
 import com.haebi.petworld.ui.icons.PetIcons
+import com.haebi.petworld.ui.screens.CareRange
+import com.haebi.petworld.ui.screens.CareRecordList
+import com.haebi.petworld.ui.screens.CareRecordDetail
+import com.haebi.petworld.ui.screens.CareRecordEditor
+import com.haebi.petworld.ui.screens.CareRecordRow
+import com.haebi.petworld.ui.screens.CareStatisticsScreen
 import com.haebi.petworld.ui.screens.PetHomeScreen
 import com.haebi.petworld.ui.screens.PetManagerScreen
 import com.haebi.petworld.ui.screens.PetProfileEditor
@@ -67,10 +81,12 @@ private enum class PrimaryTab(
     MORE("더보기", PetIcons.More),
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PetWorldApp(
     themeMode: ThemeMode,
     petState: PetUiState,
+    careFeed: CareFeedState,
     photoStore: PetPhotoStore,
     onThemeModeChange: (ThemeMode) -> Unit,
     onSelectPet: (String) -> Unit,
@@ -78,6 +94,9 @@ fun PetWorldApp(
     onArchivedChange: suspend (String, Boolean) -> Result<Unit>,
     onDeletePet: suspend (String) -> Result<Unit>,
     onRetry: () -> Unit,
+    onSaveCare: suspend (CareDraft) -> Result<CareEntity>,
+    onDeleteCare: suspend (String, String) -> Result<Unit>,
+    onRetryCare: () -> Unit,
 ) {
     var tab by rememberSaveable { mutableStateOf(PrimaryTab.HOME) }
     var showSwitcher by rememberSaveable { mutableStateOf(false) }
@@ -85,8 +104,32 @@ fun PetWorldApp(
     var showEditor by rememberSaveable { mutableStateOf(false) }
     var editingPetId by rememberSaveable { mutableStateOf<String?>(null) }
     var editorFromManager by rememberSaveable { mutableStateOf(false) }
+    var choosingCareType by rememberSaveable { mutableStateOf(false) }
+    var careEditorType by rememberSaveable { mutableStateOf<CareType?>(null) }
+    var careEditId by rememberSaveable { mutableStateOf<String?>(null) }
+    var careDetailId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedTypeFilter by rememberSaveable { mutableStateOf<CareType?>(null) }
+    var selectedRange by rememberSaveable { mutableStateOf(CareRange.SEVEN) }
+    var statisticsRange by rememberSaveable { mutableStateOf(CareRange.THIRTY) }
+    val currentEntries = if (careFeed is CareFeedState.Ready) careFeed.entries else emptyList()
     val ready = petState.loadStatus == PetLoadStatus.Ready
     val current = petState.activePet
+    val records = currentEntries.filter { it.petId == current?.id }
+    val recordCounts = currentEntries.groupingBy { it.petId }.eachCount()
+    fun startCare(type: CareType, existingId: String? = null) {
+        careEditorType = type
+        careEditId = existingId
+        choosingCareType = false
+        careDetailId = null
+    }
+    fun openFilteredRecords(type: CareType) {
+        selectedTypeFilter = type
+        selectedRange = CareRange.TODAY
+        tab = PrimaryTab.RECORDS
+    }
+    BackHandler(enabled = careDetailId != null && careEditorType == null) {
+        careDetailId = null
+    }
 
     fun openEditor(id: String?, returnToManager: Boolean) {
         editingPetId = id
@@ -101,7 +144,7 @@ fun PetWorldApp(
         showManager = editorFromManager
     }
 
-    val showTabs = ready && current != null && !showEditor && !showManager
+    val showTabs = ready && current != null && !showEditor && !showManager && careEditorType == null && careDetailId == null
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -207,6 +250,8 @@ fun PetWorldApp(
                         onAdd = { openEditor(null, returnToManager = true) },
                         onArchivedChange = onArchivedChange,
                         onDelete = onDeletePet,
+                        recordCounts = recordCounts,
+                        recordsLoaded = careFeed is CareFeedState.Ready,
                         onBack = { showManager = false },
                     )
                     current == null -> PetWelcomeScreen(
@@ -214,6 +259,71 @@ fun PetWorldApp(
                         onStart = { openEditor(null, returnToManager = false) },
                         onManageArchived = { showManager = true },
                     )
+                    careFeed is CareFeedState.Failed -> Column(
+                        modifier = Modifier.padding(PetSpacing.large),
+                        verticalArrangement = Arrangement.spacedBy(PetSpacing.large),
+                    ) {
+                        Text("기록을 불러오지 못했습니다.", style = MaterialTheme.typography.titleLarge)
+                        Text(careFeed.message, style = MaterialTheme.typography.bodyMedium)
+                        PetPrimaryButton(label = "다시 시도", onClick = onRetryCare)
+                    }
+                    careFeed == CareFeedState.Loading -> Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        CircularProgressIndicator()
+                        Text("기록 확인 중", modifier = Modifier.padding(PetSpacing.large))
+                    }
+                    careEditorType != null -> {
+                        val chosenType = careEditorType!!
+                        val existingCare = careEditId?.let { targetId ->
+                            records.firstOrNull { it.id == targetId }
+                        }
+                        if (careEditId != null && existingCare == null) {
+                            Column(modifier = Modifier.padding(PetSpacing.large)) {
+                                Text("기록을 찾을 수 없습니다.")
+                                PetSecondaryButton(label = "목록으로", onClick = {
+                                    careEditorType = null; careEditId = null; tab = PrimaryTab.RECORDS
+                                })
+                            }
+                        } else CareRecordEditor(
+                            pet = current,
+                            type = chosenType,
+                            existing = existingCare,
+                            onSave = onSaveCare,
+                            onSaved = {
+                                careDetailId = careEditId
+                                careEditId = null
+                                careEditorType = null
+                                tab = PrimaryTab.RECORDS
+                            },
+                            onBack = {
+                                careDetailId = careEditId
+                                careEditId = null
+                                careEditorType = null
+                            },
+                        )
+                    }
+                    careDetailId != null -> {
+                        val record = records.firstOrNull { it.id == careDetailId }
+                        Column(
+                            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                                .padding(PetSpacing.large),
+                            verticalArrangement = Arrangement.spacedBy(PetSpacing.large),
+                        ) {
+                            if (record == null) {
+                                Text("기록을 찾을 수 없습니다.", style = MaterialTheme.typography.bodyLarge)
+                                PetSecondaryButton(label = "목록으로", onClick = { careDetailId = null })
+                            } else CareRecordDetail(
+                                record = record,
+                                onBack = { careDetailId = null },
+                                onEdit = { startCare(CareType.valueOf(record.type), record.id) },
+                                onDelete = onDeleteCare,
+                                onDeleted = { careDetailId = null },
+                            )
+                        }
+                    }
                     else -> Column(
                         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
                             .padding(PetSpacing.large),
@@ -223,19 +333,47 @@ fun PetWorldApp(
                             PrimaryTab.HOME -> PetHomeScreen(
                                 selected = current,
                                 photoStore = photoStore,
+                                records = records,
                                 onEdit = { openEditor(current.id, returnToManager = false) },
+                                onQuickAdd = { choosingCareType = true },
+                                onViewRecord = { careDetailId = it },
+                                onViewType = ::openFilteredRecords,
                             )
-                            PrimaryTab.RECORDS -> FeaturePlaceholder(
-                                title = "${current.name}의 생활 기록",
-                                description = "식사·음수·배변·활동·체중의 기록 입력은 1-D 단계에서 연결됩니다.",
+                            PrimaryTab.RECORDS -> CareRecordList(
+                                petName = current.name,
+                                records = records,
+                                selectedType = selectedTypeFilter,
+                                selectedRange = selectedRange,
+                                onTypeChange = { selectedTypeFilter = it },
+                                onRangeChange = { selectedRange = it },
+                                onAdd = { choosingCareType = true },
+                                onView = { careDetailId = it },
                             )
-                            PrimaryTab.HEALTH -> FeaturePlaceholder(
-                                title = "${current.name}의 건강",
-                                description = "체중 추적과 건강·진료·복약 기록은 다음 개발 단계에서 제공됩니다.",
-                            )
-                            PrimaryTab.INSIGHTS -> FeaturePlaceholder(
-                                title = "${current.name}의 통계",
-                                description = "기록이 저장되면 기간별 변화와 그래프를 표시합니다.",
+                            PrimaryTab.HEALTH -> {
+                                Text("${current.name}의 체중·건강", style = MaterialTheme.typography.headlineLarge)
+                                PetPrimaryButton(
+                                    label = "체중 기록",
+                                    modifier = Modifier.fillMaxWidth(),
+                                    onClick = { startCare(CareType.WEIGHT) },
+                                )
+                                records.filter { it.type == CareType.WEIGHT.name }.take(5).forEach {
+                                    CareRecordRow(it, onClick = { careDetailId = it.id })
+                                }
+                                if (records.none { it.type == CareType.WEIGHT.name }) {
+                                    PetEmptyState(
+                                        title = "체중 기록이 없습니다",
+                                        detail = "체중을 측정한 뒤 기록을 추가해 주세요.",
+                                    )
+                                }
+                                Text("증상·진료·복약·예방 관리는 후속 단계에서 제공됩니다.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            PrimaryTab.INSIGHTS -> CareStatisticsScreen(
+                                petName = current.name,
+                                records = records,
+                                period = statisticsRange,
+                                onPeriodChange = { statisticsRange = it },
                             )
                             PrimaryTab.MORE -> SettingsContent(
                                 themeMode = themeMode,
@@ -246,6 +384,24 @@ fun PetWorldApp(
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+
+    if (choosingCareType && current != null && careFeed is CareFeedState.Ready) {
+        ModalBottomSheet(onDismissRequest = { choosingCareType = false }) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(PetSpacing.large),
+                verticalArrangement = Arrangement.spacedBy(PetSpacing.medium),
+            ) {
+                Text("${current.name}의 기록 추가", style = MaterialTheme.typography.titleLarge)
+                CareType.entries.forEach { type ->
+                    PetSecondaryButton(
+                        label = type.label,
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { startCare(type) },
+                    )
                 }
             }
         }
