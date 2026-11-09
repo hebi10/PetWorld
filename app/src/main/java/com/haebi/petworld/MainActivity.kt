@@ -67,6 +67,7 @@ class MainActivity : ComponentActivity() {
             val themeMode = viewModel.themeMode.collectAsStateWithLifecycle().value
             val state = viewModel.petUiState.collectAsStateWithLifecycle().value
             val care = viewModel.careFeed.collectAsStateWithLifecycle().value
+            val restoring = viewModel.restoring.collectAsStateWithLifecycle().value
 
             PetWorldTheme(themeMode = themeMode) {
                 PetWorldApp(
@@ -83,6 +84,8 @@ class MainActivity : ComponentActivity() {
                     onSaveCare = viewModel::saveCare,
                     onDeleteCare = viewModel::deleteCare,
                     onRetryCare = viewModel::retryCare,
+                    restoring = restoring,
+                    onRestoreBackup = viewModel::restoreBackup,
                 )
             }
             }
