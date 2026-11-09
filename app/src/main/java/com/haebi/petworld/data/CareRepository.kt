@@ -2,10 +2,10 @@ package com.haebi.petworld.data
 
 import android.content.Context
 import androidx.room.withTransaction
+import com.haebi.petworld.data.backup.PetWorldMutationGate
 import com.haebi.petworld.data.room.CareEntity
 import com.haebi.petworld.data.room.PetWorldDatabase
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /** Every care record references a stable pet ID. Imported photos are cleaned on failed transactions. */
@@ -16,7 +16,7 @@ class CareRepository(
     private val dao = database.careDao()
     private val pets = database.petDao()
     private val photos = PetPhotoStore(context.applicationContext)
-    private val mutex = Mutex()
+    private val mutex = PetWorldMutationGate.mutex
 
     fun observeAll(): Flow<List<CareEntity>> = dao.observeAll()
 
