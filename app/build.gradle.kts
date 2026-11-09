@@ -4,6 +4,20 @@ plugins {
     alias(libs.plugins.ksp.plugin)
 }
 
+val releaseStore = providers.environmentVariable("ANDROID_RELEASE_KEYSTORE_PATH").orNull
+val releaseStorePassword = providers.environmentVariable("ANDROID_RELEASE_STORE_PASSWORD").orNull
+val releaseAlias = providers.environmentVariable("ANDROID_RELEASE_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.environmentVariable("ANDROID_RELEASE_KEY_PASSWORD").orNull
+val releaseSigningReady = listOf(releaseStore, releaseStorePassword, releaseAlias, releaseKeyPassword)
+    .all { !it.isNullOrBlank() }
+val releaseVersionCode = providers.environmentVariable("ANDROID_VERSION_CODE").orElse("1").get()
+    .toIntOrNull()?.takeIf { it in 1..2100000000 }
+    ?: throw GradleException("ANDROID_VERSION_CODE must be a positive supported integer")
+
+if (gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) } && !releaseSigningReady) {
+    throw GradleException("Release tasks require the app-specific upload signer configuration")
+}
+
 android {
     namespace = "com.haebi.petworld"
     compileSdk = 37
@@ -13,13 +27,27 @@ android {
         minSdk = 26
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0-dev"
+        versionCode = releaseVersionCode
+        versionName = providers.environmentVariable("ANDROID_VERSION_NAME").orElse("0.1.0").get()
+    }
+
+    signingConfigs {
+        if (releaseSigningReady) {
+            create("release") {
+                storeFile = file(releaseStore!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (releaseSigningReady) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
@@ -61,4 +89,5 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
+}
 }
