@@ -157,9 +157,11 @@ class PetWorldScreenCaptureTest {
                 tap("취소")
 
                 tap("백업 파일 복원")
-                device.waitForIdle()
+                waitForDocumentPicker(folder)
                 shot(folder, "S31-restore-file-picker")
                 device.pressBack()
+                dismissLauncherAnr()
+                mustSee("설정")
 
                 tap("홈")
                 tap("프로필 수정")
@@ -238,13 +240,39 @@ class PetWorldScreenCaptureTest {
     }
 
     private fun dismissLauncherAnr() {
-        repeat(3) {
-            val waitButton = device.wait(Until.findObject(By.text("Wait")), 700)
-            if (waitButton != null && device.hasObject(By.textContains("Pixel Launcher"))) {
-                waitButton.click()
-                device.waitForIdle()
-            }
+        val dialog = device.wait(Until.findObject(By.textContains("Pixel Launcher")), 700)
+            ?: return
+        val waitButton = device.findObject(By.text("Wait"))
+        if (waitButton != null) {
+            waitButton.click()
+            device.waitForIdle()
         }
+        if (device.hasObject(By.textContains("Pixel Launcher"))) {
+            val closeButton = device.findObject(By.text("Close app"))
+            if (closeButton != null) {
+                closeButton.click()
+            } else {
+                device.executeShellCommand("am force-stop com.google.android.apps.nexuslauncher")
+            }
+            device.waitForIdle()
+        }
+    }
+
+    private fun waitForDocumentPicker(folder: File) {
+        repeat(6) {
+            dismissLauncherAnr()
+            val picker = device.wait(
+                Until.findObject(By.pkg("com.google.android.documentsui")),
+                1_500,
+            )
+            if (picker != null) {
+                device.waitForIdle()
+                return
+            }
+            Thread.sleep(250)
+        }
+        device.dumpWindowHierarchy(File(folder, "S31-restore-file-picker-window-hierarchy.xml"))
+        throw IllegalStateException("시스템 파일 선택기(DocumentsUI)가 열리지 않았습니다.")
     }
 
     private fun ensureVisible(text: String): Boolean {
