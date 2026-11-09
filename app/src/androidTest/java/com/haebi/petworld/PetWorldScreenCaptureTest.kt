@@ -78,8 +78,7 @@ class PetWorldScreenCaptureTest {
                 mustSee("최근 기록")
                 assertSystemBarState(theme, it)
                 shot(folder, "S03-home")
-                val switcher = device.wait(Until.findObject(By.desc("반려동물 전환")), 3000)
-                checkNotNull(switcher) { "프로필 전환 아이콘을 찾지 못했습니다." }.click()
+                openPetSwitcher(folder, "S03-home")
                 mustSee("반려동물 선택")
                 shot(folder, "S04-pet-switcher")
                 device.pressBack()
@@ -162,8 +161,7 @@ class PetWorldScreenCaptureTest {
                 mustSee("프로필 수정")
                 shot(folder, "S02-profile-edit")
                 tap("닫기")
-                val icon = device.wait(Until.findObject(By.desc("반려동물 전환")), 3000)
-                checkNotNull(icon).click()
+                openPetSwitcher(folder, "S02-profile-edit")
                 tap("전체 프로필 관리")
                 mustSee("프로필 관리")
                 shot(folder, "S16-profile-manager")
@@ -241,6 +239,20 @@ class PetWorldScreenCaptureTest {
                 device.waitForIdle()
             }
         }
+    }
+
+    private fun openPetSwitcher(folder: File, stage: String) {
+        dismissLauncherAnr()
+        device.waitForIdle()
+        val switcher = device.wait(
+            Until.findObject(By.descContains("반려동물 전환")),
+            5_000,
+        )
+        if (switcher == null) {
+            device.dumpWindowHierarchy(File(folder, "$stage-window-hierarchy.xml"))
+        }
+        checkNotNull(switcher) { "프로필 전환 접근성 요소를 찾지 못했습니다." }.click()
+        device.waitForIdle()
     }
 
     private fun mustSee(text: String) {
