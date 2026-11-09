@@ -1,5 +1,6 @@
 package com.haebi.petworld.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Box
@@ -9,15 +10,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Insights
-import androidx.compose.material.icons.outlined.ListAlt
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -34,14 +30,19 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import com.haebi.petworld.R
 import com.haebi.petworld.ui.components.PetEmptyState
+import com.haebi.petworld.ui.components.PetIcon
 import com.haebi.petworld.ui.components.PetStatus
 import com.haebi.petworld.ui.components.PetStatusLabel
 import com.haebi.petworld.ui.components.PetSurfaceCard
+import com.haebi.petworld.ui.icons.PetIcons
 import com.haebi.petworld.ui.theme.PetSpacing
 import com.haebi.petworld.ui.theme.PetWorldTheme
 import com.haebi.petworld.ui.theme.ThemeMode
@@ -50,11 +51,11 @@ private enum class PrimaryTab(
     val label: String,
     val imageVector: ImageVector,
 ) {
-    HOME("홈", Icons.Outlined.Home),
-    RECORDS("기록", Icons.Outlined.ListAlt),
-    HEALTH("건강", Icons.Outlined.FavoriteBorder),
-    INSIGHTS("통계", Icons.Outlined.Insights),
-    MORE("더보기", Icons.Outlined.Settings),
+    HOME("홈", PetIcons.Home),
+    RECORDS("기록", PetIcons.Records),
+    HEALTH("건강", PetIcons.Health),
+    INSIGHTS("통계", PetIcons.Statistics),
+    MORE("더보기", PetIcons.More),
 }
 
 @Composable
@@ -68,14 +69,24 @@ fun PetWorldApp(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             Column {
-                Text(
-                    text = "PetWorld",
-                    modifier = Modifier.padding(
-                        horizontal = PetSpacing.large,
-                        vertical = PetSpacing.large,
-                    ),
-                    style = MaterialTheme.typography.titleLarge,
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = PetSpacing.large, vertical = PetSpacing.small),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.petworld_brand_mark),
+                        contentDescription = null,
+                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
+                        modifier = Modifier.size(width = 48.dp, height = 40.dp),
+                    )
+                    Text(
+                        text = "PetWorld",
+                        style = MaterialTheme.typography.titleLarge,
+                    )
+                }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
         },
@@ -164,14 +175,26 @@ private fun HomeFoundationScreen() {
 
     Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.medium)) {
         Text("기록 영역", style = MaterialTheme.typography.titleMedium)
-        listOf("식사", "음수", "배변", "활동", "체중").forEach { label ->
+        listOf(
+            "식사" to PetIcons.Food,
+            "음수" to PetIcons.Water,
+            "배변" to PetIcons.Elimination,
+            "활동" to PetIcons.Activity,
+            "체중" to PetIcons.Weight,
+        ).forEach { (label, imageVector) ->
             PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(label, style = MaterialTheme.typography.bodyLarge)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(PetSpacing.medium),
+                    ) {
+                        PetIcon(imageVector = imageVector, contentDescription = null)
+                        Text(label, style = MaterialTheme.typography.bodyLarge)
+                    }
                     PetStatusLabel("준비 중", status = PetStatus.NEUTRAL)
                 }
             }
