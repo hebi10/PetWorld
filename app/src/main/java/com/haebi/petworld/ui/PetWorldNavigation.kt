@@ -264,6 +264,8 @@ fun PetWorldApp(
                         archivedCount = petState.profiles.count { it.isArchived },
                         onStart = { openEditor(null, returnToManager = false) },
                         onManageArchived = { showManager = true },
+                        restoring = restoring,
+                        onRestore = onRestoreBackup,
                     )
                     careFeed is CareFeedState.Failed -> Column(
                         modifier = Modifier.padding(PetSpacing.large),
