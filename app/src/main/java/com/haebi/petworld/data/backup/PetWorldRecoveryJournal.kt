@@ -40,7 +40,7 @@ class PetWorldRecoveryJournal(private val context: Context) {
         try {
             archive.outputStream().use { stream ->
                 PetWorldBackupExporter(context, database, preferences)
-                    .exportToStream(stream, password)
+                    .exportUnderGate(stream, password)
                 stream.fd.sync()
             }
             val output = marker.startWrite()
