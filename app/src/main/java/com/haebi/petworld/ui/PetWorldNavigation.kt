@@ -338,7 +338,9 @@ fun PetWorldApp(
                     else -> Column(
                         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
                             .padding(PetSpacing.large),
-                        verticalArrangement = Arrangement.spacedBy(PetSpacing.xLarge),
+                        verticalArrangement = Arrangement.spacedBy(
+                            if (tab == PrimaryTab.HOME) PetSpacing.medium else PetSpacing.xLarge
+                        ),
                     ) {
                         when (tab) {
                             PrimaryTab.HOME -> PetHomeScreen(
