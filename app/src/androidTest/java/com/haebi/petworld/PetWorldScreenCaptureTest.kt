@@ -164,7 +164,7 @@ class PetWorldScreenCaptureTest {
                 mustSee("설정")
 
                 tap("홈")
-                tap("프로필 수정")
+                tap("수정")
                 mustSee("프로필 수정")
                 shot(folder, "S02-profile-edit")
                 tap("닫기")
