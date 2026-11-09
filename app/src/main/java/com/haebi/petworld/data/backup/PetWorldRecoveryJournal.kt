@@ -26,6 +26,8 @@ object PetWorldMutationGate {
 class PetWorldRecoveryJournal(private val context: Context) {
     private val directory = File(context.noBackupFilesDir, "petworld_restore_journal")
     private val archive get() = File(directory, "previous.petworld")
+    private val originalPhotos get() = File(directory, "original-photos.txt")
+    private val photoNamePattern = Regex("pet_[a-z0-9-]+\\\\.jpg")
     private val marker get() = AtomicFile(File(directory, "pending"))
 
     suspend fun begin(
@@ -42,6 +44,13 @@ class PetWorldRecoveryJournal(private val context: Context) {
                 PetWorldBackupExporter(context, database, preferences)
                     .exportUnderGate(stream, password)
                 stream.fd.sync()
+            }
+            val photos = File(context.filesDir, "pet_photos")
+                .listFiles()?.filter { it.isFile && photoNamePattern.matches(it.name) }
+                ?.map { it.name }?.sorted().orEmpty()
+            originalPhotos.outputStream().use { index ->
+                index.write(photos.joinToString("\\n").toByteArray(Charsets.US_ASCII))
+                index.fd.sync()
             }
             val output = marker.startWrite()
             try {
@@ -74,12 +83,24 @@ class PetWorldRecoveryJournal(private val context: Context) {
                     PetWorldBackupRestorer(context, database, preferences)
                         .restoreFromJournal(it, password)
                 }
+                cleanupPhotosAddedDuringRestore()
                 complete()
                 true
             } finally {
                 password.fill('\u0000')
             }
         }
+
+    private fun cleanupPhotosAddedDuringRestore() {
+        check(originalPhotos.isFile) { "복구 사진 목록을 찾을 수 없습니다." }
+        val before = originalPhotos.readLines(Charsets.US_ASCII).filter { it.isNotEmpty() }.toSet()
+        val photoDirectory = File(context.filesDir, "pet_photos")
+        photoDirectory.listFiles()?.forEach { file ->
+            if (file.isFile && photoNamePattern.matches(file.name) && file.name !in before) {
+                check(file.delete()) { "복원 도중 생성된 사진을 정리하지 못했습니다." }
+            }
+        }
+    }
 
     fun complete() {
         // Commit recovery completion first. Orphaned archives are harmless without a marker.
