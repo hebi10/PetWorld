@@ -200,20 +200,29 @@ class PetWorldScreenCaptureTest {
 
     private fun tap(text: String) {
         var lastError: StaleObjectException? = null
-        repeat(6) {
+        for (attempt in 0 until 12) {
             device.waitForIdle()
-            val found = device.wait(Until.findObject(By.text(text)), 5_000)
-            checkNotNull(found) { "버튼/항목을 찾지 못했습니다: $text" }
-            try {
-                found.click()
-                device.waitForIdle()
-                return
-            } catch (error: StaleObjectException) {
-                lastError = error
-                Thread.sleep(300)
+            val found = device.wait(Until.findObject(By.text(text)), 1_500)
+            if (found != null) {
+                try {
+                    found.click()
+                    device.waitForIdle()
+                    return
+                } catch (error: StaleObjectException) {
+                    lastError = error
+                    Thread.sleep(200)
+                }
+            }
+            val middle = device.displayWidth / 2
+            val high = device.displayHeight * 3 / 4
+            val low = device.displayHeight / 4
+            if (attempt < 6) {
+                device.swipe(middle, high, middle, low, 16)
+            } else {
+                device.swipe(middle, low, middle, high, 16)
             }
         }
-        throw IllegalStateException("화면 갱신 중 클릭 실패: $text", lastError)
+        throw IllegalStateException("버튼/항목을 찾지 못했습니다: $text", lastError)
     }
 
     private fun shot(folder: File, id: String) {
