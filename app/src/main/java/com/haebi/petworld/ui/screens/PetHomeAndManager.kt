@@ -260,33 +260,41 @@ fun PetManagerScreen(
     Column(
         modifier = Modifier.verticalScroll(rememberScrollState())
             .padding(PetSpacing.large),
-        verticalArrangement = Arrangement.spacedBy(PetSpacing.large),
+        verticalArrangement = Arrangement.spacedBy(PetSpacing.medium),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("프로필 관리", style = MaterialTheme.typography.headlineMedium)
-            TextButton(onClick = onBack) { Text("닫기") }
+            Text(
+                "프로필 관리",
+                style = MaterialTheme.typography.headlineMedium,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onBack, enabled = pendingId == null) { Text("닫기") }
         }
-        Text(
-            "반려동물별 기본 정보와 보관 상태를 관리합니다. 보관한 프로필은 홈 목록에서 숨겨집니다.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        PetPrimaryButton(
+            label = "새 프로필 추가",
+            onClick = onAdd,
+            enabled = pendingId == null,
+            modifier = Modifier.fillMaxWidth(),
         )
-        PetPrimaryButton(label = "새 프로필 추가", onClick = onAdd, modifier = Modifier.fillMaxWidth())
         if (errorText != null) {
-            Text(errorText.orEmpty(), color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium)
+            Text(
+                errorText.orEmpty(),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
         profiles.forEach { pet ->
             PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(PetSpacing.medium),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    PetAvatar(photoStore, pet.name, pet.photoFile, size = 56.dp)
+                    PetAvatar(photoStore, pet.name, pet.photoFile, size = 44.dp)
                     Column(modifier = Modifier.weight(1f)) {
                         Text(pet.name, style = MaterialTheme.typography.titleMedium)
                         Text(
@@ -295,38 +303,44 @@ fun PetManagerScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    TextButton(
+                        onClick = { onEdit(pet.id) },
+                        enabled = pendingId == null,
+                    ) { Text("수정") }
                 }
-                PetSecondaryButton(
-                    label = "정보 수정",
-                    onClick = { onEdit(pet.id) },
-                    enabled = pendingId == null,
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                )
-                PetSecondaryButton(
-                    label = if (pet.isArchived) "보관 해제" else "프로필 보관",
-                    enabled = pendingId == null,
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = {
-                        pendingId = pet.id
-                        scope.launch {
-                            onArchivedChange(pet.id, !pet.isArchived).fold(
-                                onSuccess = { errorText = null },
-                                onFailure = { errorText = it.message ?: "프로필 상태 변경에 실패했습니다." },
-                            )
-                            pendingId = null
-                        }
-                    },
-                )
-                TextButton(
-                    enabled = pendingId == null && recordsLoaded,
-                    onClick = {
-                        deletePet = pet
-                        deleteStage = 1
-                    },
-                ) { Text("영구 삭제", color = MaterialTheme.colorScheme.error) }
+                    horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PetSecondaryButton(
+                        label = if (pet.isArchived) "보관 해제" else "프로필 보관",
+                        modifier = Modifier.weight(1f),
+                        enabled = pendingId == null,
+                        onClick = {
+                            pendingId = pet.id
+                            scope.launch {
+                                onArchivedChange(pet.id, !pet.isArchived).fold(
+                                    onSuccess = { errorText = null },
+                                    onFailure = {
+                                        errorText = it.message ?: "프로필 상태 변경에 실패했습니다."
+                                    },
+                                )
+                                pendingId = null
+                            }
+                        },
+                    )
+                    TextButton(
+                        enabled = pendingId == null && recordsLoaded,
+                        onClick = {
+                            deletePet = pet
+                            deleteStage = 1
+                        },
+                    ) { Text("영구 삭제", color = MaterialTheme.colorScheme.error) }
+                }
                 if (!recordsLoaded) {
                     Text(
-                        "기록을 불러오지 못한 상태에서는 안전을 위해 삭제할 수 없습니다.",
+                        "기록을 불러오지 못한 상태에서는 삭제할 수 없습니다.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
