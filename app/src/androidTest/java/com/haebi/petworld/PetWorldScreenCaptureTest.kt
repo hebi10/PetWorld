@@ -74,6 +74,7 @@ class PetWorldScreenCaptureTest {
             seed()
             ActivityScenario.launch(MainActivity::class.java).use {
                 mustSee("나비의 하루")
+                mustSee("최근 기록")
                 assertSystemBarState(theme, it)
                 shot(folder, "S03-home")
                 val switcher = device.wait(Until.findObject(By.desc("반려동물 전환")), 3000)
