@@ -59,7 +59,7 @@ class PetWorldScreenCaptureTest {
                 preferences.selectPet(null)
             }
             ActivityScenario.launch(MainActivity::class.java).use {
-                dismissLauncherAnr()
+                dismissSystemAnr()
                 device.waitForIdle()
                 shot(folder, "S00-onboarding")
                 try {
@@ -165,7 +165,7 @@ class PetWorldScreenCaptureTest {
                 waitForDocumentPicker(folder)
                 shot(folder, "S31-restore-file-picker")
                 device.pressBack()
-                dismissLauncherAnr()
+                dismissSystemAnr()
                 mustSee("설정")
 
                 tap("홈")
@@ -244,19 +244,28 @@ class PetWorldScreenCaptureTest {
         }
     }
 
-    private fun dismissLauncherAnr() {
-        if (!device.hasObject(By.textContains("Pixel Launcher"))) return
+    private fun dismissSystemAnr() {
+        val anrTitle = device.wait(Until.findObject(By.textContains("isn't responding")), 700)
         val waitButton = device.findObject(By.text("Wait"))
+        val closeButton = device.findObject(By.text("Close app"))
+        if (anrTitle == null && waitButton == null && closeButton == null) return
+
         if (waitButton != null) {
             waitButton.click()
             device.waitForIdle()
         }
-        if (device.hasObject(By.textContains("Pixel Launcher"))) {
-            val closeButton = device.findObject(By.text("Close app"))
-            if (closeButton != null) {
-                closeButton.click()
+        if (device.hasObject(By.textContains("isn't responding")) || device.hasObject(By.text("Close app"))) {
+            val close = device.findObject(By.text("Close app"))
+            if (close != null) {
+                close.click()
             } else {
-                device.executeShellCommand("am force-stop com.google.android.apps.nexuslauncher")
+                val title = anrTitle?.text.orEmpty()
+                when {
+                    title.contains("googlesdksetup", ignoreCase = true) ->
+                        device.executeShellCommand("am force-stop com.google.android.googlesdksetup")
+                    title.contains("Pixel Launcher", ignoreCase = true) ->
+                        device.executeShellCommand("am force-stop com.google.android.apps.nexuslauncher")
+                }
             }
             device.waitForIdle()
         }
@@ -264,7 +273,7 @@ class PetWorldScreenCaptureTest {
 
     private fun waitForDocumentPicker(folder: File) {
         repeat(6) {
-            dismissLauncherAnr()
+            dismissSystemAnr()
             val picker = device.wait(
                 Until.findObject(By.pkg("com.google.android.documentsui")),
                 1_500,
@@ -280,7 +289,7 @@ class PetWorldScreenCaptureTest {
     }
 
     private fun ensureVisible(text: String): Boolean {
-        dismissLauncherAnr()
+        dismissSystemAnr()
         if (device.wait(Until.findObject(By.textContains(text)), 700) != null) {
             return false
         }
@@ -308,7 +317,7 @@ class PetWorldScreenCaptureTest {
     }
 
     private fun openPetSwitcher(folder: File, stage: String) {
-        dismissLauncherAnr()
+        dismissSystemAnr()
         device.waitForIdle()
         val switcher = device.wait(
             Until.findObject(By.descContains("반려동물 전환")),
@@ -322,7 +331,7 @@ class PetWorldScreenCaptureTest {
     }
 
     private fun mustSee(text: String) {
-        dismissLauncherAnr()
+        dismissSystemAnr()
         val found = device.wait(Until.findObject(By.textContains(text)), 25_000)
         if (found == null) {
             val diagnostics = File(root, "diagnostics").apply { mkdirs() }
@@ -337,7 +346,7 @@ class PetWorldScreenCaptureTest {
     private fun tap(text: String) {
         var lastError: StaleObjectException? = null
         for (attempt in 0 until 12) {
-            dismissLauncherAnr()
+            dismissSystemAnr()
             device.waitForIdle()
             val found = device.wait(Until.findObject(By.text(text)), 1_500)
             if (found != null) {
@@ -363,6 +372,7 @@ class PetWorldScreenCaptureTest {
     }
 
     private fun shot(folder: File, id: String) {
+        dismissSystemAnr()
         device.waitForIdle()
         Thread.sleep(450)
         val file = File(folder, "$id.png")
