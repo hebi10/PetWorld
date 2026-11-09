@@ -1,5 +1,6 @@
 package com.haebi.petworld.ui
 
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -98,6 +99,8 @@ fun PetWorldApp(
     onSaveCare: suspend (CareDraft) -> Result<CareEntity>,
     onDeleteCare: suspend (String, String) -> Result<Unit>,
     onRetryCare: () -> Unit,
+    restoring: Boolean,
+    onRestoreBackup: suspend (Uri, CharArray) -> Result<Unit>,
 ) {
     var tab by rememberSaveable { mutableStateOf(PrimaryTab.HOME) }
     var showSwitcher by rememberSaveable { mutableStateOf(false) }
@@ -143,6 +146,16 @@ fun PetWorldApp(
     fun returnFromEditor() {
         showEditor = false
         showManager = editorFromManager
+    }
+
+    if (restoring) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator()
+                Text("백업을 복원하고 있습니다. 완료될 때까지 앱을 종료하지 마세요.")
+            }
+        }
+        return
     }
 
     val showTabs = ready && current != null && !showEditor && !showManager && careEditorType == null && careDetailId == null
@@ -384,6 +397,8 @@ fun PetWorldApp(
                                 onThemeModeChange = onThemeModeChange,
                                 onManage = { showManager = true },
                                 onAdd = { openEditor(null, returnToManager = false) },
+                                restoring = restoring,
+                                onRestoreBackup = onRestoreBackup,
                             )
                         }
                     }
@@ -439,6 +454,8 @@ private fun SettingsContent(
     onThemeModeChange: (ThemeMode) -> Unit,
     onManage: () -> Unit,
     onAdd: () -> Unit,
+    restoring: Boolean,
+    onRestoreBackup: suspend (Uri, CharArray) -> Result<Unit>,
 ) {
     Text("설정", style = MaterialTheme.typography.headlineLarge)
     PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
@@ -475,5 +492,5 @@ private fun SettingsContent(
             }
         }
     }
-    PetBackupSection()
+    PetBackupSection(restoring = restoring, onRestore = onRestoreBackup)
 }
