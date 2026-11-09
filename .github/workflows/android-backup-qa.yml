@@ -56,7 +56,19 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-boot-timeout: 600
-          script: ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
+          script: |
+            ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
+            mkdir -p qa/screenshots
+            adb shell cmd uimode night no
+            adb shell am force-stop com.haebi.petworld || true
+            adb shell am start -n com.haebi.petworld/.MainActivity
+            sleep 5
+            adb exec-out screencap -p > qa/screenshots/onboarding-light.png
+            adb shell cmd uimode night yes
+            adb shell am force-stop com.haebi.petworld || true
+            adb shell am start -n com.haebi.petworld/.MainActivity
+            sleep 5
+            adb exec-out screencap -p > qa/screenshots/onboarding-dark.png
 
       - name: Upload Android test reports
         if: always()
@@ -66,4 +78,5 @@ jobs:
           path: |
             app/build/reports/androidTests/connected/
             app/build/outputs/androidTest-results/connected/
+            qa/screenshots/
           if-no-files-found: ignore
