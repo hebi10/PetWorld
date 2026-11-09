@@ -11,6 +11,7 @@ android {
     defaultConfig {
         applicationId = "com.haebi.petworld"
         minSdk = 26
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0-dev"
@@ -56,4 +57,6 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.test.core)
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
 }
