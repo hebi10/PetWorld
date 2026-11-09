@@ -3,6 +3,8 @@ package com.haebi.petworld
 import android.content.Context
 import android.graphics.Bitmap
 import androidx.room.Room
+import androidx.core.view.WindowCompat
+import org.junit.Assert.assertEquals
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -59,6 +61,7 @@ class PetWorldScreenCaptureTest {
                 shot(folder, "S00-onboarding")
                 try {
                     mustSee("반려동물 등록")
+                    assertSystemBarState(theme, it)
                 } catch (error: Exception) {
                     device.dumpWindowHierarchy(File(folder, "S00-window-hierarchy.xml"))
                     throw error
@@ -71,6 +74,7 @@ class PetWorldScreenCaptureTest {
             seed()
             ActivityScenario.launch(MainActivity::class.java).use {
                 mustSee("나비의 하루")
+                assertSystemBarState(theme)
                 shot(folder, "S03-home")
                 val switcher = device.wait(Until.findObject(By.desc("반려동물 전환")), 3000)
                 checkNotNull(switcher) { "프로필 전환 아이콘을 찾지 못했습니다." }.click()
@@ -190,6 +194,24 @@ class PetWorldScreenCaptureTest {
                 occurredAt = now - 86_400_000, timezoneId = zone, amount = "4.4"),
         )
         records.forEach { database.careDao().insert(it.toEntity(now = now)) }
+    }
+
+    private fun assertSystemBarState(theme: ThemeMode, scenario: ActivityScenario<MainActivity>) {
+        val brand = device.wait(Until.findObject(By.text("PetWorld")), 8_000)
+        checkNotNull(brand) { "브랜드 헤더를 찾지 못했습니다." }
+        val statusId = context.resources.getIdentifier("status_bar_height", "dimen", "android")
+        if (statusId != 0) {
+            val statusHeight = context.resources.getDimensionPixelSize(statusId)
+            check(brand.visibleBounds.top >= statusHeight - 2) {
+                "브랜드와 상태 표시줄 영역이 겹칩니다: brand=${brand.visibleBounds.top}, status=$statusHeight"
+            }
+        }
+        // The user-selected app theme, not only the OS theme, must determine icon contrast.
+        scenario.onActivity { activity ->
+            val controller = WindowCompat.getInsetsController(activity.window, activity.window.decorView)
+            assertEquals(theme == ThemeMode.LIGHT, controller.isAppearanceLightStatusBars)
+            assertEquals(theme == ThemeMode.LIGHT, controller.isAppearanceLightNavigationBars)
+        }
     }
 
     private fun mustSee(text: String) {
