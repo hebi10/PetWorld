@@ -92,15 +92,23 @@ class PetRepository(context: Context) {
                 createdAt = previous?.createdAt ?: now,
                 updatedAt = now,
             )
-            try {
-                val cv = toValues(value)
-                if (previous == null) db.insertOrThrow("pets", null, cv)
-                else check(db.update("pets", cv, "id=?", arrayOf(value.id)) == 1)
-                _profiles.value = readAll()
+            val snapshot = try {
+                db.beginTransaction()
+                try {
+                    val cv = toValues(value)
+                    if (previous == null) db.insertOrThrow("pets", null, cv)
+                    else check(db.update("pets", cv, "id=?", arrayOf(value.id)) == 1)
+                    val next = readAll(db)
+                    db.setTransactionSuccessful()
+                    next
+                } finally {
+                    db.endTransaction()
+                }
             } catch (error: Exception) {
                 if (freshPhoto != null) photos.delete(freshPhoto)
                 throw error
             }
+            _profiles.value = snapshot
             if (previous?.photoFile != photo) photos.delete(previous?.photoFile)
             value
         }
@@ -113,8 +121,16 @@ class PetRepository(context: Context) {
                 put("is_archived", if (archived) 1 else 0)
                 put("updated_at", System.currentTimeMillis())
             }
-            require(db.update("pets", values, "id=?", arrayOf(id)) == 1) { "프로필을 찾을 수 없습니다." }
-            _profiles.value = readAll()
+            db.beginTransaction()
+            val snapshot = try {
+                require(db.update("pets", values, "id=?", arrayOf(id)) == 1) { "프로필을 찾을 수 없습니다." }
+                val next = readAll(db)
+                db.setTransactionSuccessful()
+                next
+            } finally {
+                db.endTransaction()
+            }
+            _profiles.value = snapshot
         }
     }
 
@@ -122,14 +138,22 @@ class PetRepository(context: Context) {
         withContext(Dispatchers.IO) {
             val db = database.writableDatabase
             val target = findOne(db, id) ?: error("프로필을 찾을 수 없습니다.")
-            check(db.delete("pets", "id=?", arrayOf(id)) == 1)
-            _profiles.value = readAll()
+            db.beginTransaction()
+            val snapshot = try {
+                check(db.delete("pets", "id=?", arrayOf(id)) == 1)
+                val next = readAll(db)
+                db.setTransactionSuccessful()
+                next
+            } finally {
+                db.endTransaction()
+            }
+            _profiles.value = snapshot
             photos.delete(target.photoFile)
         }
     }
 
-    private fun readAll(): List<PetProfile> =
-        database.readableDatabase.query(
+    private fun readAll(db: SQLiteDatabase = database.readableDatabase): List<PetProfile> =
+        db.query(
             "pets", null, null, null, null, null, "is_archived ASC, created_at ASC"
         ).use { cursor ->
             buildList { while (cursor.moveToNext()) add(cursor.toPetProfile()) }

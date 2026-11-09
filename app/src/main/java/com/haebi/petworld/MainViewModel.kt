@@ -14,6 +14,7 @@ import com.haebi.petworld.data.chooseActivePet
 import com.haebi.petworld.ui.theme.ThemeMode
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -71,17 +72,18 @@ class MainViewModel(
     }
 
     suspend fun setArchived(id: String, archived: Boolean): Result<Unit> = runCatching {
+        val selectedBefore = preferences.selectedPetId.first()
         pets.setArchived(id, archived)
-        val active = petUiState.value.activePet
-        if (archived && active?.id == id) {
+        if (archived && selectedBefore == id) {
             preferences.selectPet(pets.profiles.value.firstOrNull { !it.isArchived }?.id)
         }
         if (!archived) preferences.selectPet(id)
     }
 
     suspend fun deletePet(id: String): Result<Unit> = runCatching {
+        val selectedBefore = preferences.selectedPetId.first()
         pets.deleteForever(id)
-        if (petUiState.value.activePet?.id == id) {
+        if (selectedBefore == id) {
             preferences.selectPet(pets.profiles.value.firstOrNull { !it.isArchived }?.id)
         }
     }

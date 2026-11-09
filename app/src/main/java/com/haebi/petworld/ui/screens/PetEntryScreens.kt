@@ -192,7 +192,7 @@ fun PetProfileEditor(
         if (isDirty) confirmExit = true else onBack()
     }
 
-    BackHandler(enabled = !isSaving) { requestBack() }
+    BackHandler { requestBack() }
 
     Column(
         modifier = Modifier.fillMaxSize().imePadding()
