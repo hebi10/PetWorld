@@ -151,21 +151,18 @@ fun PetHomeScreen(
                             ) {
                                 PetIcon(imageVector = glyph, contentDescription = null)
                                 Text(
-                                    type.label,
-                                    style = MaterialTheme.typography.labelLarge,
+                                    "${type.label} · ${todayRecords.count { it.type == type.name }}건",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                 )
                             }
                             Text(
                                 summarizeCare(type, todayRecords),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 3,
+                                maxLines = 2,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                "${todayRecords.count { it.type == type.name }}건",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
