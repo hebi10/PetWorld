@@ -111,13 +111,42 @@ class PetWorldRecordListCaptureTest {
         samples.forEach { database.careDao().insert(it.toEntity(now = now)) }
     }
 
+    private fun recoverSystemAnr() {
+        repeat(2) {
+            val setup = device.wait(
+                Until.findObject(By.textContains("com.google.android.googlesdksetup")),
+                400,
+            )
+            val launcher = device.findObject(By.textContains("Pixel Launcher"))
+            if (setup == null && launcher == null) return
+            val close = device.findObject(By.text("Close app"))
+            val wait = device.findObject(By.text("Wait"))
+            when {
+                close != null -> close.click()
+                wait != null -> wait.click()
+                else -> return
+            }
+            device.waitForIdle()
+        }
+    }
+
     private fun seen(label: String) {
-        val target = device.wait(Until.findObject(By.textContains(label)), 15_000)
-        checkNotNull(target) { "화면에 필요한 텍스트가 없습니다: $label" }
+        repeat(10) {
+            recoverSystemAnr()
+            if (device.wait(Until.findObject(By.textContains(label)), 2_500) != null) {
+                return
+            }
+        }
+        val folder = File(root, "diagnostics").apply { mkdirs() }
+        val id = System.currentTimeMillis()
+        device.takeScreenshot(File(folder, "$id.png"))
+        device.dumpWindowHierarchy(File(folder, "$id.xml"))
+        throw IllegalStateException("화면에 필요한 텍스트가 없습니다: $label (diagnostics/$id)")
     }
 
     private fun tap(label: String) {
         repeat(4) {
+            recoverSystemAnr()
             val target = device.wait(Until.findObject(By.text(label)), 4_000)
             if (target != null) {
                 try {
@@ -133,6 +162,7 @@ class PetWorldRecordListCaptureTest {
     }
 
     private fun capture(folder: File, name: String) {
+        recoverSystemAnr()
         device.waitForIdle()
         Thread.sleep(350)
         val target = File(folder, "$name.png")
