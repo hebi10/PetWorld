@@ -240,8 +240,7 @@ class PetWorldScreenCaptureTest {
     }
 
     private fun dismissLauncherAnr() {
-        val dialog = device.wait(Until.findObject(By.textContains("Pixel Launcher")), 700)
-            ?: return
+        if (!device.hasObject(By.textContains("Pixel Launcher"))) return
         val waitButton = device.findObject(By.text("Wait"))
         if (waitButton != null) {
             waitButton.click()
