@@ -59,6 +59,8 @@ fun PetWelcomeScreen(
     archivedCount: Int,
     onStart: () -> Unit,
     onManageArchived: () -> Unit,
+    restoring: Boolean,
+    onRestore: suspend (Uri, CharArray) -> Result<Unit>,
 ) {
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
@@ -95,11 +97,7 @@ fun PetWelcomeScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        Text(
-            "일상 기록·통계·백업 기능은 다음 개발 단계에서 연결됩니다.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        PetBackupSection(restoring = restoring, onRestore = onRestore)
     }
 }
 
