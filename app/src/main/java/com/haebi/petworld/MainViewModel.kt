@@ -3,6 +3,7 @@ package com.haebi.petworld
 import android.content.Context
 import android.net.Uri
 import com.haebi.petworld.data.backup.PetWorldBackupRestorer
+import com.haebi.petworld.data.backup.PetWorldRecoveryJournal
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -52,6 +53,7 @@ class MainViewModel(
     val photoStore: PetPhotoStore = pets.photoStore
     private val reloadCare = MutableStateFlow(0L)
     val restoring = MutableStateFlow(false)
+    val recoveryBlocked = MutableStateFlow(false)
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val careFeed = reloadCare.flatMapLatest { care.observeAll() }
@@ -78,8 +80,11 @@ class MainViewModel(
                 retryCare()
                 Result.success(Unit)
             } catch (error: Exception) {
-                pets.refresh()
-                retryCare()
+                recoveryBlocked.value = PetWorldRecoveryJournal(appContext).hasPending()
+                if (!recoveryBlocked.value) {
+                    pets.refresh()
+                    retryCare()
+                }
                 Result.failure(error)
             } finally {
                 secret.fill('\u0000')
