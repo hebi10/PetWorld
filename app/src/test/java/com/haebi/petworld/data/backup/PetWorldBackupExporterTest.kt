@@ -18,6 +18,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.rules.TemporaryFolder
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -25,6 +26,7 @@ import java.security.MessageDigest
 import java.util.zip.ZipInputStream
 
 @RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35])
 class PetWorldBackupExporterTest {
     @get:Rule val temporary = TemporaryFolder()
 
