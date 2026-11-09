@@ -1,13 +1,11 @@
 package com.haebi.petworld.ui.screens
 
-import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -31,12 +29,11 @@ import com.haebi.petworld.ui.theme.PetSpacing
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
-/**
- * Data-management entry point. Restore remains disabled until process-death recovery is ready.
- * This avoids exposing a destructive action that can leave mixed data after app termination.
- */
 @Composable
-fun PetBackupSection() {
+fun PetBackupSection(
+    restoring: Boolean,
+    onRestore: suspend (Uri, CharArray) -> Result<Unit>,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var password by rememberSaveable { mutableStateOf("") }
@@ -45,14 +42,16 @@ fun PetBackupSection() {
     var message by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf(false) }
     var showPasswordDialog by remember { mutableStateOf(false) }
+    var selectedRestoreFile by remember { mutableStateOf<Uri?>(null) }
+    var restorePassword by remember { mutableStateOf("") }
+    var showRestoreConfirmation by remember { mutableStateOf(false) }
 
-    val launcher = rememberLauncherForActivityResult(
+    val saveLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/octet-stream"),
     ) { destination: Uri? ->
         if (destination == null) {
             password = ""
             confirmation = ""
-            busy = false
         } else {
             val secret = password.toCharArray()
             password = ""
@@ -64,9 +63,7 @@ fun PetBackupSection() {
                     error = false
                     message = "암호화 백업 파일을 저장했습니다."
                 } catch (failure: Exception) {
-                    runCatching {
-                        context.contentResolver.delete(destination, null, null)
-                    }
+                    runCatching { context.contentResolver.delete(destination, null, null) }
                     error = true
                     message = failure.message ?: "백업 파일을 저장하지 못했습니다."
                 } finally {
@@ -77,27 +74,44 @@ fun PetBackupSection() {
         }
     }
 
+    val restoreLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        selectedRestoreFile = uri
+        restorePassword = ""
+        showRestoreConfirmation = false
+    }
+
+    fun clearRestore() {
+        selectedRestoreFile = null
+        restorePassword = ""
+        showRestoreConfirmation = false
+    }
+
     PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
         Text("데이터 관리", style = MaterialTheme.typography.titleMedium)
         Text(
-            "반려동물 프로필, 생활 기록, 사진, 화면 설정을 하나의 암호화 파일로 보관합니다.",
+            "반려동물 프로필, 생활 기록, 사진, 화면 설정을 암호화 파일로 보관하거나 복원합니다.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         PetPrimaryButton(
-            label = if (busy) "백업 생성 중..." else "암호화 백업 생성",
+            label = if (busy) "처리 중..." else "암호화 백업 생성",
             modifier = Modifier.fillMaxWidth(),
-            enabled = !busy,
+            enabled = !busy && !restoring,
             onClick = { showPasswordDialog = true },
         )
         PetSecondaryButton(
-            label = "백업 복원 (안전성 검증 전)",
+            label = "백업 파일 복원",
             modifier = Modifier.fillMaxWidth(),
-            enabled = false,
-            onClick = {},
+            enabled = !busy && !restoring,
+            onClick = {
+                message = null
+                restoreLauncher.launch(arrayOf("application/octet-stream", "application/zip", "*/*"))
+            },
         )
         Text(
-            "복원 기능은 앱 강제 종료 후 데이터 복구 검증이 끝나면 활성화됩니다. 백업 암호를 잊으면 파일을 복원할 수 없습니다.",
+            "복원하면 현재 프로필·생활 기록·설정을 백업 내용으로 교체합니다. 암호를 잊으면 백업을 열 수 없습니다.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -109,6 +123,7 @@ fun PetBackupSection() {
             )
         }
     }
+
     if (showPasswordDialog) {
         AlertDialog(
             onDismissRequest = {
@@ -148,7 +163,7 @@ fun PetBackupSection() {
                     enabled = !busy && password.length >= 8 && password == confirmation,
                     onClick = {
                         showPasswordDialog = false
-                        launcher.launch("PetWorld-${LocalDate.now()}.petworld")
+                        saveLauncher.launch("PetWorld-${LocalDate.now()}.petworld")
                     },
                 ) { Text("저장 위치 선택") }
             },
@@ -161,6 +176,77 @@ fun PetBackupSection() {
                         confirmation = ""
                     },
                 ) { Text("취소") }
+            },
+        )
+    }
+
+    if (selectedRestoreFile != null && !showRestoreConfirmation && !busy && !restoring) {
+        AlertDialog(
+            onDismissRequest = ::clearRestore,
+            title = { Text("백업 암호 입력") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.medium)) {
+                    Text("선택한 PetWorld 백업 파일의 암호를 입력해 주세요.")
+                    OutlinedTextField(
+                        value = restorePassword,
+                        onValueChange = { restorePassword = it },
+                        visualTransformation = PasswordVisualTransformation(),
+                        label = { Text("백업 암호") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = restorePassword.isNotEmpty(),
+                    onClick = { showRestoreConfirmation = true },
+                ) { Text("다음") }
+            },
+            dismissButton = {
+                TextButton(onClick = ::clearRestore) { Text("취소") }
+            },
+        )
+    }
+
+    if (selectedRestoreFile != null && showRestoreConfirmation && !busy && !restoring) {
+        AlertDialog(
+            onDismissRequest = { showRestoreConfirmation = false },
+            title = { Text("기존 데이터를 교체할까요?") },
+            text = {
+                Text(
+                    "현재 반려동물 프로필, 생활 기록, 사진 연결 및 화면 설정이 백업 데이터로 교체됩니다. " +
+                        "기존 기록은 앱에서 다시 볼 수 없게 될 수 있으므로 필요한 경우 먼저 백업해 주세요."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val source = selectedRestoreFile ?: return@TextButton
+                    val secret = restorePassword.toCharArray()
+                    clearRestore()
+                    busy = true
+                    scope.launch {
+                        try {
+                            val result = onRestore(source, secret)
+                            result.fold(
+                                onSuccess = {
+                                    error = false
+                                    message = "백업 복원이 완료되었습니다. 프로필과 기록을 새로 불러왔습니다."
+                                },
+                                onFailure = {
+                                    error = true
+                                    message = it.message ?: "백업 복원에 실패했습니다. 현재 데이터를 확인해 주세요."
+                                },
+                            )
+                        } finally {
+                            secret.fill('\u0000')
+                            busy = false
+                        }
+                    }
+                }) { Text("데이터 교체 및 복원") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRestoreConfirmation = false }) { Text("뒤로") }
             },
         )
     }
