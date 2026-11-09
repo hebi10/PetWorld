@@ -82,6 +82,9 @@ class PetWorldRecoveryJournal(private val context: Context) {
         }
 
     fun complete() {
-        check(directory.deleteRecursively()) { "복구 저널 정리에 실패했습니다." }
+        // Commit recovery completion first. Orphaned archives are harmless without a marker.
+        marker.delete()
+        check(!hasPending()) { "복구 완료 표시를 정리하지 못했습니다." }
+        directory.deleteRecursively()
     }
 }
