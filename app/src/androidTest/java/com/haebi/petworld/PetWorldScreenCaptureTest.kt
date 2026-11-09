@@ -77,9 +77,12 @@ class PetWorldScreenCaptureTest {
             seed()
             ActivityScenario.launch(MainActivity::class.java).use {
                 mustSee("나비의 하루")
-                mustSee("최근 기록")
                 assertSystemBarState(theme, it)
                 shot(folder, "S03-home")
+                if (ensureVisible("최근 기록")) {
+                    scrollToTop()
+                    mustSee("나비의 하루")
+                }
                 openPetSwitcher(folder, "S03-home")
                 mustSee("반려동물 선택")
                 shot(folder, "S04-pet-switcher")
@@ -241,6 +244,34 @@ class PetWorldScreenCaptureTest {
                 waitButton.click()
                 device.waitForIdle()
             }
+        }
+    }
+
+    private fun ensureVisible(text: String): Boolean {
+        dismissLauncherAnr()
+        if (device.wait(Until.findObject(By.textContains(text)), 700) != null) {
+            return false
+        }
+        val middle = device.displayWidth / 2
+        val high = device.displayHeight * 3 / 4
+        val low = device.displayHeight / 4
+        repeat(8) {
+            device.swipe(middle, high, middle, low, 16)
+            device.waitForIdle()
+            if (device.wait(Until.findObject(By.textContains(text)), 700) != null) {
+                return true
+            }
+        }
+        throw IllegalStateException("스크롤 후에도 화면 텍스트가 없습니다: $text")
+    }
+
+    private fun scrollToTop() {
+        val middle = device.displayWidth / 2
+        val high = device.displayHeight * 3 / 4
+        val low = device.displayHeight / 4
+        repeat(8) {
+            device.swipe(middle, low, middle, high, 16)
+            device.waitForIdle()
         }
     }
 
