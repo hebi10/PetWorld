@@ -58,6 +58,7 @@ jobs:
           emulator-boot-timeout: 600
           script: |
             ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
             mkdir -p qa/screenshots
             adb shell cmd uimode night no
             adb shell am force-stop com.haebi.petworld || true
