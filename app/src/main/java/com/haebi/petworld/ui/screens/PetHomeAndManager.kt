@@ -111,52 +111,67 @@ fun PetHomeScreen(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
-        Text("오늘의 돌봄", style = MaterialTheme.typography.titleLarge)
-        PetPrimaryButton(
-            label = "빠른 기록 추가",
-            onClick = onQuickAdd,
+        Row(
             modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+        ) {
+            Text(
+                "오늘의 돌봄",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.weight(1f),
+            )
+            PetPrimaryButton(label = "빠른 기록 추가", onClick = onQuickAdd)
+        }
+        val types = listOf(
+            CareType.FOOD to PetIcons.Food,
+            CareType.WATER to PetIcons.Water,
+            CareType.ELIMINATION to PetIcons.Elimination,
+            CareType.ACTIVITY to PetIcons.Activity,
+            CareType.WEIGHT to PetIcons.Weight,
         )
         PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
-            val types = listOf(
-                CareType.FOOD to PetIcons.Food,
-                CareType.WATER to PetIcons.Water,
-                CareType.ELIMINATION to PetIcons.Elimination,
-                CareType.ACTIVITY to PetIcons.Activity,
-                CareType.WEIGHT to PetIcons.Weight,
-            )
-            types.forEachIndexed { index, (type, glyph) ->
+            listOf(types.take(3), types.drop(3)).forEach { rowItems ->
                 Row(
-                    modifier = Modifier.fillMaxWidth()
-                        .heightIn(min = PetSpacing.minTouchTarget)
-                        .clickable(role = androidx.compose.ui.semantics.Role.Button) {
-                            onViewType(type)
-                        },
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
-                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    PetIcon(imageVector = glyph, contentDescription = null)
-                    Text(
-                        type.label,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.width(40.dp),
-                    )
-                    Text(
-                        summarizeCare(type, todayRecords),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 2,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        "${todayRecords.count { it.type == type.name }}건",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                if (index < types.lastIndex) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    rowItems.forEach { (type, glyph) ->
+                        Column(
+                            modifier = Modifier.weight(1f)
+                                .heightIn(min = 84.dp)
+                                .clickable(role = androidx.compose.ui.semantics.Role.Button) {
+                                    onViewType(type)
+                                },
+                            verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall),
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(PetSpacing.xSmall),
+                            ) {
+                                PetIcon(imageVector = glyph, contentDescription = null)
+                                Text(
+                                    type.label,
+                                    style = MaterialTheme.typography.labelLarge,
+                                )
+                            }
+                            Text(
+                                summarizeCare(type, todayRecords),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 3,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                "${todayRecords.count { it.type == type.name }}건",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    repeat(3 - rowItems.size) {
+                        androidx.compose.foundation.layout.Spacer(modifier = Modifier.weight(1f))
+                    }
                 }
             }
         }
