@@ -1,6 +1,10 @@
 package com.haebi.petworld.ui
 
 import android.net.Uri
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -526,6 +530,7 @@ private fun SettingsContent(
     restoring: Boolean,
     onRestoreBackup: suspend (Uri, CharArray) -> Result<Unit>,
 ) {
+    val context = LocalContext.current
     Text("설정", style = MaterialTheme.typography.headlineLarge)
     PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -597,4 +602,17 @@ private fun SettingsContent(
         }
     }
     PetBackupSection(restoring = restoring, onRestore = onRestoreBackup)
+    PetSecondaryButton(
+        label = "개인정보처리방침",
+        modifier = Modifier.fillMaxWidth(),
+        onClick = {
+            try {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse("https://hebi10.github.io/PetWorld/privacy-policy.html"))
+                )
+            } catch (_: ActivityNotFoundException) {
+                Toast.makeText(context, "브라우저 앱을 찾을 수 없습니다.", Toast.LENGTH_SHORT).show()
+            }
+        },
+    )
 }
