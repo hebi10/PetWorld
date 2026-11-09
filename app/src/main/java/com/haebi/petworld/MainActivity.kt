@@ -4,6 +4,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.core.view.WindowCompat
+import com.haebi.petworld.ui.theme.ThemeMode
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.layout.Box
@@ -30,6 +35,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             PetWorldTheme {
+                PetWorldSystemBarContrast(ThemeMode.SYSTEM)
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
@@ -47,6 +53,7 @@ class MainActivity : ComponentActivity() {
             } catch (error: Exception) {
                 setContent {
                     PetWorldTheme {
+                        PetWorldSystemBarContrast(ThemeMode.SYSTEM)
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Text(
                                 "이전 데이터 복구를 완료하지 못했습니다. 앱 데이터를 변경하지 않고 종료해 주세요. " +
@@ -71,6 +78,7 @@ class MainActivity : ComponentActivity() {
                 val recoveryBlocked = viewModel.recoveryBlocked.collectAsStateWithLifecycle().value
 
                 PetWorldTheme(themeMode = themeMode) {
+                    PetWorldSystemBarContrast(themeMode)
                     if (recoveryBlocked) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Text(
@@ -103,4 +111,14 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+    @Composable
+    private fun PetWorldSystemBarContrast(mode: ThemeMode) {
+        val dark = mode.shouldUseDark(isSystemInDarkTheme())
+        SideEffect {
+            val controller = WindowCompat.getInsetsController(window, window.decorView)
+            controller.isAppearanceLightStatusBars = !dark
+            controller.isAppearanceLightNavigationBars = !dark
+        }
+    }
+
 }
