@@ -8,6 +8,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import com.haebi.petworld.data.CareDraft
@@ -192,9 +193,21 @@ class PetWorldScreenCaptureTest {
     }
 
     private fun tap(text: String) {
-        val found = device.wait(Until.findObject(By.text(text)), 8_000)
-        checkNotNull(found) { "버튼/항목을 찾지 못했습니다: $text" }.click()
-        device.waitForIdle()
+        var lastError: StaleObjectException? = null
+        repeat(6) {
+            device.waitForIdle()
+            val found = device.wait(Until.findObject(By.text(text)), 5_000)
+            checkNotNull(found) { "버튼/항목을 찾지 못했습니다: $text" }
+            try {
+                found.click()
+                device.waitForIdle()
+                return
+            } catch (error: StaleObjectException) {
+                lastError = error
+                Thread.sleep(300)
+            }
+        }
+        throw IllegalStateException("화면 갱신 중 클릭 실패: $text", lastError)
     }
 
     private fun shot(folder: File, id: String) {
