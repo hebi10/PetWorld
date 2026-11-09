@@ -99,7 +99,18 @@ class PetWorldSettingsCaptureTest {
         preferences.setThemeMode(mode)
     }
 
+    private fun dismissLauncherAnr() {
+        repeat(3) {
+            val wait = device.wait(Until.findObject(By.text("Wait")), 700)
+            if (wait != null && device.hasObject(By.textContains("Pixel Launcher"))) {
+                wait.click()
+                device.waitForIdle()
+            }
+        }
+    }
+
     private fun seen(text: String) {
+        dismissLauncherAnr()
         checkNotNull(device.wait(Until.findObject(By.textContains(text)), 12_000)) {
             "UI-04 화면에 해당 문구가 없습니다: $text"
         }
@@ -107,6 +118,7 @@ class PetWorldSettingsCaptureTest {
 
     private fun tap(text: String) {
         repeat(6) {
+            dismissLauncherAnr()
             val target = device.wait(Until.findObject(By.text(text)), 3_000)
             if (target != null) {
                 try {
