@@ -95,6 +95,9 @@ fun CareRecordEditor(
     var consumed by rememberSaveable(pet.id, type, existing?.id) {
         mutableStateOf(original.consumedAmount)
     }
+    var foodProductName by rememberSaveable(pet.id, type, existing?.id) {
+        mutableStateOf(original.foodProductName)
+    }
     var foodKind by rememberSaveable(pet.id, type, existing?.id) {
         mutableStateOf(original.foodKind)
     }
@@ -135,6 +138,7 @@ fun CareRecordEditor(
         amount = amount,
         consumedAmount = consumed,
         foodKind = foodKind,
+        foodProductName = foodProductName,
         foodUnit = foodUnit,
         waterMeasured = measured,
         eliminationKind = eliminationKind,
@@ -169,7 +173,18 @@ fun CareRecordEditor(
         when (type) {
             CareType.FOOD -> {
                 ChoiceRow("종류", foodKind, FoodKind.entries, { it.label }) { foodKind = it }
-                ChoiceRow("단위", foodUnit, PortionUnit.entries, { it.label }) { foodUnit = it }
+                OutlinedTextField(
+                    value = foodProductName, onValueChange = { foodProductName = it.take(101) },
+                    label = { Text("제품명 (선택)") },
+                    singleLine = true, modifier = Modifier.fillMaxWidth(),
+                )
+                ChoiceRow("단위", foodUnit, PortionUnit.entries, { it.label }) {
+                    if (foodUnit != it) {
+                        amount = ""
+                        consumed = ""
+                        foodUnit = it
+                    }
+                }
                 OutlinedTextField(
                     value = amount, onValueChange = { amount = it.take(20) },
                     label = { Text("제공량 (${foodUnit.label}) · 필수") },
@@ -219,7 +234,7 @@ fun CareRecordEditor(
             }
             CareType.WEIGHT -> {
                 ChoiceRow("단위", weightUnit, WeightUnit.entries,
-                    { it.label }) { weightUnit = it }
+                    { it.label }) { if (weightUnit != it) { amount = ""; weightUnit = it } }
                 OutlinedTextField(
                     value = amount, onValueChange = { amount = it.take(20) },
                     label = { Text("체중 (${weightUnit.label})") },

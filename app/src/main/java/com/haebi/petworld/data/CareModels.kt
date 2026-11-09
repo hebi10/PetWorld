@@ -29,6 +29,7 @@ data class CareDraft(
     val amount: String = "",
     val consumedAmount: String = "",
     val foodKind: FoodKind = FoodKind.DRY,
+    val foodProductName: String = "",
     val foodUnit: PortionUnit = PortionUnit.G,
     val waterMeasured: Boolean = true,
     val eliminationKind: EliminationKind = EliminationKind.URINE,
@@ -51,6 +52,7 @@ object CareValidation {
         }
         if (runCatching { ZoneId.of(draft.timezoneId) }.isFailure) return "시간대 정보를 확인해 주세요."
         if (draft.note.length > 2_000) return "메모는 2,000자 이내로 작성해 주세요."
+        if (draft.foodProductName.length > 100) return "제품명은 100자 이내로 작성해 주세요."
         return when (draft.type) {
             CareType.FOOD -> {
                 val served = scaled(draft.amount, 1_000)
@@ -95,6 +97,7 @@ fun CareDraft.toEntity(previous: CareEntity? = null, now: Long = System.currentT
         occurredAt = occurredAt,
         timezoneId = timezoneId,
         foodKind = if (type == CareType.FOOD) foodKind.name else null,
+        foodProductName = if (type == CareType.FOOD) foodProductName.trim().ifBlank { null } else null,
         foodServedMilli = if (type == CareType.FOOD) scaled(amount, 1_000) else null,
         foodConsumedMilli = if (type == CareType.FOOD && consumedAmount.isNotBlank())
             scaled(consumedAmount, 1_000) else null,
@@ -131,6 +134,7 @@ fun CareEntity.toDraft(): CareDraft {
         amount = amountText,
         consumedAmount = foodConsumedMilli?.let { milliText(it) }.orEmpty(),
         foodKind = foodKind?.let { FoodKind.valueOf(it) } ?: FoodKind.DRY,
+        foodProductName = foodProductName.orEmpty(),
         foodUnit = foodUnit?.let { PortionUnit.valueOf(it) } ?: PortionUnit.G,
         waterMeasured = waterMl != null,
         eliminationKind = eliminationKind?.let { EliminationKind.valueOf(it) } ?: EliminationKind.URINE,
@@ -152,7 +156,8 @@ fun CareEntity.displayValue(): String = when (CareType.valueOf(type)) {
     CareType.FOOD -> {
         val unit = foodUnit?.let { PortionUnit.valueOf(it).label }.orEmpty()
         val consumed = foodConsumedMilli?.let { "${milliText(it)}$unit" } ?: "미측정"
-        "${foodKind?.let { FoodKind.valueOf(it).label } ?: "식사"} 제공 ${milliText(foodServedMilli ?: 0)}$unit · 섭취 $consumed"
+        val product = foodProductName?.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()
+        "${foodKind?.let { FoodKind.valueOf(it).label } ?: "식사"}$product · 제공 ${milliText(foodServedMilli ?: 0)}$unit · 섭취 $consumed"
     }
     CareType.WATER -> waterMl?.let { "${it}mL" } ?: "음수 미측정"
     CareType.ELIMINATION -> "${eliminationKind?.let { EliminationKind.valueOf(it).label } ?: "배변"} ${eliminationCount ?: 0}회"
@@ -174,8 +179,10 @@ fun summarizeCare(type: CareType, records: List<CareEntity>): String {
                     val label = if (unit == "ML") "mL" else "g"
                     val served = entries.sumOf { it.foodServedMilli ?: 0L }
                     val measured = entries.mapNotNull { it.foodConsumedMilli }
+                    val unknown = entries.size - measured.size
                     val consumed = if (measured.isEmpty()) "섭취 미측정"
-                        else "섭취 ${milliText(measured.sum())}$label"
+                        else "섭취 ${milliText(measured.sum())}$label" +
+                            if (unknown > 0) " (미측정 ${unknown}건)" else ""
                     "제공 ${milliText(served)}$label · $consumed"
                 }
             sums.joinToString(" / ")
