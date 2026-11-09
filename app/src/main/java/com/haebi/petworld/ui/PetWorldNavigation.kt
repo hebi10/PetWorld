@@ -4,7 +4,9 @@ import android.net.Uri
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.widget.Toast
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -537,6 +539,8 @@ private fun SettingsContent(
     onRestoreBackup: suspend (Uri, CharArray) -> Result<Unit>,
 ) {
     val context = LocalContext.current
+    val compactActions = LocalConfiguration.current.screenWidthDp < 400 ||
+        LocalDensity.current.fontScale >= 1.3f
     Text("설정", style = MaterialTheme.typography.headlineLarge)
     PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -555,20 +559,38 @@ private fun SettingsContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
-        ) {
-            PetPrimaryButton(
-                label = "프로필 관리",
-                onClick = onManage,
-                modifier = Modifier.weight(1f),
-            )
-            PetSecondaryButton(
-                label = "반려동물 추가",
-                onClick = onAdd,
-                modifier = Modifier.weight(1f),
-            )
+        if (compactActions) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(PetSpacing.small),
+            ) {
+                PetPrimaryButton(
+                    label = "프로필 관리",
+                    onClick = onManage,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                PetSecondaryButton(
+                    label = "반려동물 추가",
+                    onClick = onAdd,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+            ) {
+                PetPrimaryButton(
+                    label = "프로필 관리",
+                    onClick = onManage,
+                    modifier = Modifier.weight(1f),
+                )
+                PetSecondaryButton(
+                    label = "반려동물 추가",
+                    onClick = onAdd,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
     PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
