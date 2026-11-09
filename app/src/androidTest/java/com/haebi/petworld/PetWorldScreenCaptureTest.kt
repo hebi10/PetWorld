@@ -3,7 +3,9 @@ package com.haebi.petworld
 import android.content.Context
 import android.graphics.Bitmap
 import androidx.room.Room
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import org.junit.Assert.assertEquals
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -216,18 +218,19 @@ class PetWorldScreenCaptureTest {
     private fun assertSystemBarState(theme: ThemeMode, scenario: ActivityScenario<MainActivity>) {
         val brand = device.wait(Until.findObject(By.text("PetWorld")), 8_000)
         checkNotNull(brand) { "브랜드 헤더를 찾지 못했습니다." }
-        val statusId = context.resources.getIdentifier("status_bar_height", "dimen", "android")
-        if (statusId != 0) {
-            val statusHeight = context.resources.getDimensionPixelSize(statusId)
-            check(brand.visibleBounds.top >= statusHeight - 2) {
-                "브랜드와 상태 표시줄 영역이 겹칩니다: brand=${brand.visibleBounds.top}, status=$statusHeight"
-            }
-        }
+        var statusBarInset = 0
         // The user-selected app theme, not only the OS theme, must determine icon contrast.
         scenario.onActivity { activity ->
-            val controller = WindowCompat.getInsetsController(activity.window, activity.window.decorView)
+            val decorView = activity.window.decorView
+            statusBarInset = ViewCompat.getRootWindowInsets(decorView)
+                ?.getInsets(WindowInsetsCompat.Type.statusBars())?.top ?: 0
+            val controller = WindowCompat.getInsetsController(activity.window, decorView)
             assertEquals(theme == ThemeMode.LIGHT, controller.isAppearanceLightStatusBars)
             assertEquals(theme == ThemeMode.LIGHT, controller.isAppearanceLightNavigationBars)
+        }
+        check(statusBarInset > 0) { "실제 상태 표시줄 인셋을 읽지 못했습니다." }
+        check(brand.visibleBounds.top >= statusBarInset - 2) {
+            "브랜드와 실제 상태 표시줄 영역이 겹칩니다: brand=${brand.visibleBounds.top}, inset=$statusBarInset"
         }
     }
 
