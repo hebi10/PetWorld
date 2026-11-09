@@ -1,0 +1,67 @@
+name: Android CI
+
+on:
+  push:
+    branches:
+      - main
+      - feature/1a-android-foundation
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform
+        run: sdkmanager --install "platforms;android-37" "build-tools;36.0.0"
+
+      - name: Generate Gradle wrapper
+        run: |
+          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+            gradle wrapper --gradle-version 9.5.0 --distribution-type bin
+          fi
+          chmod +x gradlew
+
+      - name: Commit initial wrapper to feature branch
+        if: github.event_name == 'push' && github.ref_name == 'feature/1a-android-foundation'
+        run: |
+          if ! git ls-tree -r --name-only HEAD | grep -qx 'gradle/wrapper/gradle-wrapper.jar'; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add gradle/wrapper/gradle-wrapper.jar gradlew gradlew.bat
+            git commit -m "build: include official Gradle wrapper"
+            git push origin HEAD:feature/1a-android-foundation
+          fi
+
+      - name: Unit tests
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Android lint
+        run: ./gradlew :app:lintDebug --no-daemon --stacktrace
+
+      - name: Assemble debug
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
