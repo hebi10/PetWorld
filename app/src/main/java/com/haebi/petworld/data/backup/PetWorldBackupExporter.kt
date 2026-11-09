@@ -12,6 +12,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -42,7 +43,11 @@ class PetWorldBackupExporter(
         }
     }
 
-    suspend fun exportToStream(output: OutputStream, password: CharArray) = withContext(Dispatchers.IO) {
+    suspend fun exportToStream(output: OutputStream, password: CharArray) =
+        PetWorldMutationGate.mutex.withLock { exportUnderGate(output, password) }
+
+    /** Caller must already own the mutation gate (used by the recovery journal). */
+    internal suspend fun exportUnderGate(output: OutputStream, password: CharArray) = withContext(Dispatchers.IO) {
         require(password.isNotEmpty()) { "백업 암호를 입력해 주세요." }
 
         val (pets, entries) = database.withTransaction {
