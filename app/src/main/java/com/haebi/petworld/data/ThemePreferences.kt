@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.haebi.petworld.data.backup.PetWorldMutationGate
+import kotlinx.coroutines.sync.withLock
 import com.haebi.petworld.ui.theme.ThemeMode
 import kotlinx.coroutines.flow.map
 
@@ -21,14 +23,25 @@ class ThemePreferences(private val context: Context) {
         preferences[selectedPetKey]
     }
 
-    suspend fun setThemeMode(mode: ThemeMode) {
+    suspend fun setThemeMode(mode: ThemeMode) = PetWorldMutationGate.mutex.withLock {
+        applyThemeWithoutGate(mode)
+    }
+
+    private suspend fun applyThemeWithoutGate(mode: ThemeMode) {
+        context.petWorldDataStore.edit { preferences -> preferences[themeModeKey] = mode.name }
+    }
+
+    suspend fun selectPet(id: String?) = PetWorldMutationGate.mutex.withLock {
         context.petWorldDataStore.edit { preferences ->
-            preferences[themeModeKey] = mode.name
+            if (id == null) preferences.remove(selectedPetKey)
+            else preferences[selectedPetKey] = id
         }
     }
 
-    suspend fun selectPet(id: String?) {
+    /** Called only while the global mutation gate is already held. */
+    suspend fun applyRestoredSettings(mode: ThemeMode, id: String?) {
         context.petWorldDataStore.edit { preferences ->
+            preferences[themeModeKey] = mode.name
             if (id == null) preferences.remove(selectedPetKey)
             else preferences[selectedPetKey] = id
         }
