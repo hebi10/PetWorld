@@ -159,11 +159,12 @@ class PetWorldBackupRestorer(
             database.petDao().list() to database.careDao().listAll()
         }
         var dbReplaced = false
+        var completed = false
         try {
             for ((name, staging) in archive.photos) {
                 val target = File(photoDirectory, name)
                 if (target.exists()) {
-                    require(target.isFile && target.readBytes().contentEquals(staging.readBytes())) {
+                    require(target.isFile && filesMatch(target, staging)) {
                         "같은 이름의 사진 파일이 다릅니다. 기존 사진을 덮어쓰지 않습니다."
                     }
                 } else {
@@ -179,6 +180,7 @@ class PetWorldBackupRestorer(
             dbReplaced = true
             preferences.setThemeMode(archive.mode)
             preferences.selectPet(archive.selectedPet)
+            completed = true
         } catch (error: Exception) {
             if (dbReplaced) {
                 try {
@@ -195,9 +197,21 @@ class PetWorldBackupRestorer(
             }
             throw error
         } finally {
-            if (!dbReplaced || archive.mode != preferences.themeMode.first() ||
-                archive.selectedPet != preferences.selectedPetId.first()) {
-                newPhotos.forEach { it.delete() }
+            if (!completed) newPhotos.forEach { it.delete() }
+        }
+    }
+
+    private fun filesMatch(first: File, second: File): Boolean {
+        if (first.length() != second.length()) return false
+        first.inputStream().buffered().use { left ->
+            second.inputStream().buffered().use { right ->
+                val a = ByteArray(32 * 1024)
+                val b = ByteArray(32 * 1024)
+                while (true) {
+                    val count = left.read(a)
+                    if (count < 0) return right.read() < 0
+                    if (right.readNBytes(b, 0, count) != count || !a.copyOf(count).contentEquals(b.copyOf(count))) return false
+                }
             }
         }
     }
