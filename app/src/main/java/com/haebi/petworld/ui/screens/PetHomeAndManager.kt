@@ -160,11 +160,6 @@ fun PetHomeScreen(
                 }
             }
         }
-        Text(
-            "미기록은 0이나 미수행을 의미하지 않습니다.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
