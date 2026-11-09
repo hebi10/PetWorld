@@ -57,7 +57,7 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 600
           script: |
-            ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
+            ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.haebi.petworld.BackupRestoreDeviceTest --no-daemon --stacktrace
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             mkdir -p qa/screenshots
             adb shell cmd uimode night no
