@@ -91,7 +91,7 @@ class PetWorldScreenCaptureTest {
                 tap("빠른 기록 추가")
                 mustSee("나비의 기록 추가")
                 shot(folder, "S05-quick-record-sheet")
-                device.pressBack()
+                tap("닫기")
                 check(device.wait(Until.gone(By.text("나비의 기록 추가")), 10_000)) {
                     "빠른 기록 시트가 닫히지 않았습니다."
                 }
