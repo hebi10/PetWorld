@@ -67,6 +67,7 @@ import com.haebi.petworld.ui.screens.PetManagerScreen
 import com.haebi.petworld.ui.screens.PetProfileEditor
 import com.haebi.petworld.ui.screens.PetSwitcherSheet
 import com.haebi.petworld.ui.screens.PetWelcomeScreen
+import com.haebi.petworld.ui.screens.PetBackupSection
 import com.haebi.petworld.ui.theme.PetSpacing
 import com.haebi.petworld.ui.theme.ThemeMode
 
@@ -474,9 +475,5 @@ private fun SettingsContent(
             }
         }
     }
-    Text(
-        "로컬 프로필 데이터는 기기에만 저장됩니다. 백업·복원은 다음 단계에서 추가됩니다.",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    PetBackupSection()
 }
