@@ -27,7 +27,7 @@ class PetWorldRecoveryJournal(private val context: Context) {
     private val directory = File(context.noBackupFilesDir, "petworld_restore_journal")
     private val archive get() = File(directory, "previous.petworld")
     private val originalPhotos get() = File(directory, "original-photos.txt")
-    private val photoNamePattern = Regex("pet_[a-z0-9-]+\\\\.jpg")
+    private val photoNamePattern = Regex("pet_[a-z0-9-]+\\.jpg")
     private val marker get() = AtomicFile(File(directory, "pending"))
 
     suspend fun begin(
