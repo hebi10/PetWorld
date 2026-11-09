@@ -11,6 +11,7 @@ import com.haebi.petworld.ui.theme.ThemeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -39,13 +40,27 @@ class PetWorldBackupRestorer(
             ?: throw IOException("백업 파일을 열 수 없습니다.")
     }
 
-    suspend fun restoreFromStream(source: InputStream, password: CharArray) = withContext(Dispatchers.IO) {
+    suspend fun restoreFromStream(source: InputStream, password: CharArray) =
+        PetWorldMutationGate.mutex.withLock {
+            restoreVerified(source, password, createJournal = true)
+        }
+
+    /** Called only by the startup recovery path while holding the global mutation gate. */
+    internal suspend fun restoreFromJournal(source: InputStream, password: CharArray) {
+        restoreVerified(source, password, createJournal = false)
+    }
+
+    private suspend fun restoreVerified(
+        source: InputStream,
+        password: CharArray,
+        createJournal: Boolean,
+    ) = withContext(Dispatchers.IO) {
         val workspace = File(context.cacheDir, "petworld-restore-${java.util.UUID.randomUUID()}")
         check(workspace.mkdirs()) { "복원 임시 폴더를 만들지 못했습니다." }
         try {
             val verified = codec.decryptToVerifiedFile(source, workspace, password)
             val archive = readAndValidateArchive(verified, workspace)
-            applyValidatedArchive(archive)
+            applyValidatedArchive(archive, createJournal)
         } finally {
             workspace.deleteRecursively()
         }
@@ -150,11 +165,13 @@ class PetWorldBackupRestorer(
         )
     }
 
-    private suspend fun applyValidatedArchive(archive: ValidatedArchive) {
+    private suspend fun applyValidatedArchive(archive: ValidatedArchive, createJournal: Boolean) {
         val photoDirectory = File(context.filesDir, "pet_photos").apply { mkdirs() }
         val newPhotos = mutableListOf<File>()
         val oldMode = preferences.themeMode.first()
         val oldSelected = preferences.selectedPetId.first()
+        val journal = if (createJournal) PetWorldRecoveryJournal(context) else null
+        journal?.begin(database, preferences)
         val oldRecords = database.withTransaction {
             database.petDao().list() to database.careDao().listAll()
         }
@@ -179,9 +196,9 @@ class PetWorldBackupRestorer(
                 archive.entries.forEach { database.careDao().insert(it) }
             }
             dbReplaced = true
-            preferences.setThemeMode(archive.mode)
-            preferences.selectPet(archive.selectedPet)
+            preferences.applyRestoredSettings(archive.mode, archive.selectedPet)
             completed = true
+            journal?.complete()
         } catch (error: Exception) {
             if (dbReplaced) {
                 try {
@@ -190,13 +207,13 @@ class PetWorldBackupRestorer(
                         oldRecords.first.forEach { database.petDao().insert(it) }
                         oldRecords.second.forEach { database.careDao().insert(it) }
                     }
-                    preferences.setThemeMode(oldMode)
-                    preferences.selectPet(oldSelected)
+                    preferences.applyRestoredSettings(oldMode, oldSelected)
                 } catch (rollback: Exception) {
                     rollbackSafe = false
                     error.addSuppressed(rollback)
                 }
             }
+            if (rollbackSafe) journal?.complete()
             throw error
         } finally {
             if (!completed && rollbackSafe) newPhotos.forEach { it.delete() }
