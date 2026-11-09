@@ -49,7 +49,7 @@ class PetWorldRecoveryJournal(private val context: Context) {
                 .listFiles()?.filter { it.isFile && photoNamePattern.matches(it.name) }
                 ?.map { it.name }?.sorted().orEmpty()
             originalPhotos.outputStream().use { index ->
-                index.write(photos.joinToString("\\n").toByteArray(Charsets.US_ASCII))
+                index.write(photos.joinToString("\n").toByteArray(Charsets.US_ASCII))
                 index.fd.sync()
             }
             val output = marker.startWrite()
