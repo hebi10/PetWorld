@@ -44,11 +44,11 @@ sealed interface CareFeedState {
 }
 
 class MainViewModel(
+    private val appContext: Context,
     private val preferences: ThemePreferences,
     private val pets: PetRepository,
     private val care: CareRepository,
 ) : ViewModel() {
-    private val appContext: Context,
     val photoStore: PetPhotoStore = pets.photoStore
     private val reloadCare = MutableStateFlow(0L)
     val restoring = MutableStateFlow(false)
