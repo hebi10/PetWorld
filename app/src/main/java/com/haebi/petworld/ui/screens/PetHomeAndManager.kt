@@ -27,6 +27,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.haebi.petworld.data.CareType
+import com.haebi.petworld.data.localDate
+import com.haebi.petworld.data.summarizeCare
+import com.haebi.petworld.data.room.CareEntity
 import com.haebi.petworld.data.PetPhotoStore
 import com.haebi.petworld.data.PetProfile
 import com.haebi.petworld.data.ageLabel
@@ -47,11 +51,17 @@ import java.util.Locale
 fun PetHomeScreen(
     selected: PetProfile,
     photoStore: PetPhotoStore,
+    records: List<CareEntity>,
     onEdit: () -> Unit,
+    onQuickAdd: () -> Unit,
+    onViewRecord: (String) -> Unit,
+    onViewType: (CareType) -> Unit,
 ) {
-    val today = LocalDate.now().format(DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREAN))
+    val day = LocalDate.now()
+    val todayLabel = day.format(DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREAN))
+    val todayRecords = records.filter { it.localDate() == day }
     Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
-        Text(today, style = MaterialTheme.typography.bodyMedium,
+        Text(todayLabel, style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("${selected.name}의 하루", style = MaterialTheme.typography.headlineLarge)
     }
@@ -91,44 +101,65 @@ fun PetHomeScreen(
     }
     Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.medium)) {
         Text("오늘의 돌봄", style = MaterialTheme.typography.titleLarge)
+        PetPrimaryButton(
+            label = "빠른 기록 추가",
+            onClick = onQuickAdd,
+            modifier = Modifier.fillMaxWidth(),
+        )
         listOf(
-            "식사" to PetIcons.Food,
-            "음수" to PetIcons.Water,
-            "배변" to PetIcons.Elimination,
-            "활동" to PetIcons.Activity,
-            "체중" to PetIcons.Weight,
-        ).forEach { (label, glyph) ->
-            PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
+            CareType.FOOD to PetIcons.Food,
+            CareType.WATER to PetIcons.Water,
+            CareType.ELIMINATION to PetIcons.Elimination,
+            CareType.ACTIVITY to PetIcons.Activity,
+            CareType.WEIGHT to PetIcons.Weight,
+        ).forEach { (type, glyph) ->
+            PetSurfaceCard(
+                modifier = Modifier.fillMaxWidth()
+                    .clickable { onViewType(type) },
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(PetSpacing.medium),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(PetSpacing.medium),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        PetIcon(imageVector = glyph, contentDescription = null)
-                        Text(label, style = MaterialTheme.typography.bodyLarge)
+                    PetIcon(imageVector = glyph, contentDescription = null)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(type.label, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            summarizeCare(type, todayRecords),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
-                    Text("기록 없음", style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "${todayRecords.count { it.type == type.name }}건",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
         Text(
-            "기록 입력은 1-D 단계에서 제공됩니다. '기록 없음'은 돌봄을 하지 않았다는 의미가 아닙니다.",
+            "기록이 없는 날은 0이나 미수행으로 간주하지 않습니다.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
-    Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
+    Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.medium)) {
         Text("최근 기록", style = MaterialTheme.typography.titleLarge)
-        PetEmptyState(
-            title = "아직 입력한 기록이 없습니다",
-            detail = "식사, 음수, 배변, 활동, 체중 기록을 다음 개발 단계에서 추가할 수 있습니다.",
-        )
+        val recent = records.sortedWith(
+            compareByDescending<CareEntity> { it.occurredAt }.thenByDescending { it.createdAt }
+        ).take(5)
+        if (recent.isEmpty()) {
+            PetEmptyState(
+                title = "아직 입력한 기록이 없습니다",
+                detail = "빠른 기록으로 식사·음수·배변·활동·체중을 추가해 주세요.",
+            )
+        } else {
+            recent.forEach { record ->
+                CareRecordRow(record = record, onClick = { onViewRecord(record.id) })
+            }
+        }
     }
 }
 
@@ -186,6 +217,8 @@ fun PetManagerScreen(
     onAdd: () -> Unit,
     onArchivedChange: suspend (String, Boolean) -> Result<Unit>,
     onDelete: suspend (String) -> Result<Unit>,
+    recordCounts: Map<String, Int>,
+    recordsLoaded: Boolean,
     onBack: () -> Unit,
 ) {
     var deletePet by remember { mutableStateOf<PetProfile?>(null) }
@@ -256,12 +289,19 @@ fun PetManagerScreen(
                     },
                 )
                 TextButton(
-                    enabled = pendingId == null,
+                    enabled = pendingId == null && recordsLoaded,
                     onClick = {
                         deletePet = pet
                         deleteStage = 1
                     },
                 ) { Text("영구 삭제", color = MaterialTheme.colorScheme.error) }
+                if (!recordsLoaded) {
+                    Text(
+                        "기록을 불러오지 못한 상태에서는 안전을 위해 삭제할 수 없습니다.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
@@ -276,8 +316,8 @@ fun PetManagerScreen(
             text = {
                 Text(
                     if (deleteStage == 1)
-                        "${target.name}의 프로필과 사진이 삭제됩니다. 나중에 복구할 수 없습니다."
-                    else "${target.name}의 프로필을 영구 삭제합니다. 이 작업은 취소할 수 없습니다."
+                        "${target.name}의 프로필, 사진 및 연결된 기록 ${recordCounts[target.id] ?: 0}건이 함께 영구 삭제됩니다."
+                    else "${target.name}의 기록 ${recordCounts[target.id] ?: 0}건을 포함한 모든 데이터를 삭제합니다. 복구할 수 없습니다."
                 )
             },
             confirmButton = {
