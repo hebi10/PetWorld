@@ -27,6 +27,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.haebi.petworld.data.CareType
 import com.haebi.petworld.data.localDate
@@ -61,6 +63,9 @@ fun PetHomeScreen(
     val day = LocalDate.now()
     val todayLabel = day.format(DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREAN))
     val todayRecords = records.filter { it.localDate() == day }
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val fontScale = LocalDensity.current.fontScale
+    val summaryColumnCount = if (screenWidthDp < 400 || fontScale >= 1.3f) 2 else 3
     Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall)) {
         Text(
             todayLabel,
@@ -131,7 +136,7 @@ fun PetHomeScreen(
             CareType.WEIGHT to PetIcons.Weight,
         )
         PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
-            listOf(types.take(3), types.drop(3)).forEach { rowItems ->
+            types.chunked(summaryColumnCount).forEach { rowItems ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
@@ -153,7 +158,7 @@ fun PetHomeScreen(
                                 Text(
                                     "${type.label} · ${todayRecords.count { it.type == type.name }}건",
                                     style = MaterialTheme.typography.labelMedium,
-                                    maxLines = 1,
+                                    maxLines = 2,
                                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                 )
                             }
@@ -161,12 +166,12 @@ fun PetHomeScreen(
                                 summarizeCare(type, todayRecords),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 2,
+                                maxLines = 3,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             )
                         }
                     }
-                    repeat(3 - rowItems.size) {
+                    repeat(summaryColumnCount - rowItems.size) {
                         androidx.compose.foundation.layout.Spacer(modifier = Modifier.weight(1f))
                     }
                 }
