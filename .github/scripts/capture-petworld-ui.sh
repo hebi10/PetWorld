@@ -8,7 +8,7 @@ status=${PIPESTATUS[0]}
 adb logcat -d -t 1500 > qa/captures/logcat.txt || true
 adb pull /sdcard/Android/data/com.haebi.petworld/files/ui-captures qa/captures/screenshots || true
 for mode in light dark; do
-  folder="qa/captures/screenshots/ui-captures/$mode"
+  folder="qa/captures/screenshots/$mode"
   files=$(find "$folder" -maxdepth 1 -type f -name 'S*.png' 2>/dev/null | wc -l)
   echo "$mode screenshot count: $files"
   if [ "$files" -lt 22 ]; then
