@@ -11,8 +11,8 @@ for mode in light dark; do
   folder="qa/captures/screenshots/$mode"
   files=$(find "$folder" -maxdepth 1 -type f -name 'S*.png' 2>/dev/null | wc -l)
   echo "$mode screenshot count: $files"
-  if [ "$files" -lt 22 ]; then
-    echo "Incomplete $mode set: expected 22 implementation states"
+  if [ "$files" -lt 24 ]; then
+    echo "Incomplete $mode set: expected 24 implementation states"
     exit 1
   fi
 done
