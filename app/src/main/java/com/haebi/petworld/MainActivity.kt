@@ -22,11 +22,13 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeMode = viewModel.themeMode.collectAsStateWithLifecycle().value
             val state = viewModel.petUiState.collectAsStateWithLifecycle().value
+            val care = viewModel.careFeed.collectAsStateWithLifecycle().value
 
             PetWorldTheme(themeMode = themeMode) {
                 PetWorldApp(
                     themeMode = themeMode,
                     petState = state,
+                    careFeed = care,
                     photoStore = viewModel.photoStore,
                     onThemeModeChange = viewModel::setThemeMode,
                     onSelectPet = viewModel::selectPet,
@@ -34,6 +36,9 @@ class MainActivity : ComponentActivity() {
                     onArchivedChange = viewModel::setArchived,
                     onDeletePet = viewModel::deletePet,
                     onRetry = viewModel::refreshPets,
+                    onSaveCare = viewModel::saveCare,
+                    onDeleteCare = viewModel::deleteCare,
+                    onRetryCare = viewModel::retryCare,
                 )
             }
         }
