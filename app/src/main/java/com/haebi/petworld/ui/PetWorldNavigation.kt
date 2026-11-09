@@ -41,6 +41,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.haebi.petworld.PetUiState
 import com.haebi.petworld.CareFeedState
 import com.haebi.petworld.R
@@ -146,16 +148,6 @@ fun PetWorldApp(
     fun returnFromEditor() {
         showEditor = false
         showManager = editorFromManager
-    }
-
-    if (restoring) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator()
-                Text("백업을 복원하고 있습니다. 완료될 때까지 앱을 종료하지 마세요.")
-            }
-        }
-        return
     }
 
     val showTabs = ready && current != null && !showEditor && !showManager && careEditorType == null && careDetailId == null
@@ -421,6 +413,22 @@ fun PetWorldApp(
                         onClick = { startCare(type) },
                     )
                 }
+            }
+        }
+    }
+
+    if (restoring) {
+        Dialog(
+            onDismissRequest = {},
+            properties = DialogProperties(
+                dismissOnBackPress = false,
+                dismissOnClickOutside = false,
+            ),
+        ) {
+            PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
+                CircularProgressIndicator()
+                Text("백업 복원 중", style = MaterialTheme.typography.titleLarge)
+                Text("데이터를 교체하고 있습니다. 완료될 때까지 앱을 종료하지 마세요.")
             }
         }
     }
