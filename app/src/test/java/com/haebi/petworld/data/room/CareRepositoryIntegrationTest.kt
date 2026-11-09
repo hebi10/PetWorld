@@ -42,7 +42,7 @@ class CareRepositoryIntegrationTest {
                 "", null, false, 2L, 2L,
             )
         )
-        care = CareRepository(database)
+        care = CareRepository(context, database)
     }
 
     @After fun teardown() { database.close() }
