@@ -64,30 +64,42 @@ class MainActivity : ComponentActivity() {
             )[MainViewModel::class.java]
 
             setContent {
-            val themeMode = viewModel.themeMode.collectAsStateWithLifecycle().value
-            val state = viewModel.petUiState.collectAsStateWithLifecycle().value
-            val care = viewModel.careFeed.collectAsStateWithLifecycle().value
-            val restoring = viewModel.restoring.collectAsStateWithLifecycle().value
+                val themeMode = viewModel.themeMode.collectAsStateWithLifecycle().value
+                val state = viewModel.petUiState.collectAsStateWithLifecycle().value
+                val care = viewModel.careFeed.collectAsStateWithLifecycle().value
+                val restoring = viewModel.restoring.collectAsStateWithLifecycle().value
+                val recoveryBlocked = viewModel.recoveryBlocked.collectAsStateWithLifecycle().value
 
-            PetWorldTheme(themeMode = themeMode) {
-                PetWorldApp(
-                    themeMode = themeMode,
-                    petState = state,
-                    careFeed = care,
-                    photoStore = viewModel.photoStore,
-                    onThemeModeChange = viewModel::setThemeMode,
-                    onSelectPet = viewModel::selectPet,
-                    onSavePet = viewModel::savePet,
-                    onArchivedChange = viewModel::setArchived,
-                    onDeletePet = viewModel::deletePet,
-                    onRetry = viewModel::refreshPets,
-                    onSaveCare = viewModel::saveCare,
-                    onDeleteCare = viewModel::deleteCare,
-                    onRetryCare = viewModel::retryCare,
-                    restoring = restoring,
-                    onRestoreBackup = viewModel::restoreBackup,
-                )
-            }
+                PetWorldTheme(themeMode = themeMode) {
+                    if (recoveryBlocked) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(
+                                "복원 후 데이터를 안전하게 되돌리지 못했습니다. " +
+                                    "앱을 다시 실행하여 자동 복구를 진행해 주세요. " +
+                                    "복구에 실패한다면 데이터를 변경하지 마세요.",
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    } else {
+                        PetWorldApp(
+                            themeMode = themeMode,
+                            petState = state,
+                            careFeed = care,
+                            photoStore = viewModel.photoStore,
+                            onThemeModeChange = viewModel::setThemeMode,
+                            onSelectPet = viewModel::selectPet,
+                            onSavePet = viewModel::savePet,
+                            onArchivedChange = viewModel::setArchived,
+                            onDeletePet = viewModel::deletePet,
+                            onRetry = viewModel::refreshPets,
+                            onSaveCare = viewModel::saveCare,
+                            onDeleteCare = viewModel::deleteCare,
+                            onRetryCare = viewModel::retryCare,
+                            restoring = restoring,
+                            onRestoreBackup = viewModel::restoreBackup,
+                        )
+                    }
+                }
             }
         }
     }
