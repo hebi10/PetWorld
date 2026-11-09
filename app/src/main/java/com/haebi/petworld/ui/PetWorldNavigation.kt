@@ -50,6 +50,8 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -184,6 +186,9 @@ fun PetWorldApp(
                         modifier = Modifier.fillMaxWidth()
                             .heightIn(min = PetSpacing.minTouchTarget)
                             .clickable(role = Role.Button) { showSwitcher = true }
+                            .semantics(mergeDescendants = true) {
+                                contentDescription = "반려동물 전환: ${current.name}"
+                            }
                             .padding(horizontal = PetSpacing.large, vertical = PetSpacing.xSmall),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(PetSpacing.medium),
@@ -191,7 +196,7 @@ fun PetWorldApp(
                         PetAvatar(photoStore, current.name, current.photoFile, size = 36.dp)
                         Text(current.name, style = MaterialTheme.typography.titleMedium,
                             modifier = Modifier.weight(1f))
-                        Icon(PetIcons.More, contentDescription = "반려동물 전환",
+                        Icon(PetIcons.More, contentDescription = null,
                             tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
