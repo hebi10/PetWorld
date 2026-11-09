@@ -57,6 +57,7 @@ class PetWorldScreenCaptureTest {
                 preferences.selectPet(null)
             }
             ActivityScenario.launch(MainActivity::class.java).use {
+                dismissLauncherAnr()
                 device.waitForIdle()
                 shot(folder, "S00-onboarding")
                 try {
@@ -215,7 +216,18 @@ class PetWorldScreenCaptureTest {
         }
     }
 
+    private fun dismissLauncherAnr() {
+        repeat(3) {
+            val waitButton = device.wait(Until.findObject(By.text("Wait")), 700)
+            if (waitButton != null && device.hasObject(By.textContains("Pixel Launcher"))) {
+                waitButton.click()
+                device.waitForIdle()
+            }
+        }
+    }
+
     private fun mustSee(text: String) {
+        dismissLauncherAnr()
         val found = device.wait(Until.findObject(By.textContains(text)), 25_000)
         checkNotNull(found) { "화면 텍스트가 없습니다: $text" }
         device.waitForIdle()
@@ -224,6 +236,7 @@ class PetWorldScreenCaptureTest {
     private fun tap(text: String) {
         var lastError: StaleObjectException? = null
         for (attempt in 0 until 12) {
+            dismissLauncherAnr()
             device.waitForIdle()
             val found = device.wait(Until.findObject(By.text(text)), 1_500)
             if (found != null) {
