@@ -28,7 +28,7 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.ListAlt
 import androidx.compose.material.icons.outlined.LocalHospital
-import androidx.compose.material.icons.outlined.LockOutline
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Logout
 import androidx.compose.material.icons.outlined.Medication
 import androidx.compose.material.icons.outlined.MonitorWeight
@@ -108,7 +108,7 @@ object PetIcons {
     val Camera: ImageVector = Icons.Outlined.PhotoCamera
     val Gallery: ImageVector = Icons.Outlined.Collections
     val Sync: ImageVector = Icons.Outlined.Sync
-    val Lock: ImageVector = Icons.Outlined.LockOutline
+    val Lock: ImageVector = Icons.Outlined.Lock
     val Logout: ImageVector = Icons.Outlined.Logout
 
     val navigation = listOf(Home, Records, Health, Statistics, More)
