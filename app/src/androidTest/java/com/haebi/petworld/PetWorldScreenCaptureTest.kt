@@ -374,7 +374,15 @@ class PetWorldScreenCaptureTest {
         }
         val density = context.resources.displayMetrics.density
         val screenWidthDp = device.displayWidth / density
-        val buttonBounds = save.visibleBounds
+        var saveButton = save
+        repeat(6) {
+            if (saveButton.isClickable) return@repeat
+            saveButton = checkNotNull(saveButton.parent) {
+                "$screenId: 저장 버튼의 클릭 가능한 상위 영역을 찾지 못했습니다."
+            }
+        }
+        check(saveButton.isClickable) { "$screenId: 저장 버튼의 클릭 영역이 없습니다." }
+        val buttonBounds = saveButton.visibleBounds
         val fieldBounds = field.visibleBounds
         val screenCenter = device.displayWidth / 2f
 
