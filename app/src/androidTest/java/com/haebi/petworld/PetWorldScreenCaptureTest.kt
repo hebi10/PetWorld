@@ -22,6 +22,7 @@ import com.haebi.petworld.data.room.PetEntity
 import com.haebi.petworld.data.room.PetWorldDatabase
 import com.haebi.petworld.data.toEntity
 import com.haebi.petworld.ui.theme.ThemeMode
+import com.haebi.petworld.ui.theme.PetSpacing
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -109,6 +110,7 @@ class PetWorldScreenCaptureTest {
                     openCareForm(label)
                     mustSee("닫기")
                     shot(folder, name)
+                    assertCareFormMaxWidth(folder, name, label)
                     if (label == "식사") assertFoodPortionLayout(folder)
                     if (label == "배변") assertEliminationPhotoLayout(folder)
                     assertCareDateTimeRow(folder, name)
@@ -141,6 +143,7 @@ class PetWorldScreenCaptureTest {
                 shot(folder, "S12-record-detail")
                 tap("수정")
                 shot(folder, "S12-record-edit")
+                assertCareFormMaxWidth(folder, "S12-record-edit", "음수", edit = true)
                 tap("닫기")
                 tap("기록 삭제")
                 mustSee("이 기록을 삭제할까요?")
@@ -346,6 +349,66 @@ class PetWorldScreenCaptureTest {
             device.swipe(middle, low, middle, high, 16)
             device.waitForIdle()
         }
+    }
+
+    private fun assertCareFormMaxWidth(
+        folder: File,
+        screenId: String,
+        type: String,
+        edit: Boolean = false,
+    ) {
+        val saveText = if (edit) "변경 저장" else "기록 저장"
+        val labelText = when (type) {
+            "식사" -> "제품명 (선택)"
+            "음수" -> "음수량 (mL) · 필수"
+            "배변" -> "횟수 (회)"
+            "활동" -> "지속시간 (분)"
+            "체중" -> "체중 (kg)"
+            else -> error("지원하지 않는 기록 유형: $type")
+        }
+        val save = checkNotNull(device.wait(Until.findObject(By.text(saveText)), 4_000)) {
+            "$screenId: 하단 저장 버튼을 찾지 못했습니다."
+        }
+        val field = checkNotNull(device.wait(Until.findObject(By.textContains(labelText)), 4_000)) {
+            "$screenId: 대표 입력 필드를 찾지 못했습니다."
+        }
+        val density = context.resources.displayMetrics.density
+        val screenWidthDp = device.displayWidth / density
+        var saveButton = save
+        repeat(6) {
+            if (saveButton.isClickable) return@repeat
+            saveButton = checkNotNull(saveButton.parent) {
+                "$screenId: 저장 버튼의 클릭 가능한 상위 영역을 찾지 못했습니다."
+            }
+        }
+        check(saveButton.isClickable) { "$screenId: 저장 버튼의 클릭 영역이 없습니다." }
+        val buttonBounds = saveButton.visibleBounds
+        val fieldBounds = field.visibleBounds
+        val screenCenter = device.displayWidth / 2f
+
+        if (screenWidthDp > 600f) {
+            val maxWidth = PetSpacing.careFormMaxWidth.value * density
+            val maxSaveWidth = (PetSpacing.careFormMaxWidth.value -
+                2f * PetSpacing.large.value + 8f) * density
+            val tolerance = 16f * density
+            val centered = kotlin.math.abs(
+                (buttonBounds.left + buttonBounds.right) / 2f - screenCenter
+            ) <= tolerance
+            check(buttonBounds.width() <= maxSaveWidth &&
+                centered &&
+                fieldBounds.left >= screenCenter - maxWidth / 2f - tolerance &&
+                fieldBounds.right <= screenCenter + maxWidth / 2f + tolerance) {
+                "$screenId: 펼침 화면에서 폼 또는 저장 버튼이 520dp 최대폭을 초과했습니다. " +
+                    "field=$fieldBounds, button=$buttonBounds, deviceWidth=${device.displayWidth}"
+            }
+        } else {
+            val minimumButtonWidth = (screenWidthDp - 64f) * density
+            check(buttonBounds.width() >= minimumButtonWidth) {
+                "$screenId: 일반 휴대전화의 저장 버튼 폭이 줄어들었습니다. " +
+                    "button=$buttonBounds, screenWidthDp=$screenWidthDp"
+            }
+        }
+        shot(folder, "UI09-$screenId-form-width")
     }
 
     private fun assertEliminationPhotoLayout(folder: File) {
