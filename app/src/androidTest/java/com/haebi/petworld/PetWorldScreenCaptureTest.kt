@@ -116,8 +116,7 @@ class PetWorldScreenCaptureTest {
                     mustSee("빠른 기록 추가")
                 }
 
-                tap("기록")
-                mustSee("나비의 생활 기록")
+                openRecordsTab()
                 mustSee("기간: 7일")
                 mustSee("유형: 전체")
                 shot(folder, "S11-record-list")
@@ -253,6 +252,13 @@ class PetWorldScreenCaptureTest {
         val closeButton = device.findObject(By.text("Close app"))
         if (anrTitle == null && waitButton == null && closeButton == null) return
 
+        if (title.contains("Pixel Launcher", ignoreCase = true)) {
+            try { closeButton?.click() } catch (_: StaleObjectException) {}
+            device.executeShellCommand("am force-stop com.google.android.apps.nexuslauncher")
+            device.waitForIdle()
+            return
+        }
+
         if (waitButton != null) {
             try { waitButton.click() } catch (_: StaleObjectException) {}
             device.waitForIdle()
@@ -290,6 +296,17 @@ class PetWorldScreenCaptureTest {
         throw IllegalStateException("시스템 파일 선택기(DocumentsUI)가 열리지 않았습니다.")
     }
 
+    private fun openRecordsTab() {
+        repeat(3) {
+            dismissSystemAnr()
+            if (device.wait(Until.findObject(By.textContains("나비의 생활 기록")), 1_000) != null) {
+                return
+            }
+            tap("기록")
+        }
+        mustSee("나비의 생활 기록")
+    }
+
     private fun ensureVisible(text: String): Boolean {
         dismissSystemAnr()
         if (device.wait(Until.findObject(By.textContains(text)), 700) != null) {
@@ -298,12 +315,20 @@ class PetWorldScreenCaptureTest {
         val middle = device.displayWidth / 2
         val high = device.displayHeight * 3 / 4
         val low = device.displayHeight / 4
-        repeat(14) {
-            dismissSystemAnr()
-            device.swipe(middle, high, middle, low, 22)
-            device.waitForIdle()
-            if (device.wait(Until.findObject(By.textContains(text)), 700) != null) {
-                return true
+        for (scrollDown in listOf(true, false)) {
+            repeat(14) {
+                dismissSystemAnr()
+                device.swipe(
+                    middle,
+                    if (scrollDown) high else low,
+                    middle,
+                    if (scrollDown) low else high,
+                    22,
+                )
+                device.waitForIdle()
+                if (device.wait(Until.findObject(By.textContains(text)), 700) != null) {
+                    return true
+                }
             }
         }
         val diagnostics = File(root, "diagnostics").apply { mkdirs() }
