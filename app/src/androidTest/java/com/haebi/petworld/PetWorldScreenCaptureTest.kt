@@ -109,6 +109,7 @@ class PetWorldScreenCaptureTest {
                     openCareForm(label)
                     mustSee("닫기")
                     shot(folder, name)
+                    if (label == "식사") assertFoodPortionLayout(folder)
                     assertCareDateTimeRow(folder, name)
                     tap("닫기")
                     mustSee("빠른 기록 추가")
@@ -319,6 +320,51 @@ class PetWorldScreenCaptureTest {
             device.swipe(middle, low, middle, high, 16)
             device.waitForIdle()
         }
+    }
+
+    private fun assertFoodPortionLayout(folder: File) {
+        val servedSelector = By.textContains("제공량 (")
+        val consumedSelector = By.textContains("섭취량 (")
+        val centerX = device.displayWidth / 2
+        val high = device.displayHeight * 3 / 4
+        val low = device.displayHeight / 4
+        var bounds: Pair<android.graphics.Rect, android.graphics.Rect>? = null
+
+        for (attempt in 0 until 12) {
+            dismissSystemAnr()
+            bounds = try {
+                val served = device.findObject(servedSelector)?.visibleBounds
+                val consumed = device.findObject(consumedSelector)?.visibleBounds
+                if (served != null && consumed != null && served.width() > 0 &&
+                    consumed.width() > 0 && served.height() > 0 && consumed.height() > 0
+                ) served to consumed else null
+            } catch (_: StaleObjectException) {
+                null
+            }
+            if (bounds != null) break
+            device.swipe(centerX, high, centerX, low, 22)
+            device.waitForIdle()
+        }
+
+        if (bounds == null) {
+            device.takeScreenshot(File(folder, "UI06C-food-portions-failure.png"))
+            device.dumpWindowHierarchy(File(folder, "UI06C-food-portions-hierarchy.xml"))
+        }
+        val (served, consumed) = checkNotNull(bounds) {
+            "식사 제공량과 섭취량 필드를 동시에 찾지 못했습니다."
+        }
+
+        val screenWidthDp = device.displayWidth / context.resources.displayMetrics.density
+        val stackExpected = screenWidthDp - 32f < 360f ||
+            context.resources.configuration.fontScale >= 1.3f
+        val verticallyStacked = served.bottom <= consumed.top
+        val horizontallyAligned = served.right <= consumed.left &&
+            served.top < consumed.bottom && consumed.top < served.bottom
+        check(if (stackExpected) verticallyStacked else horizontallyAligned) {
+            "식사 수치 필드의 반응형 배치가 올바르지 않습니다. stacked=$stackExpected"
+        }
+        shot(folder, "UI06C-food-portions")
+        scrollToTop()
     }
 
     private fun assertCareDateTimeRow(folder: File, screenId: String) {

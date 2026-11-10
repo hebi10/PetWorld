@@ -6,6 +6,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
@@ -24,6 +25,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -99,6 +101,8 @@ private fun CareFormTextField(
     singleLine: Boolean = true,
     minLines: Int = 1,
     maxLines: Int = 1,
+    suffixText: String? = null,
+    modifier: Modifier = Modifier.fillMaxWidth(),
 ) {
     OutlinedTextField(
         value = value,
@@ -111,9 +115,75 @@ private fun CareFormTextField(
         singleLine = singleLine,
         minLines = minLines,
         maxLines = maxLines,
+        suffix = if (suffixText == null) null else {
+            { Text(suffixText, style = MaterialTheme.typography.bodyMedium) }
+        },
         shape = RectangleShape,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier,
     )
+}
+
+@Composable
+private fun FoodPortionInput(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    unit: PortionUnit,
+    modifier: Modifier = Modifier.fillMaxWidth(),
+) {
+    CareFormTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = "$label (${unit.label})",
+        keyboardType = KeyboardType.Decimal,
+        suffixText = unit.label,
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun FoodPortionFields(
+    unit: PortionUnit,
+    served: String,
+    consumed: String,
+    onUnitChange: (PortionUnit) -> Unit,
+    onServedChange: (String) -> Unit,
+    onConsumedChange: (String) -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(PetSpacing.small),
+    ) {
+        ChoiceRow("단위", unit, PortionUnit.entries, { it.label }, onUnitChange)
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val stacked = maxWidth < 360.dp || LocalDensity.current.fontScale >= 1.3f
+            if (stacked) {
+                Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
+                    FoodPortionInput(served, onServedChange, "제공량", unit)
+                    FoodPortionInput(consumed, onConsumedChange, "섭취량", unit)
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+                ) {
+                    FoodPortionInput(
+                        served, onServedChange, "제공량", unit,
+                        modifier = Modifier.weight(1f),
+                    )
+                    FoodPortionInput(
+                        consumed, onConsumedChange, "섭취량", unit,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+        Text(
+            "제공량은 필수, 섭취량은 선택입니다. 미측정은 빈칸, 확인된 미섭취는 0으로 입력합니다.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable
@@ -231,25 +301,19 @@ fun CareRecordEditor(
                         onValueChange = { foodProductName = it.take(101) },
                         label = "제품명 (선택)",
                     )
-                    ChoiceRow("단위", foodUnit, PortionUnit.entries, { it.label }) {
-                        if (foodUnit != it) {
-                            amount = ""
-                            consumed = ""
-                            foodUnit = it
-                        }
-                    }
-                    CareFormTextField(
-                        value = amount,
-                        onValueChange = { amount = it.take(20) },
-                        label = "제공량 (${foodUnit.label}) · 필수",
-                        keyboardType = KeyboardType.Decimal,
-                    )
-                    CareFormTextField(
-                        value = consumed,
-                        onValueChange = { consumed = it.take(20) },
-                        label = "실제 섭취량 (${foodUnit.label}) · 선택",
-                        supportingText = "빈칸은 미측정, 0은 먹지 않음을 확인한 경우입니다.",
-                        keyboardType = KeyboardType.Decimal,
+                    FoodPortionFields(
+                        unit = foodUnit,
+                        served = amount,
+                        consumed = consumed,
+                        onUnitChange = { selectedUnit ->
+                            if (foodUnit != selectedUnit) {
+                                amount = ""
+                                consumed = ""
+                                foodUnit = selectedUnit
+                            }
+                        },
+                        onServedChange = { amount = it.take(20) },
+                        onConsumedChange = { consumed = it.take(20) },
                     )
                 }
                 CareType.WATER -> {

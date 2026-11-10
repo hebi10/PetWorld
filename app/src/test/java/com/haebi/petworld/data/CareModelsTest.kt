@@ -31,6 +31,20 @@ class CareModelsTest {
         assertTrue(confirmedNone.displayValue().contains("섭취 0g"))
     }
 
+    @Test fun foodMlPortionsPreserveUnitAndMeasuredConsumption() {
+        val meal = draft(CareType.FOOD, "55.75")
+            .copy(foodUnit = PortionUnit.ML, consumedAmount = "20.5")
+            .toEntity(now = now)
+
+        assertEquals("ML", meal.foodUnit)
+        assertEquals(55_750L, meal.foodServedMilli)
+        assertEquals(20_500L, meal.foodConsumedMilli)
+        assertEquals("55.75", meal.toDraft().amount)
+        assertEquals("20.5", meal.toDraft().consumedAmount)
+        assertEquals(PortionUnit.ML, meal.toDraft().foodUnit)
+        assertTrue(meal.displayValue().contains("제공 55.75mL · 섭취 20.5mL"))
+    }
+
     @Test fun rejectsExcessConsumptionAndNegativeQuantity() {
         assertNotNull(CareValidation.error(
             draft(CareType.FOOD, "40").copy(consumedAmount = "50"), now
