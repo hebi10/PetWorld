@@ -296,14 +296,19 @@ class PetWorldScreenCaptureTest {
         val middle = device.displayWidth / 2
         val high = device.displayHeight * 3 / 4
         val low = device.displayHeight / 4
-        repeat(8) {
-            device.swipe(middle, high, middle, low, 16)
+        repeat(14) {
+            dismissSystemAnr()
+            device.swipe(middle, high, middle, low, 22)
             device.waitForIdle()
             if (device.wait(Until.findObject(By.textContains(text)), 700) != null) {
                 return true
             }
         }
-        throw IllegalStateException("스크롤 후에도 화면 텍스트가 없습니다: $text")
+        val diagnostics = File(root, "diagnostics").apply { mkdirs() }
+        val id = System.currentTimeMillis().toString()
+        device.takeScreenshot(File(diagnostics, "$id-recent-content.png"))
+        device.dumpWindowHierarchy(File(diagnostics, "$id-recent-content.xml"))
+        throw IllegalStateException("스크롤 후에도 화면 텍스트가 없습니다: $text (diagnostics/$id)")
     }
 
     private fun scrollToTop() {
@@ -319,29 +324,43 @@ class PetWorldScreenCaptureTest {
     private fun assertCareDateTimeRow(folder: File, screenId: String) {
         val dateSelector = By.descContains("관찰 날짜")
         val timeSelector = By.descContains("관찰 시간")
-        var date = device.findObject(dateSelector)
-        var time = device.findObject(timeSelector)
         val middle = device.displayWidth / 2
         val high = device.displayHeight * 3 / 4
         val low = device.displayHeight / 4
+        val safeBottom = (device.displayHeight * 0.86f).toInt()
+        val minTouchHeight = (context.resources.displayMetrics.density * 48).toInt()
+        var rowVerified = false
 
-        for (attempt in 0 until 8) {
-            if (date != null && time != null) break
-            device.swipe(middle, high, middle, low, 16)
+        for (attempt in 0 until 12) {
+            dismissSystemAnr()
+            val bounds = try {
+                val date = device.findObject(dateSelector)?.visibleBounds
+                val time = device.findObject(timeSelector)?.visibleBounds
+                if (date != null && time != null) date to time else null
+            } catch (_: StaleObjectException) {
+                null
+            }
+            if (bounds != null) {
+                val (date, time) = bounds
+                val horizontallyAligned = date.right <= time.left &&
+                    date.top < time.bottom && time.top < date.bottom
+                if (horizontallyAligned && date.bottom <= safeBottom &&
+                    time.bottom <= safeBottom && date.height() >= minTouchHeight &&
+                    time.height() >= minTouchHeight) {
+                    rowVerified = true
+                    break
+                }
+            }
+            device.swipe(middle, high, middle, low, 22)
             device.waitForIdle()
-            date = device.findObject(dateSelector)
-            time = device.findObject(timeSelector)
         }
 
-        if (date == null || time == null) {
+        if (!rowVerified) {
+            device.takeScreenshot(File(folder, "$screenId-observation-failure.png"))
             device.dumpWindowHierarchy(File(folder, "$screenId-observation-hierarchy.xml"))
         }
-        val dateBounds = checkNotNull(date) { "$screenId: 관찰 날짜 버튼을 찾지 못했습니다." }.visibleBounds
-        val timeBounds = checkNotNull(time) { "$screenId: 관찰 시간 버튼을 찾지 못했습니다." }.visibleBounds
-
-        check(dateBounds.right <= timeBounds.left &&
-            dateBounds.top < timeBounds.bottom && timeBounds.top < dateBounds.bottom) {
-            "$screenId: 날짜와 시간이 한 행에 나란히 표시되지 않습니다."
+        check(rowVerified) {
+            "$screenId: 날짜·시간 버튼이 가로로 정렬되고 화면 안에 완전히 표시되어야 합니다."
         }
         shot(folder, "UI06B-$screenId-observation")
         scrollToTop()
