@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -70,6 +71,7 @@ import com.haebi.petworld.data.PetProfile
 import com.haebi.petworld.ui.components.PetAvatar
 import com.haebi.petworld.ui.components.PetEmptyState
 import com.haebi.petworld.ui.components.PetPrimaryButton
+import com.haebi.petworld.ui.components.PetPhraseHeading
 import com.haebi.petworld.ui.components.PetSurfaceCard
 import com.haebi.petworld.ui.components.PetSecondaryButton
 import com.haebi.petworld.ui.icons.PetIcons
@@ -232,7 +234,7 @@ fun PetWorldApp(
             modifier = Modifier.fillMaxSize().padding(padding),
             contentAlignment = Alignment.TopCenter,
         ) {
-            Box(modifier = Modifier.fillMaxSize().widthIn(max = PetSpacing.contentMaxWidth)) {
+            Box(modifier = Modifier.widthIn(max = PetSpacing.contentMaxWidth).fillMaxSize()) {
                 when {
                     petState.loadStatus == PetLoadStatus.Loading -> {
                         Column(
@@ -435,8 +437,8 @@ fun PetWorldApp(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
                 ) {
-                    Text(
-                        "${current.name}의 기록 추가",
+                    PetPhraseHeading(
+                        groups = listOf(listOf("${current.name}의", "기록 추가")),
                         modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.titleLarge,
                     )
@@ -548,8 +550,8 @@ private fun SettingsContent(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
         ) {
-            Text(
-                "반려동물 프로필",
+            PetPhraseHeading(
+                groups = listOf(listOf("반려동물", "프로필")),
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.weight(1f),
             )
@@ -595,9 +597,10 @@ private fun SettingsContent(
     }
     PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
         Text("화면 모드", style = MaterialTheme.typography.titleMedium)
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+            verticalArrangement = Arrangement.spacedBy(PetSpacing.small),
         ) {
             listOf(
                 ThemeMode.SYSTEM to "시스템",
@@ -605,7 +608,7 @@ private fun SettingsContent(
                 ThemeMode.DARK to "다크",
             ).forEach { (mode, label) ->
                 Row(
-                    modifier = Modifier.weight(1f)
+                    modifier = (if (compactActions) Modifier else Modifier.weight(1f))
                         .heightIn(min = PetSpacing.minTouchTarget)
                         .selectable(
                             selected = themeMode == mode,

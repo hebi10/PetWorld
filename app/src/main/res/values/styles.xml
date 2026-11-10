@@ -3,4 +3,28 @@
     <style name="Theme.PetWorld" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowActionModeOverlay">true</item>
     </style>
+    <style name="Theme.PetWorld.Picker.Light" parent="android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:windowMinWidthMajor">0dp</item>
+        <item name="android:windowMinWidthMinor">0dp</item>
+        <item name="android:colorAccent">#191919</item>
+        <item name="android:colorControlActivated">#191919</item>
+        <item name="android:colorBackground">#FFFFFF</item>
+        <item name="android:colorBackgroundFloating">#FFFFFF</item>
+        <item name="android:textColorPrimary">#191919</item>
+        <item name="android:textColorSecondary">#565656</item>
+        <item name="android:windowBackground">@drawable/pet_picker_background</item>
+        <item name="android:windowElevation">0dp</item>
+    </style>
+    <style name="Theme.PetWorld.Picker.Dark" parent="android:style/Theme.Material.Dialog.Alert">
+        <item name="android:windowMinWidthMajor">0dp</item>
+        <item name="android:windowMinWidthMinor">0dp</item>
+        <item name="android:colorAccent">#F2F2F2</item>
+        <item name="android:colorControlActivated">#F2F2F2</item>
+        <item name="android:colorBackground">#181818</item>
+        <item name="android:colorBackgroundFloating">#181818</item>
+        <item name="android:textColorPrimary">#F2F2F2</item>
+        <item name="android:textColorSecondary">#C4C4C4</item>
+        <item name="android:windowBackground">@drawable/pet_picker_background</item>
+        <item name="android:windowElevation">0dp</item>
+    </style>
 </resources>

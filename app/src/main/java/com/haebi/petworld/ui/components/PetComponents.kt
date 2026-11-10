@@ -3,6 +3,7 @@ package com.haebi.petworld.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -15,11 +16,33 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.unit.dp
 import com.haebi.petworld.ui.theme.PetSpacing
+
+@Composable
+internal fun PetPhraseHeading(
+    groups: List<List<String>>,
+    modifier: Modifier = Modifier,
+    style: TextStyle = MaterialTheme.typography.titleLarge,
+) {
+    val wordSpacing = with(LocalDensity.current) { (style.fontSize * 0.25f).toDp() }
+    val label = groups.flatten().joinToString(" ")
+    Column(modifier = modifier.clearAndSetSemantics { text = AnnotatedString(label) }) {
+        groups.forEach { words ->
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(wordSpacing)) {
+                words.forEach { word -> Text(word, style = style) }
+            }
+        }
+    }
+}
 
 @Composable
 fun PetSurfaceCard(

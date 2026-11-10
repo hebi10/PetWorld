@@ -4,8 +4,18 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.haebi.petworld.R
+
+@Composable
+internal fun petPlatformPickerTheme(): Int =
+    if (MaterialTheme.colorScheme.background.luminance() < 0.5f) {
+        R.style.Theme_PetWorld_Picker_Dark
+    } else {
+        R.style.Theme_PetWorld_Picker_Light
+    }
 
 private val PetShapes = Shapes(
     extraSmall = RoundedCornerShape(0.dp),

@@ -116,17 +116,26 @@ fun PetHomeScreen(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
-        ) {
-            Text(
-                "오늘의 돌봄",
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f),
+        if (screenWidthDp / fontScale < 360f) {
+            Text("오늘의 돌봄", style = MaterialTheme.typography.titleLarge)
+            PetPrimaryButton(
+                label = "빠른 기록 추가",
+                onClick = onQuickAdd,
+                modifier = Modifier.fillMaxWidth(),
             )
-            PetPrimaryButton(label = "빠른 기록 추가", onClick = onQuickAdd)
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+            ) {
+                Text(
+                    "오늘의 돌봄",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.weight(1f),
+                )
+                PetPrimaryButton(label = "빠른 기록 추가", onClick = onQuickAdd)
+            }
         }
         val types = listOf(
             CareType.FOOD to PetIcons.Food,

@@ -17,6 +17,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.haebi.petworld.ui.components.PetSecondaryButton
 import com.haebi.petworld.ui.theme.PetSpacing
+import com.haebi.petworld.ui.theme.petPlatformPickerTheme
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -33,6 +34,7 @@ internal fun CareObservationDateTime(
     onOccurredAtChange: (Long) -> Unit,
 ) {
     val context = LocalContext.current
+    val pickerTheme = petPlatformPickerTheme()
     val local = Instant.ofEpochMilli(occurredAt).atZone(zone)
     val dateLabel = local.format(observationDateFormat)
     val timeLabel = local.format(observationTimeFormat)
@@ -55,6 +57,7 @@ internal fun CareObservationDateTime(
                     val day = local.toLocalDate()
                     DatePickerDialog(
                         context,
+                        pickerTheme,
                         { _, year, month, dayOfMonth ->
                             val datetime = LocalDateTime.of(
                                 LocalDate.of(year, month + 1, dayOfMonth),
@@ -74,6 +77,7 @@ internal fun CareObservationDateTime(
                 onClick = {
                     TimePickerDialog(
                         context,
+                        pickerTheme,
                         { _, hour, minute ->
                             val datetime = local.toLocalDate().atTime(hour, minute)
                             onOccurredAtChange(datetime.atZone(zone).toInstant().toEpochMilli())

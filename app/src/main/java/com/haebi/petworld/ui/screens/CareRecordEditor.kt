@@ -58,6 +58,7 @@ import com.haebi.petworld.data.WeightUnit
 import com.haebi.petworld.data.room.CareEntity
 import com.haebi.petworld.data.toDraft
 import com.haebi.petworld.ui.components.PetPrimaryButton
+import com.haebi.petworld.ui.components.PetPhraseHeading
 import com.haebi.petworld.ui.theme.PetSpacing
 import kotlinx.coroutines.launch
 import java.time.ZoneId
@@ -301,8 +302,8 @@ fun CareRecordEditor(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
             ) {
-                Text(
-                    "${pet.name} · ${type.label} ${if (existing == null) "기록" else "수정"}",
+                PetPhraseHeading(
+                    groups = listOf(listOf("${pet.name} ·", "${type.label} ${if (existing == null) "기록" else "수정"}")),
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.titleLarge,
                 )

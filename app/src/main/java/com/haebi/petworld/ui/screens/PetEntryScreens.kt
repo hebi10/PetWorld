@@ -47,9 +47,11 @@ import com.haebi.petworld.data.PetValidation
 import com.haebi.petworld.data.birthMode
 import com.haebi.petworld.ui.components.PetAvatar
 import com.haebi.petworld.ui.components.PetPrimaryButton
+import com.haebi.petworld.ui.components.PetPhraseHeading
 import com.haebi.petworld.ui.components.PetSecondaryButton
 import com.haebi.petworld.ui.components.PetSurfaceCard
 import com.haebi.petworld.ui.theme.PetSpacing
+import com.haebi.petworld.ui.theme.petPlatformPickerTheme
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -67,14 +69,20 @@ fun PetWelcomeScreen(
             .padding(PetSpacing.xLarge),
         verticalArrangement = Arrangement.spacedBy(PetSpacing.xLarge),
     ) {
-        Text("반려동물의 하루를 함께 기록하세요", style = MaterialTheme.typography.headlineLarge)
+        PetPhraseHeading(
+            groups = listOf(listOf("반려동물의", "하루를"), listOf("함께", "기록하세요")),
+            style = MaterialTheme.typography.headlineLarge,
+        )
         Text(
             "식사와 음수, 활동부터 건강 변화까지 반려동물별로 정리하는 개인 기록 공간입니다.",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
-            Text("먼저 반려동물을 등록해 주세요", style = MaterialTheme.typography.titleLarge)
+            PetPhraseHeading(
+                groups = listOf(listOf("먼저", "반려동물을", "등록해", "주세요")),
+                style = MaterialTheme.typography.titleLarge,
+            )
             Text(
                 "이름과 종만 입력하면 시작할 수 있습니다. 나머지 정보는 나중에 수정할 수 있습니다.",
                 style = MaterialTheme.typography.bodyMedium,
@@ -152,6 +160,7 @@ fun PetProfileEditor(
     var error by remember { mutableStateOf<String?>(null) }
     var confirmExit by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val pickerTheme = petPlatformPickerTheme()
     val scope = rememberCoroutineScope()
     val picker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
@@ -241,7 +250,7 @@ fun PetProfileEditor(
             label = { Text("이름 (필수)") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
-            isError = name.isBlank(),
+            isError = error != null && name.isBlank(),
             enabled = !isSaving,
         )
         SelectOptions(
@@ -267,6 +276,7 @@ fun PetProfileEditor(
                             .getOrDefault(LocalDate.now())
                         DatePickerDialog(
                             context,
+                            pickerTheme,
                             { _, y, m, d ->
                                 birthday = LocalDate.of(y, m + 1, d)
                                     .format(DateTimeFormatter.ISO_LOCAL_DATE)
@@ -329,7 +339,7 @@ fun PetProfileEditor(
             },
         )
         Text(
-            "이 정보는 기기에만 저장됩니다. 일상 기록과 알림은 다음 단계에서 연결됩니다.",
+            "이 정보와 생활 기록은 이 기기에 저장됩니다. 알림 기능은 아직 지원하지 않습니다.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
