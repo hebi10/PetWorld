@@ -110,6 +110,7 @@ class PetWorldScreenCaptureTest {
                     mustSee("나비 · $label 기록")
                     mustSee("닫기")
                     shot(folder, name)
+                    assertCareDateTimeRow(folder, name)
                     tap("닫기")
                     mustSee("빠른 기록 추가")
                 }
@@ -314,6 +315,37 @@ class PetWorldScreenCaptureTest {
             device.swipe(middle, low, middle, high, 16)
             device.waitForIdle()
         }
+    }
+
+    private fun assertCareDateTimeRow(folder: File, screenId: String) {
+        val dateSelector = By.descContains("관찰 날짜")
+        val timeSelector = By.descContains("관찰 시간")
+        var date = device.findObject(dateSelector)
+        var time = device.findObject(timeSelector)
+        val middle = device.displayWidth / 2
+        val high = device.displayHeight * 3 / 4
+        val low = device.displayHeight / 4
+
+        for (attempt in 0 until 8) {
+            if (date != null && time != null) break
+            device.swipe(middle, high, middle, low, 16)
+            device.waitForIdle()
+            date = device.findObject(dateSelector)
+            time = device.findObject(timeSelector)
+        }
+
+        if (date == null || time == null) {
+            device.dumpWindowHierarchy(File(folder, "$screenId-observation-hierarchy.xml"))
+        }
+        val dateBounds = checkNotNull(date) { "$screenId: 관찰 날짜 버튼을 찾지 못했습니다." }.visibleBounds
+        val timeBounds = checkNotNull(time) { "$screenId: 관찰 시간 버튼을 찾지 못했습니다." }.visibleBounds
+
+        check(dateBounds.right <= timeBounds.left &&
+            dateBounds.top < timeBounds.bottom && timeBounds.top < dateBounds.bottom) {
+            "$screenId: 날짜와 시간이 한 행에 나란히 표시되지 않습니다."
+        }
+        shot(folder, "UI06B-$screenId-observation")
+        scrollToTop()
     }
 
     private fun openPetSwitcher(folder: File, stage: String) {
