@@ -134,7 +134,7 @@ private fun FoodPortionInput(
     CareFormTextField(
         value = value,
         onValueChange = onValueChange,
-        label = label,
+        label = "$label (${unit.label})",
         keyboardType = KeyboardType.Decimal,
         suffixText = unit.label,
         modifier = modifier,
@@ -159,8 +159,8 @@ private fun FoodPortionFields(
             val stacked = maxWidth < 360.dp || LocalDensity.current.fontScale >= 1.3f
             if (stacked) {
                 Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
-                    FoodPortionInput(served, onServedChange, "제공량 · 필수", unit)
-                    FoodPortionInput(consumed, onConsumedChange, "섭취량 · 선택", unit)
+                    FoodPortionInput(served, onServedChange, "제공량", unit)
+                    FoodPortionInput(consumed, onConsumedChange, "섭취량", unit)
                 }
             } else {
                 Row(
@@ -168,18 +168,18 @@ private fun FoodPortionFields(
                     horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
                 ) {
                     FoodPortionInput(
-                        served, onServedChange, "제공량 · 필수", unit,
+                        served, onServedChange, "제공량", unit,
                         modifier = Modifier.weight(1f),
                     )
                     FoodPortionInput(
-                        consumed, onConsumedChange, "섭취량 · 선택", unit,
+                        consumed, onConsumedChange, "섭취량", unit,
                         modifier = Modifier.weight(1f),
                     )
                 }
             }
         }
         Text(
-            "섭취량 미측정은 빈칸, 먹지 않았음을 확인한 경우에만 0으로 입력합니다.",
+            "제공량은 필수, 섭취량은 선택입니다. 미측정은 빈칸, 확인된 미섭취는 0으로 입력합니다.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
