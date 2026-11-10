@@ -144,19 +144,27 @@ class PetWorldKeyboardSaveTest {
     }
 
     private fun awaitIme(scenario: ActivityScenario<MainActivity>): ImeState {
-        repeat(40) {
-            var state = ImeState(false, 0)
-            scenario.onActivity { activity ->
-                val insets = ViewCompat.getRootWindowInsets(activity.window.decorView)
-                state = ImeState(
-                    insets?.isVisible(WindowInsetsCompat.Type.ime()) == true,
-                    insets?.getInsets(WindowInsetsCompat.Type.ime())?.bottom ?: 0,
-                )
+        repeat(3) { attempt ->
+            repeat(20) {
+                var state = ImeState(false, 0)
+                scenario.onActivity { activity ->
+                    val insets = ViewCompat.getRootWindowInsets(activity.window.decorView)
+                    state = ImeState(
+                        insets?.isVisible(WindowInsetsCompat.Type.ime()) == true,
+                        insets?.getInsets(WindowInsetsCompat.Type.ime())?.bottom ?: 0,
+                    )
+                }
+                if (state.visible &&
+                    state.bottomInset > context.resources.displayMetrics.density * 120f
+                ) {
+                    return state
+                }
+                Thread.sleep(250)
             }
-            if (state.visible && state.bottomInset > context.resources.displayMetrics.density * 120f) {
-                return state
+            if (attempt < 2) {
+                focusNote()
+                device.waitForIdle()
             }
-            Thread.sleep(250)
         }
         error("실제 Android 소프트 키보드가 표시되지 않았습니다.")
     }
