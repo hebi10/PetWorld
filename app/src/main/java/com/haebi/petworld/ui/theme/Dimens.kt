@@ -11,4 +11,5 @@ object PetSpacing {
     val xxLarge = 32.dp
     val minTouchTarget = 48.dp
     val contentMaxWidth = 760.dp
+    val careFormMaxWidth = 520.dp
 }
