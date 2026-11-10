@@ -289,7 +289,7 @@ fun CareRecordEditor(
                 .padding(PetSpacing.large),
             verticalArrangement = Arrangement.spacedBy(PetSpacing.large),
         ) {
-
+            Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
