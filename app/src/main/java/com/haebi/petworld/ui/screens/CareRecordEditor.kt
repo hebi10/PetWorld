@@ -325,7 +325,6 @@ fun CareRecordEditor(
                     )
                 }
             }
-    
         }
         Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
             Text("관찰 시각", style = MaterialTheme.typography.labelLarge)
