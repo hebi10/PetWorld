@@ -35,7 +35,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.input.KeyboardType
 import com.haebi.petworld.data.ActivityKind
 import com.haebi.petworld.data.CareDraft
@@ -49,9 +48,7 @@ import com.haebi.petworld.data.PortionUnit
 import com.haebi.petworld.data.WeightUnit
 import com.haebi.petworld.data.room.CareEntity
 import com.haebi.petworld.data.toDraft
-import com.haebi.petworld.ui.components.PetAvatar
 import com.haebi.petworld.ui.components.PetPrimaryButton
-import com.haebi.petworld.ui.components.PetSecondaryButton
 import com.haebi.petworld.ui.theme.PetSpacing
 import kotlinx.coroutines.launch
 import java.time.ZoneId
@@ -338,27 +335,18 @@ fun CareRecordEditor(
                         label = "횟수 (회)",
                         keyboardType = KeyboardType.Number,
                     )
-                    Text("관찰 사진 (선택)", style = MaterialTheme.typography.labelLarge)
-                    PetAvatar(
+                    CareEliminationPhotoField(
                         photoStore = photoStore,
-                        name = "배변 관찰",
-                        photoFile = existing?.photoFile.takeUnless { removePhoto },
+                        photoFile = existing?.photoFile,
                         previewUri = photoUri,
-                        size = 104.dp,
-                    )
-                    PetSecondaryButton(
-                        label = "사진 선택",
-                        onClick = {
+                        removePhoto = removePhoto,
+                        onChoosePhoto = {
                             picker.launch(
                                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                             )
                         },
+                        onRemovePhoto = { photoUri = null; removePhoto = true },
                     )
-                    if (photoUri != null || (existing?.photoFile != null && !removePhoto)) {
-                        TextButton(onClick = { photoUri = null; removePhoto = true }) {
-                            Text("관찰 사진 제거")
-                        }
-                    }
                 }
                 CareType.ACTIVITY -> {
                     ChoiceRow("활동", activityKind, ActivityKind.entries,
