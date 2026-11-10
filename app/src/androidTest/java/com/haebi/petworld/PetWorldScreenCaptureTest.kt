@@ -110,6 +110,7 @@ class PetWorldScreenCaptureTest {
                     mustSee("닫기")
                     shot(folder, name)
                     if (label == "식사") assertFoodPortionLayout(folder)
+                    if (label == "배변") assertEliminationPhotoLayout(folder)
                     assertCareDateTimeRow(folder, name)
                     tap("닫기")
                     mustSee("빠른 기록 추가")
@@ -320,6 +321,30 @@ class PetWorldScreenCaptureTest {
             device.swipe(middle, low, middle, high, 16)
             device.waitForIdle()
         }
+    }
+
+    private fun assertEliminationPhotoLayout(folder: File) {
+        ensureVisible("사진 선택")
+        val preview = device.wait(Until.findObject(By.desc("관찰 사진 없음")), 2_000)
+        val state = device.wait(Until.findObject(By.text("사진 없음")), 2_000)
+        val button = device.wait(Until.findObject(By.text("사진 선택")), 2_000)
+        if (preview == null || state == null || button == null) {
+            device.takeScreenshot(File(folder, "UI06D-elimination-photo-failure.png"))
+            device.dumpWindowHierarchy(File(folder, "UI06D-elimination-photo-hierarchy.xml"))
+        }
+        val thumbnailBounds = checkNotNull(preview) { "배변 관찰 사진 미리보기가 없습니다." }.visibleBounds
+        val buttonBounds = checkNotNull(button) { "사진 선택 버튼을 찾지 못했습니다." }.visibleBounds
+        checkNotNull(state) { "사진 없음 상태 설명을 찾지 못했습니다." }
+        val maxThumbSize = (context.resources.displayMetrics.density * 72).toInt()
+        check(thumbnailBounds.width() in 1..maxThumbSize &&
+            thumbnailBounds.height() in 1..maxThumbSize &&
+            thumbnailBounds.right < buttonBounds.left &&
+            thumbnailBounds.top < buttonBounds.bottom &&
+            buttonBounds.top < thumbnailBounds.bottom) {
+            "배변 사진 썸네일과 선택 버튼이 가로로 정렬되지 않았습니다."
+        }
+        shot(folder, "UI06D-elimination-photo")
+        scrollToTop()
     }
 
     private fun assertFoodPortionLayout(folder: File) {

@@ -16,6 +16,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -34,6 +35,7 @@ fun PetAvatar(
     modifier: Modifier = Modifier,
     size: Dp = 48.dp,
     previewUri: String? = null,
+    shape: Shape = CircleShape,
 ) {
     val context = LocalContext.current
     val bitmap by produceState<Bitmap?>(null, photoFile, previewUri) {
@@ -56,7 +58,7 @@ fun PetAvatar(
         }
     }
     Box(
-        modifier = modifier.size(size).clip(CircleShape)
+        modifier = modifier.size(size).clip(shape)
             .background(MaterialTheme.colorScheme.surfaceContainerHigh),
         contentAlignment = Alignment.Center,
     ) {
