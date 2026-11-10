@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -283,9 +284,14 @@ fun CareRecordEditor(
     }
     BackHandler { dismiss() }
 
-    Column(modifier = Modifier.fillMaxSize().imePadding()) {
+    Column(
+        modifier = Modifier.fillMaxSize().imePadding(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Column(
-            modifier = Modifier.weight(1f).fillMaxWidth()
+            modifier = Modifier.weight(1f)
+                .widthIn(max = PetSpacing.careFormMaxWidth)
+                .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(PetSpacing.large),
             verticalArrangement = Arrangement.spacedBy(PetSpacing.large),
@@ -404,7 +410,8 @@ fun CareRecordEditor(
             )
         }
         Column(
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.widthIn(max = PetSpacing.careFormMaxWidth)
+                .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surface)
                 .padding(horizontal = PetSpacing.large, vertical = PetSpacing.small),
             verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall),
