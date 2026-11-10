@@ -323,8 +323,8 @@ class PetWorldScreenCaptureTest {
     }
 
     private fun assertFoodPortionLayout(folder: File) {
-        val servedSelector = By.text("제공량 · 필수")
-        val consumedSelector = By.text("섭취량 · 선택")
+        val servedSelector = By.textContains("제공량 (")
+        val consumedSelector = By.textContains("섭취량 (")
         val centerX = device.displayWidth / 2
         val high = device.displayHeight * 3 / 4
         val low = device.displayHeight / 4
