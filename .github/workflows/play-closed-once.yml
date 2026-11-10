@@ -1,0 +1,131 @@
+name: PetWorld one-time closed testing release
+
+on:
+  workflow_run:
+    workflows: ["Play internal release"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: play-com-haebi-petworld
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'workflow_run' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      contains(github.event.workflow_run.head_commit.message, '[closed-play-once]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: google-play
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    steps:
+      - name: Checkout exact deployed main source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Guard exact source and one-time promotion request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          current="$(gh api repos/hebi10/PetWorld/git/ref/heads/main --jq '.object.sha')"
+          test "$current" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          git show --format=%s -s "$SOURCE_SHA" | grep -F '[closed-play-once]'
+      - name: Read verified internal release report from this workflow run
+        id: internal
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLAY_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          mkdir -p output/internal
+          gh run download "$PLAY_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "petworld-play-report-$PLAY_RUN_ID" --dir output/internal
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          result = json.loads(Path('output/internal/play-release.json').read_text(encoding='utf-8'))
+          if any((
+              result.get('package') != 'com.haebi.petworld',
+              result.get('track') != 'internal',
+              result.get('releaseStatus') != 'completed',
+              result.get('status') != 'api_committed_and_verified',
+          )):
+              raise SystemExit('The source Play run has no verified completed internal release')
+          version = result.get('versionCode')
+          if not isinstance(version, int) or not 1 <= version <= 2100000000:
+              raise SystemExit('The source Play report version is invalid')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write(f'version_code={version}\n')
+          print('Verified completed internal release and exact version code')
+          PY
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check Play authentication
+        id: credentials
+        env:
+          PLAY_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+          PLAY_SERVICE_ACCOUNT: ${{ vars.PLAY_SERVICE_ACCOUNT }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: python3 scripts/play/preflight.py auth
+      - name: Authenticate with Workload Identity Federation
+        id: wif
+        if: steps.credentials.outputs.auth_mode == 'wif'
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.PLAY_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
+          create_credentials_file: false
+      - name: Authenticate with legacy service-account JSON
+        id: json
+        if: steps.credentials.outputs.auth_mode == 'json'
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
+          create_credentials_file: false
+      - name: Verify existing Play binary and initialized app
+        id: readiness
+        env:
+          PLAY_ACCESS_TOKEN: ${{ steps.wif.outputs.access_token || steps.json.outputs.access_token }}
+        run: python3 scripts/play/publisher.py --report output/play-readiness.json inspect --require-binary
+      - name: Recheck source before promotion
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: python3 scripts/play/source.py --assert-current "$SOURCE_SHA"
+      - name: Promote exact completed internal version to closed alpha
+        env:
+          PLAY_CONSOLE_INITIALIZED: ${{ steps.readiness.outputs.initialized }}
+          PLAY_ACCESS_TOKEN: ${{ steps.wif.outputs.access_token || steps.json.outputs.access_token }}
+          VERSION_CODE: ${{ steps.internal.outputs.version_code }}
+        run: |
+          python3 scripts/play/publisher.py --report output/play-promotion.json promote --version-code "$VERSION_CODE" --track alpha
+          echo 'Closed alpha Play API commit and fresh track readback completed. Console publication and tester installability must still be checked.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve non-secret Play reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: petworld-closed-promotion-${{ github.run_id }}
+          path: |
+            output/play-readiness.json
+            output/play-promotion.json
+          if-no-files-found: ignore
+          retention-days: 30
