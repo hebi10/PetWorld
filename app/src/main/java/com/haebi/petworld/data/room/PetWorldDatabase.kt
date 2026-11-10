@@ -94,6 +94,9 @@ interface PetDao {
     @Update
     suspend fun update(entity: PetEntity): Int
 
+    @Query("DELETE FROM pets")
+    suspend fun deleteAll(): Int
+
     @Query("DELETE FROM pets WHERE id = :id")
     suspend fun delete(id: String): Int
 }
@@ -117,6 +120,9 @@ interface CareDao {
 
     @Query("DELETE FROM care_entries WHERE id = :id AND pet_id = :petId")
     suspend fun delete(id: String, petId: String): Int
+
+    @Query("SELECT * FROM care_entries")
+    suspend fun listAll(): List<CareEntity>
 
     @Query("SELECT * FROM care_entries WHERE pet_id = :petId")
     suspend fun listForPet(petId: String): List<CareEntity>

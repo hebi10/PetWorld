@@ -1,0 +1,122 @@
+name: Android Accessibility Responsive QA
+
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/**'
+      - 'app/src/androidTest/**'
+      - 'app/build.gradle.kts'
+      - '.github/scripts/capture-petworld-responsive.sh'
+      - '.github/workflows/android-accessibility-responsive-qa.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: petworld-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  compact-160:
+    name: 360dp · 160% font scale
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - name: Install Android platform
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -path '*/bin/sdkmanager' -type f | head -n 1)"
+          test -n "$SDK_MANAGER"
+          "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install "platforms;android-37.0" "build-tools;36.0.0"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+      - name: Build app and screenshot test APK
+        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+      - name: Enable KVM
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Capture compact screen at 160% font scale
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: |
+            adb shell wm size 720x1600
+            adb shell wm density 320
+            adb shell settings put system font_scale 1.6
+            adb shell wm size
+            adb shell wm density
+            adb shell settings get system font_scale
+            bash .github/scripts/capture-petworld-responsive.sh compact
+      - name: Upload compact accessibility captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: petworld-compact-360dp-font160
+          path: qa/responsive/compact-360dp-font160/
+          if-no-files-found: warn
+
+  foldable:
+    name: Pixel Fold · unfolded, half-opened and folded
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - name: Install Android platform
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -path '*/bin/sdkmanager' -type f | head -n 1)"
+          test -n "$SDK_MANAGER"
+          "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install "platforms;android-37.0" "build-tools;36.0.0"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+      - name: Build app and screenshot test APK
+        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+      - name: Enable KVM
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Capture foldable postures
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_fold
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: bash .github/scripts/capture-petworld-responsive.sh foldable
+      - name: Upload foldable accessibility captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: petworld-foldable-postures
+          path: qa/responsive/
+          if-no-files-found: warn

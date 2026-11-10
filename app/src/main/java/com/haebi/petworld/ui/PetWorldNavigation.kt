@@ -1,11 +1,14 @@
 package com.haebi.petworld.ui
 
+import android.net.Uri
 import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.net.Uri
 import android.widget.Toast
-
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -17,6 +20,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -32,20 +37,26 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.haebi.petworld.PetUiState
 import com.haebi.petworld.CareFeedState
 import com.haebi.petworld.R
@@ -73,6 +84,7 @@ import com.haebi.petworld.ui.screens.PetManagerScreen
 import com.haebi.petworld.ui.screens.PetProfileEditor
 import com.haebi.petworld.ui.screens.PetSwitcherSheet
 import com.haebi.petworld.ui.screens.PetWelcomeScreen
+import com.haebi.petworld.ui.screens.PetBackupSection
 import com.haebi.petworld.ui.theme.PetSpacing
 import com.haebi.petworld.ui.theme.ThemeMode
 
@@ -103,6 +115,8 @@ fun PetWorldApp(
     onSaveCare: suspend (CareDraft) -> Result<CareEntity>,
     onDeleteCare: suspend (String, String) -> Result<Unit>,
     onRetryCare: () -> Unit,
+    restoring: Boolean,
+    onRestoreBackup: suspend (Uri, CharArray) -> Result<Unit>,
 ) {
     var tab by rememberSaveable { mutableStateOf(PrimaryTab.HOME) }
     var showSwitcher by rememberSaveable { mutableStateOf(false) }
@@ -154,7 +168,7 @@ fun PetWorldApp(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            Column {
+            Column(modifier = Modifier.statusBarsPadding()) {
                 Row(
                     modifier = Modifier.fillMaxWidth()
                         .padding(horizontal = PetSpacing.large, vertical = PetSpacing.small),
@@ -174,6 +188,9 @@ fun PetWorldApp(
                         modifier = Modifier.fillMaxWidth()
                             .heightIn(min = PetSpacing.minTouchTarget)
                             .clickable(role = Role.Button) { showSwitcher = true }
+                            .semantics(mergeDescendants = true) {
+                                contentDescription = "반려동물 전환: ${current.name}"
+                            }
                             .padding(horizontal = PetSpacing.large, vertical = PetSpacing.xSmall),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(PetSpacing.medium),
@@ -181,7 +198,7 @@ fun PetWorldApp(
                         PetAvatar(photoStore, current.name, current.photoFile, size = 36.dp)
                         Text(current.name, style = MaterialTheme.typography.titleMedium,
                             modifier = Modifier.weight(1f))
-                        Icon(PetIcons.More, contentDescription = "반려동물 전환",
+                        Icon(PetIcons.More, contentDescription = null,
                             tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -264,6 +281,8 @@ fun PetWorldApp(
                         archivedCount = petState.profiles.count { it.isArchived },
                         onStart = { openEditor(null, returnToManager = false) },
                         onManageArchived = { showManager = true },
+                        restoring = restoring,
+                        onRestore = onRestoreBackup,
                     )
                     careFeed is CareFeedState.Failed -> Column(
                         modifier = Modifier.padding(PetSpacing.large),
@@ -335,7 +354,9 @@ fun PetWorldApp(
                     else -> Column(
                         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
                             .padding(PetSpacing.large),
-                        verticalArrangement = Arrangement.spacedBy(PetSpacing.xLarge),
+                        verticalArrangement = Arrangement.spacedBy(
+                            if (tab == PrimaryTab.HOME) PetSpacing.medium else PetSpacing.xLarge
+                        ),
                     ) {
                         when (tab) {
                             PrimaryTab.HOME -> PetHomeScreen(
@@ -389,6 +410,8 @@ fun PetWorldApp(
                                 onThemeModeChange = onThemeModeChange,
                                 onManage = { showManager = true },
                                 onAdd = { openEditor(null, returnToManager = false) },
+                                restoring = restoring,
+                                onRestoreBackup = onRestoreBackup,
                             )
                         }
                     }
@@ -400,17 +423,85 @@ fun PetWorldApp(
     if (choosingCareType && current != null && careFeed is CareFeedState.Ready) {
         ModalBottomSheet(onDismissRequest = { choosingCareType = false }) {
             Column(
-                modifier = Modifier.fillMaxWidth().padding(PetSpacing.large),
+                modifier = Modifier.fillMaxWidth().padding(
+                    start = PetSpacing.large,
+                    end = PetSpacing.large,
+                    bottom = PetSpacing.xLarge,
+                ),
                 verticalArrangement = Arrangement.spacedBy(PetSpacing.medium),
             ) {
-                Text("${current.name}의 기록 추가", style = MaterialTheme.typography.titleLarge)
-                CareType.entries.forEach { type ->
-                    PetSecondaryButton(
-                        label = type.label,
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = { startCare(type) },
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+                ) {
+                    Text(
+                        "${current.name}의 기록 추가",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleLarge,
                     )
+                    TextButton(onClick = { choosingCareType = false }) { Text("닫기") }
                 }
+                val careOptions = listOf(
+                    CareType.FOOD to PetIcons.Food,
+                    CareType.WATER to PetIcons.Water,
+                    CareType.ELIMINATION to PetIcons.Elimination,
+                    CareType.ACTIVITY to PetIcons.Activity,
+                    CareType.WEIGHT to PetIcons.Weight,
+                )
+                careOptions.chunked(2).forEach { pair ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+                    ) {
+                        pair.forEach { (type, glyph) ->
+                            Surface(
+                                modifier = Modifier.weight(1f)
+                                    .heightIn(min = 72.dp)
+                                    .clickable(role = Role.Button) { startCare(type) },
+                                color = MaterialTheme.colorScheme.surface,
+                                shape = RectangleShape,
+                                border = BorderStroke(
+                                    1.dp, MaterialTheme.colorScheme.outlineVariant
+                                ),
+                                tonalElevation = 0.dp,
+                                shadowElevation = 0.dp,
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(PetSpacing.medium),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+                                ) {
+                                    Icon(
+                                        imageVector = glyph,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    Text(type.label, style = MaterialTheme.typography.bodyLarge)
+                                }
+                            }
+                        }
+                        if (pair.size == 1) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (restoring) {
+        Dialog(
+            onDismissRequest = {},
+            properties = DialogProperties(
+                dismissOnBackPress = false,
+                dismissOnClickOutside = false,
+            ),
+        ) {
+            PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
+                CircularProgressIndicator()
+                Text("백업 복원 중", style = MaterialTheme.typography.titleLarge)
+                Text("데이터를 교체하고 있습니다. 완료될 때까지 앱을 종료하지 마세요.")
             }
         }
     }
@@ -444,58 +535,112 @@ private fun SettingsContent(
     onThemeModeChange: (ThemeMode) -> Unit,
     onManage: () -> Unit,
     onAdd: () -> Unit,
+    restoring: Boolean,
+    onRestoreBackup: suspend (Uri, CharArray) -> Result<Unit>,
 ) {
     val context = LocalContext.current
+    val compactActions = LocalConfiguration.current.screenWidthDp < 400 ||
+        LocalDensity.current.fontScale >= 1.3f
     Text("설정", style = MaterialTheme.typography.headlineLarge)
     PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
-        Text("반려동물 프로필", style = MaterialTheme.typography.titleMedium)
-        Text("등록된 프로필 ${profileCount}개",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        PetPrimaryButton(label = "프로필 관리", onClick = onManage, modifier = Modifier.fillMaxWidth())
-        PetPrimaryButton(label = "반려동물 추가", onClick = onAdd, modifier = Modifier.fillMaxWidth())
-    }
-    PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
-        Text("화면 모드", style = MaterialTheme.typography.titleMedium)
-        Text("기기 설정을 따르거나 라이트·다크 모드를 직접 선택할 수 있습니다.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        listOf(
-            ThemeMode.SYSTEM to "시스템 설정",
-            ThemeMode.LIGHT to "라이트",
-            ThemeMode.DARK to "다크",
-        ).forEach { (mode, label) ->
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+        ) {
+            Text(
+                "반려동물 프로필",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                "등록 ${profileCount}개",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (compactActions) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(PetSpacing.small),
+            ) {
+                PetPrimaryButton(
+                    label = "프로필 관리",
+                    onClick = onManage,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                PetSecondaryButton(
+                    label = "반려동물 추가",
+                    onClick = onAdd,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        } else {
             Row(
-                modifier = Modifier.fillMaxWidth().heightIn(min = PetSpacing.minTouchTarget)
-                    .selectable(
-                        selected = themeMode == mode,
-                        role = Role.RadioButton,
-                        onClick = { onThemeModeChange(mode) },
-                    ).padding(vertical = PetSpacing.xSmall),
-                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
             ) {
-                RadioButton(selected = themeMode == mode, onClick = null)
-                Text(label, style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.weight(1f))
+                PetPrimaryButton(
+                    label = "프로필 관리",
+                    onClick = onManage,
+                    modifier = Modifier.weight(1f),
+                )
+                PetSecondaryButton(
+                    label = "반려동물 추가",
+                    onClick = onAdd,
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
     }
+    PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
+        Text("화면 모드", style = MaterialTheme.typography.titleMedium)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+        ) {
+            listOf(
+                ThemeMode.SYSTEM to "시스템",
+                ThemeMode.LIGHT to "라이트",
+                ThemeMode.DARK to "다크",
+            ).forEach { (mode, label) ->
+                Row(
+                    modifier = Modifier.weight(1f)
+                        .heightIn(min = PetSpacing.minTouchTarget)
+                        .selectable(
+                            selected = themeMode == mode,
+                            role = Role.RadioButton,
+                            onClick = { onThemeModeChange(mode) },
+                        ),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(PetSpacing.xSmall),
+                ) {
+                    RadioButton(
+                        selected = themeMode == mode,
+                        onClick = null,
+                        modifier = Modifier.size(24.dp),
+                    )
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+    }
+    PetBackupSection(restoring = restoring, onRestore = onRestoreBackup)
     PetSecondaryButton(
         label = "개인정보처리방침",
         modifier = Modifier.fillMaxWidth(),
         onClick = {
             try {
-                context.startActivity(Intent(Intent.ACTION_VIEW,
-                    Uri.parse("https://hebi10.github.io/PetWorld/privacy-policy.html")))
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse("https://hebi10.github.io/PetWorld/privacy-policy.html"))
+                )
             } catch (_: ActivityNotFoundException) {
                 Toast.makeText(context, "브라우저 앱을 찾을 수 없습니다.", Toast.LENGTH_SHORT).show()
             }
         },
-    )
-    Text(
-        "로컬 프로필 데이터는 기기에만 저장됩니다. 백업·복원은 다음 단계에서 추가됩니다.",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }

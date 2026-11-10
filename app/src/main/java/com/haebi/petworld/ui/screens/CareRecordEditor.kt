@@ -31,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -176,10 +177,12 @@ fun CareRecordEditor(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
         ) {
             Text(
                 "${pet.name} · ${type.label} ${if (existing == null) "기록" else "수정"}",
+                modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.headlineMedium,
             )
             TextButton(onClick = ::dismiss, enabled = !saving) { Text("닫기") }

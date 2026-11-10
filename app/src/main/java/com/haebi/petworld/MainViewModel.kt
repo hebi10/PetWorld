@@ -1,6 +1,9 @@
 package com.haebi.petworld
 
 import android.content.Context
+import android.net.Uri
+import com.haebi.petworld.data.backup.PetWorldBackupRestorer
+import com.haebi.petworld.data.backup.PetWorldRecoveryJournal
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -16,6 +19,7 @@ import com.haebi.petworld.data.chooseActivePet
 import com.haebi.petworld.data.room.CareEntity
 import com.haebi.petworld.data.room.PetWorldDatabase
 import com.haebi.petworld.ui.theme.ThemeMode
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
@@ -41,12 +45,15 @@ sealed interface CareFeedState {
 }
 
 class MainViewModel(
+    private val appContext: Context,
     private val preferences: ThemePreferences,
     private val pets: PetRepository,
     private val care: CareRepository,
 ) : ViewModel() {
     val photoStore: PetPhotoStore = pets.photoStore
     private val reloadCare = MutableStateFlow(0L)
+    val restoring = MutableStateFlow(false)
+    val recoveryBlocked = MutableStateFlow(false)
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val careFeed = reloadCare.flatMapLatest { care.observeAll() }
@@ -59,6 +66,32 @@ class MainViewModel(
         )
 
     fun retryCare() { reloadCare.value += 1L }
+
+    suspend fun restoreBackup(source: Uri, password: CharArray): Result<Unit> {
+        if (restoring.value) {
+            return Result.failure(IllegalStateException("복원 작업이 이미 진행 중입니다."))
+        }
+        val secret = password.copyOf()
+        return viewModelScope.async {
+            restoring.value = true
+            try {
+                PetWorldBackupRestorer(appContext).restoreFromUri(source, secret)
+                pets.refresh()
+                retryCare()
+                Result.success(Unit)
+            } catch (error: Exception) {
+                recoveryBlocked.value = PetWorldRecoveryJournal(appContext).hasPending()
+                if (!recoveryBlocked.value) {
+                    pets.refresh()
+                    retryCare()
+                }
+                Result.failure(error)
+            } finally {
+                secret.fill('\u0000')
+                restoring.value = false
+            }
+        }.await()
+    }
 
     suspend fun saveCare(draft: CareDraft): Result<CareEntity> = runCatching {
         care.save(draft)
@@ -133,6 +166,7 @@ class MainViewModel(
                     val app = context.applicationContext
                     val db = PetWorldDatabase.get(app)
                     return MainViewModel(
+                        app,
                         ThemePreferences(app),
                         PetRepository(app, db),
                         CareRepository(app, db),

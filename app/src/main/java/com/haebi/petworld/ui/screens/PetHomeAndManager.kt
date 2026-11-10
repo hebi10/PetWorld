@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -26,6 +27,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.haebi.petworld.data.CareType
 import com.haebi.petworld.data.localDate
@@ -60,92 +63,123 @@ fun PetHomeScreen(
     val day = LocalDate.now()
     val todayLabel = day.format(DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREAN))
     val todayRecords = records.filter { it.localDate() == day }
-    Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
-        Text(todayLabel, style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val fontScale = LocalDensity.current.fontScale
+    val summaryColumnCount = if (screenWidthDp < 400 || fontScale >= 1.3f) 2 else 3
+    Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall)) {
+        Text(
+            todayLabel,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Text("${selected.name}의 하루", style = MaterialTheme.typography.headlineLarge)
     }
+
     PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(PetSpacing.large),
+            horizontalArrangement = Arrangement.spacedBy(PetSpacing.medium),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             PetAvatar(
                 photoStore = photoStore,
                 name = selected.name,
                 photoFile = selected.photoFile,
-                size = 72.dp,
+                size = 48.dp,
             )
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall),
             ) {
-                Text(selected.name, style = MaterialTheme.typography.titleLarge)
+                Text(selected.name, style = MaterialTheme.typography.titleMedium)
                 Text(
-                    listOf(
+                    listOfNotNull(
                         selected.species.label,
                         selected.breed.takeIf { it.isNotBlank() },
                         selected.ageLabel(),
-                    ).filterNotNull().joinToString(" · "),
+                    ).joinToString(" · "),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            TextButton(onClick = onEdit) { Text("수정") }
         }
         if (selected.notes.isNotBlank()) {
-            Text("주의사항", style = MaterialTheme.typography.labelLarge)
-            Text(selected.notes, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "주의사항 · ${selected.notes}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
         }
-        PetSecondaryButton(label = "프로필 수정", onClick = onEdit)
     }
-    Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.medium)) {
-        Text("오늘의 돌봄", style = MaterialTheme.typography.titleLarge)
-        PetPrimaryButton(
-            label = "빠른 기록 추가",
-            onClick = onQuickAdd,
+
+    Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
+        Row(
             modifier = Modifier.fillMaxWidth(),
-        )
-        listOf(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+        ) {
+            Text(
+                "오늘의 돌봄",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.weight(1f),
+            )
+            PetPrimaryButton(label = "빠른 기록 추가", onClick = onQuickAdd)
+        }
+        val types = listOf(
             CareType.FOOD to PetIcons.Food,
             CareType.WATER to PetIcons.Water,
             CareType.ELIMINATION to PetIcons.Elimination,
             CareType.ACTIVITY to PetIcons.Activity,
             CareType.WEIGHT to PetIcons.Weight,
-        ).forEach { (type, glyph) ->
-            PetSurfaceCard(
-                modifier = Modifier.fillMaxWidth()
-                    .clickable { onViewType(type) },
-            ) {
+        )
+        PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
+            types.chunked(summaryColumnCount).forEach { rowItems ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(PetSpacing.medium),
-                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
                 ) {
-                    PetIcon(imageVector = glyph, contentDescription = null)
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(type.label, style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            summarizeCare(type, todayRecords),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                    rowItems.forEach { (type, glyph) ->
+                        Column(
+                            modifier = Modifier.weight(1f)
+                                .heightIn(min = 84.dp)
+                                .clickable(role = androidx.compose.ui.semantics.Role.Button) {
+                                    onViewType(type)
+                                },
+                            verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall),
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(PetSpacing.xSmall),
+                            ) {
+                                PetIcon(imageVector = glyph, contentDescription = null)
+                                Text(
+                                    "${type.label} · ${todayRecords.count { it.type == type.name }}건",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    maxLines = 2,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                )
+                            }
+                            Text(
+                                summarizeCare(type, todayRecords),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 3,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            )
+                        }
                     }
-                    Text(
-                        "${todayRecords.count { it.type == type.name }}건",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    repeat(summaryColumnCount - rowItems.size) {
+                        androidx.compose.foundation.layout.Spacer(modifier = Modifier.weight(1f))
+                    }
                 }
             }
         }
-        Text(
-            "기록이 없는 날은 0이나 미수행으로 간주하지 않습니다.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
-    Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.medium)) {
+
+    Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
         Text("최근 기록", style = MaterialTheme.typography.titleLarge)
         val recent = records.sortedWith(
             compareByDescending<CareEntity> { it.occurredAt }.thenByDescending { it.createdAt }
@@ -231,33 +265,41 @@ fun PetManagerScreen(
     Column(
         modifier = Modifier.verticalScroll(rememberScrollState())
             .padding(PetSpacing.large),
-        verticalArrangement = Arrangement.spacedBy(PetSpacing.large),
+        verticalArrangement = Arrangement.spacedBy(PetSpacing.medium),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("프로필 관리", style = MaterialTheme.typography.headlineMedium)
-            TextButton(onClick = onBack) { Text("닫기") }
+            Text(
+                "프로필 관리",
+                style = MaterialTheme.typography.headlineMedium,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onBack, enabled = pendingId == null) { Text("닫기") }
         }
-        Text(
-            "반려동물별 기본 정보와 보관 상태를 관리합니다. 보관한 프로필은 홈 목록에서 숨겨집니다.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        PetPrimaryButton(
+            label = "새 프로필 추가",
+            onClick = onAdd,
+            enabled = pendingId == null,
+            modifier = Modifier.fillMaxWidth(),
         )
-        PetPrimaryButton(label = "새 프로필 추가", onClick = onAdd, modifier = Modifier.fillMaxWidth())
         if (errorText != null) {
-            Text(errorText.orEmpty(), color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium)
+            Text(
+                errorText.orEmpty(),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
         profiles.forEach { pet ->
             PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(PetSpacing.medium),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    PetAvatar(photoStore, pet.name, pet.photoFile, size = 56.dp)
+                    PetAvatar(photoStore, pet.name, pet.photoFile, size = 44.dp)
                     Column(modifier = Modifier.weight(1f)) {
                         Text(pet.name, style = MaterialTheme.typography.titleMedium)
                         Text(
@@ -266,38 +308,44 @@ fun PetManagerScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    TextButton(
+                        onClick = { onEdit(pet.id) },
+                        enabled = pendingId == null,
+                    ) { Text("수정") }
                 }
-                PetSecondaryButton(
-                    label = "정보 수정",
-                    onClick = { onEdit(pet.id) },
-                    enabled = pendingId == null,
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                )
-                PetSecondaryButton(
-                    label = if (pet.isArchived) "보관 해제" else "프로필 보관",
-                    enabled = pendingId == null,
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = {
-                        pendingId = pet.id
-                        scope.launch {
-                            onArchivedChange(pet.id, !pet.isArchived).fold(
-                                onSuccess = { errorText = null },
-                                onFailure = { errorText = it.message ?: "프로필 상태 변경에 실패했습니다." },
-                            )
-                            pendingId = null
-                        }
-                    },
-                )
-                TextButton(
-                    enabled = pendingId == null && recordsLoaded,
-                    onClick = {
-                        deletePet = pet
-                        deleteStage = 1
-                    },
-                ) { Text("영구 삭제", color = MaterialTheme.colorScheme.error) }
+                    horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PetSecondaryButton(
+                        label = if (pet.isArchived) "보관 해제" else "프로필 보관",
+                        modifier = Modifier.weight(1f),
+                        enabled = pendingId == null,
+                        onClick = {
+                            pendingId = pet.id
+                            scope.launch {
+                                onArchivedChange(pet.id, !pet.isArchived).fold(
+                                    onSuccess = { errorText = null },
+                                    onFailure = {
+                                        errorText = it.message ?: "프로필 상태 변경에 실패했습니다."
+                                    },
+                                )
+                                pendingId = null
+                            }
+                        },
+                    )
+                    TextButton(
+                        enabled = pendingId == null && recordsLoaded,
+                        onClick = {
+                            deletePet = pet
+                            deleteStage = 1
+                        },
+                    ) { Text("영구 삭제", color = MaterialTheme.colorScheme.error) }
+                }
                 if (!recordsLoaded) {
                     Text(
-                        "기록을 불러오지 못한 상태에서는 안전을 위해 삭제할 수 없습니다.",
+                        "기록을 불러오지 못한 상태에서는 삭제할 수 없습니다.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

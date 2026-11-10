@@ -2,12 +2,12 @@ package com.haebi.petworld.data
 
 import android.content.Context
 import androidx.room.withTransaction
+import com.haebi.petworld.data.backup.PetWorldMutationGate
 import com.haebi.petworld.data.room.PetWorldDatabase
 import com.haebi.petworld.data.room.toDomain
 import com.haebi.petworld.data.room.toEntity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 
@@ -28,7 +28,7 @@ class PetRepository(
     private val dao = database.petDao()
     private val photos = PetPhotoStore(context.applicationContext)
     val photoStore: PetPhotoStore get() = photos
-    private val mutex = Mutex()
+    private val mutex = PetWorldMutationGate.mutex
 
     private val _profiles = MutableStateFlow<List<PetProfile>>(emptyList())
     val profiles = _profiles.asStateFlow()

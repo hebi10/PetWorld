@@ -1,0 +1,83 @@
+name: Android Backup Restore Emulator QA
+
+on:
+  pull_request:
+    paths:
+      - 'app/src/androidTest/**'
+      - 'app/src/main/java/com/haebi/petworld/data/backup/**'
+      - 'app/build.gradle.kts'
+      - '.github/workflows/android-backup-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  emulator-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+
+      - name: Install Android platform
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -path '*/bin/sdkmanager' -type f | head -n 1)"
+          test -n "$SDK_MANAGER"
+          "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install "platforms;android-37.0" "build-tools;36.0.0"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+
+      - name: Enable KVM
+        run: |
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm
+          fi
+
+      - name: Run Android instrumented backup QA
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: |
+            ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.haebi.petworld.BackupRestoreDeviceTest --no-daemon --stacktrace
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            mkdir -p qa/screenshots
+            adb shell cmd uimode night no
+            adb shell am force-stop com.haebi.petworld || true
+            adb shell am start -n com.haebi.petworld/.MainActivity
+            sleep 5
+            adb exec-out screencap -p > qa/screenshots/onboarding-light.png
+            adb shell cmd uimode night yes
+            adb shell am force-stop com.haebi.petworld || true
+            adb shell am start -n com.haebi.petworld/.MainActivity
+            sleep 5
+            adb exec-out screencap -p > qa/screenshots/onboarding-dark.png
+
+      - name: Upload Android test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: petworld-backup-emulator-results
+          path: |
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+            qa/screenshots/
+          if-no-files-found: ignore

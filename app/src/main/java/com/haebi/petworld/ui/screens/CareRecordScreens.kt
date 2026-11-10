@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
@@ -81,53 +82,164 @@ fun CareRecordList(
     onAdd: () -> Unit,
     onView: (String) -> Unit,
 ) {
-    Text("${petName}의 생활 기록", style = MaterialTheme.typography.headlineLarge)
-    PetPrimaryButton(
-        label = "기록 추가",
-        onClick = onAdd,
-        modifier = Modifier.fillMaxWidth(),
-    )
-    Row(
-        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
-    ) {
-        CareRange.entries.forEach { range ->
-            FilterChip(
-                selected = selectedRange == range,
-                onClick = { onRangeChange(range) },
-                label = { Text(range.label) },
-            )
-        }
-    }
-    Row(
-        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
-    ) {
-        val categories = listOf<CareType?>(null) + CareType.entries
-        categories.forEach { type ->
-            FilterChip(
-                selected = selectedType == type,
-                onClick = { onTypeChange(type) },
-                label = { Text(type?.label ?: "전체 유형") },
-            )
-        }
-    }
+    var showRangePicker by remember { mutableStateOf(false) }
+    var showTypePicker by remember { mutableStateOf(false) }
     val filtered = records.filter {
         (selectedType == null || it.type == selectedType.name) && selectedRange.accepts(it)
     }
-    Text(
-        "${filtered.size}건",
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    if (filtered.isEmpty()) {
-        PetEmptyState(
-            title = "해당 기간에 기록이 없습니다",
-            detail = "기간 또는 종류를 변경하거나 새로운 기록을 추가해 주세요.",
+
+    Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+        ) {
+            Text(
+                "${petName}의 생활 기록",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.weight(1f),
+            )
+            PetPrimaryButton(label = "기록 추가", onClick = onAdd)
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+        ) {
+            PetSecondaryButton(
+                label = "기간: ${selectedRange.label}",
+                onClick = { showRangePicker = true },
+                modifier = Modifier.weight(1f),
+            )
+            PetSecondaryButton(
+                label = "유형: ${selectedType?.label ?: "전체"}",
+                onClick = { showTypePicker = true },
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Text(
+            "기록 ${filtered.size}건",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-    } else {
-        filtered.forEach { record ->
-            CareRecordRow(record = record, onClick = { onView(record.id) })
+        if (filtered.isEmpty()) {
+            PetEmptyState(
+                title = "해당 기간에 기록이 없습니다",
+                detail = "기간 또는 종류를 변경하거나 새로운 기록을 추가해 주세요.",
+            )
+        } else {
+            filtered.forEach { record ->
+                CareRecordCompactRow(record = record, onClick = { onView(record.id) })
+            }
+        }
+    }
+
+    if (showRangePicker) {
+        AlertDialog(
+            onDismissRequest = { showRangePicker = false },
+            title = { Text("조회 기간") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall)) {
+                    CareRange.entries.forEach { range ->
+                        TextButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                onRangeChange(range)
+                                showRangePicker = false
+                            },
+                        ) {
+                            Text(
+                                if (selectedRange == range) "${range.label} · 선택됨" else range.label,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showRangePicker = false }) { Text("닫기") }
+            },
+        )
+    }
+
+    if (showTypePicker) {
+        AlertDialog(
+            onDismissRequest = { showTypePicker = false },
+            title = { Text("기록 유형") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall)) {
+                    (listOf<CareType?>(null) + CareType.entries).forEach { type ->
+                        TextButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                onTypeChange(type)
+                                showTypePicker = false
+                            },
+                        ) {
+                            val label = type?.label ?: "전체 유형"
+                            Text(
+                                if (selectedType == type) "$label · 선택됨" else label,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showTypePicker = false }) { Text("닫기") }
+            },
+        )
+    }
+}
+
+@Composable
+private fun CareRecordCompactRow(record: CareEntity, onClick: () -> Unit) {
+    val type = CareType.valueOf(record.type)
+    androidx.compose.material3.Surface(
+        modifier = Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick),
+        shape = androidx.compose.ui.graphics.RectangleShape,
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp, MaterialTheme.colorScheme.outlineVariant
+        ),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth()
+                .heightIn(min = PetSpacing.minTouchTarget)
+                .padding(horizontal = PetSpacing.medium, vertical = PetSpacing.small),
+            verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                Text(type.label, style = MaterialTheme.typography.labelLarge)
+                Text(
+                    record.displayDateTime(),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                    maxLines = 1,
+                )
+            }
+            Text(
+                record.displayValue(),
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            if (record.note.isNotBlank()) {
+                Text(
+                    record.note,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
