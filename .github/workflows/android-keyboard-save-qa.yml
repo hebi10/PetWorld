@@ -60,13 +60,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-boot-timeout: 600
-          script: |
-            if [ "${{ matrix.mode }}" = "compact-360dp-font160" ]; then
-              adb shell wm size 720x1600
-              adb shell wm density 320
-              adb shell settings put system font_scale 1.6
-            fi
-            bash .github/scripts/capture-petworld-keyboard.sh ${{ matrix.mode }}
+          script: bash .github/scripts/capture-petworld-keyboard.sh ${{ matrix.mode }}
       - name: Upload keyboard screenshots and diagnostics
         if: always()
         uses: actions/upload-artifact@v4
