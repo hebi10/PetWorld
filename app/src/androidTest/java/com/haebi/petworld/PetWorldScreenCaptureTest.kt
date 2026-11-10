@@ -106,8 +106,7 @@ class PetWorldScreenCaptureTest {
                 forms.forEach { (label, name) ->
                     tap("빠른 기록 추가")
                     mustSee("나비의 기록 추가")
-                    tap(label)
-                    mustSee("나비 · $label 기록")
+                    openCareForm(label)
                     mustSee("닫기")
                     shot(folder, name)
                     assertCareDateTimeRow(folder, name)
@@ -362,17 +361,38 @@ class PetWorldScreenCaptureTest {
         device.waitForIdle()
     }
 
-    private fun mustSee(text: String) {
-        dismissSystemAnr()
-        val found = device.wait(Until.findObject(By.textContains(text)), 25_000)
-        if (found == null) {
-            val diagnostics = File(root, "diagnostics").apply { mkdirs() }
-            val id = System.currentTimeMillis().toString()
-            device.takeScreenshot(File(diagnostics, "$id.png"))
-            device.dumpWindowHierarchy(File(diagnostics, "$id.xml"))
-            throw IllegalStateException("화면 텍스트가 없습니다: $text (diagnostics/$id)")
+    private fun openCareForm(label: String) {
+        val title = "나비 · $label 기록"
+        repeat(2) {
+            tap(label)
+            repeat(8) {
+                dismissSystemAnr()
+                if (device.wait(Until.findObject(By.textContains(title)), 1_500) != null) {
+                    device.waitForIdle()
+                    return
+                }
+            }
+            if (!device.hasObject(By.textContains("나비의 기록 추가"))) {
+                mustSee(title)
+                return
+            }
         }
-        device.waitForIdle()
+        mustSee(title)
+    }
+
+    private fun mustSee(text: String) {
+        repeat(12) {
+            dismissSystemAnr()
+            if (device.wait(Until.findObject(By.textContains(text)), 2_000) != null) {
+                device.waitForIdle()
+                return
+            }
+        }
+        val diagnostics = File(root, "diagnostics").apply { mkdirs() }
+        val id = System.currentTimeMillis().toString()
+        device.takeScreenshot(File(diagnostics, "$id.png"))
+        device.dumpWindowHierarchy(File(diagnostics, "$id.xml"))
+        throw IllegalStateException("화면 텍스트가 없습니다: $text (diagnostics/$id)")
     }
 
     private fun tap(text: String) {
