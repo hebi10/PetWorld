@@ -1,7 +1,5 @@
 package com.haebi.petworld.ui.screens
 
-import android.app.DatePickerDialog
-import android.app.TimePickerDialog
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -35,7 +33,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.input.KeyboardType
 import com.haebi.petworld.data.ActivityKind
@@ -55,11 +52,7 @@ import com.haebi.petworld.ui.components.PetPrimaryButton
 import com.haebi.petworld.ui.components.PetSecondaryButton
 import com.haebi.petworld.ui.theme.PetSpacing
 import kotlinx.coroutines.launch
-import java.time.Instant
-import java.time.LocalDate
-import java.time.LocalDateTime
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 
 @Composable
 private fun <T> ChoiceRow(
@@ -177,7 +170,6 @@ fun CareRecordEditor(
     var error by remember { mutableStateOf<String?>(null) }
     var confirmExit by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
         if (uri != null) { photoUri = uri.toString(); removePhoto = false }
     }
@@ -326,40 +318,11 @@ fun CareRecordEditor(
                 }
             }
         }
-        Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
-            Text("관찰 시각", style = MaterialTheme.typography.labelLarge)
-            val local = Instant.ofEpochMilli(occurredAt).atZone(zone)
-            PetSecondaryButton(
-                label = local.format(DateTimeFormatter.ofPattern("yyyy-MM-dd")),
-                onClick = {
-                    val day = local.toLocalDate()
-                    DatePickerDialog(
-                        context,
-                        { _, year, month, dayOfMonth ->
-                            val datetime = LocalDateTime.of(
-                                LocalDate.of(year, month + 1, dayOfMonth),
-                                local.toLocalTime(),
-                            )
-                            occurredAt = datetime.atZone(zone).toInstant().toEpochMilli()
-                        },
-                        day.year, day.monthValue - 1, day.dayOfMonth,
-                    ).apply { datePicker.maxDate = System.currentTimeMillis() }.show()
-                },
-            )
-            PetSecondaryButton(
-                label = local.format(DateTimeFormatter.ofPattern("HH:mm")),
-                onClick = {
-                    TimePickerDialog(
-                        context,
-                        { _, hour, minute ->
-                            val datetime = local.toLocalDate().atTime(hour, minute)
-                            occurredAt = datetime.atZone(zone).toInstant().toEpochMilli()
-                        },
-                        local.hour, local.minute, true,
-                    ).show()
-                },
-            )
-        }
+        CareObservationDateTime(
+            occurredAt = occurredAt,
+            zone = zone,
+            onOccurredAtChange = { occurredAt = it },
+        )
         CareFormTextField(
             value = note,
             onValueChange = { note = it.take(2_001) },
