@@ -9,6 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -67,18 +69,58 @@ private fun <T> ChoiceRow(
     text: (T) -> String,
     onSelect: (T) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
+    Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall)) {
         Text(label, style = MaterialTheme.typography.labelLarge)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+            verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall),
+        ) {
             options.forEach { option ->
                 FilterChip(
                     selected = selected == option,
                     onClick = { onSelect(option) },
-                    label = { Text(text(option)) },
+                    label = { Text(text(option), style = MaterialTheme.typography.bodyMedium) },
+                    shape = RectangleShape,
                 )
             }
         }
     }
+}
+
+@Composable
+private fun CareFormFields(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(PetSpacing.medium),
+        content = content,
+    )
+}
+
+@Composable
+private fun CareFormTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    supportingText: String? = null,
+    singleLine: Boolean = true,
+    minLines: Int = 1,
+    maxLines: Int = 1,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+        supportingText = if (supportingText == null) null else {
+            { Text(supportingText, style = MaterialTheme.typography.bodyMedium) }
+        },
+        singleLine = singleLine,
+        minLines = minLines,
+        maxLines = maxLines,
+        shape = RectangleShape,
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable
@@ -183,106 +225,107 @@ fun CareRecordEditor(
             Text(
                 "${pet.name} · ${type.label} ${if (existing == null) "기록" else "수정"}",
                 modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.headlineMedium,
+                style = MaterialTheme.typography.titleLarge,
             )
             TextButton(onClick = ::dismiss, enabled = !saving) { Text("닫기") }
         }
 
-        when (type) {
-            CareType.FOOD -> {
-                ChoiceRow("종류", foodKind, FoodKind.entries, { it.label }) { foodKind = it }
-                OutlinedTextField(
-                    value = foodProductName, onValueChange = { foodProductName = it.take(101) },
-                    label = { Text("제품명 (선택)") },
-                    singleLine = true, modifier = Modifier.fillMaxWidth(),
-                )
-                ChoiceRow("단위", foodUnit, PortionUnit.entries, { it.label }) {
-                    if (foodUnit != it) {
-                        amount = ""
-                        consumed = ""
-                        foodUnit = it
+        CareFormFields {
+            when (type) {
+                CareType.FOOD -> {
+                    ChoiceRow("종류", foodKind, FoodKind.entries, { it.label }) { foodKind = it }
+                    CareFormTextField(
+                        value = foodProductName,
+                        onValueChange = { foodProductName = it.take(101) },
+                        label = "제품명 (선택)",
+                    )
+                    ChoiceRow("단위", foodUnit, PortionUnit.entries, { it.label }) {
+                        if (foodUnit != it) {
+                            amount = ""
+                            consumed = ""
+                            foodUnit = it
+                        }
+                    }
+                    CareFormTextField(
+                        value = amount,
+                        onValueChange = { amount = it.take(20) },
+                        label = "제공량 (${foodUnit.label}) · 필수",
+                        keyboardType = KeyboardType.Decimal,
+                    )
+                    CareFormTextField(
+                        value = consumed,
+                        onValueChange = { consumed = it.take(20) },
+                        label = "실제 섭취량 (${foodUnit.label}) · 선택",
+                        supportingText = "빈칸은 미측정, 0은 먹지 않음을 확인한 경우입니다.",
+                        keyboardType = KeyboardType.Decimal,
+                    )
+                }
+                CareType.WATER -> {
+                    ChoiceRow("섭취량 측정 여부", measured, listOf(true, false),
+                        { if (it) "측정됨" else "미측정" }) { measured = it }
+                    if (measured) {
+                        CareFormTextField(
+                            value = amount,
+                            onValueChange = { amount = it.take(10) },
+                            label = "음수량 (mL) · 필수",
+                            supportingText = "직접 확인한 0mL는 미측정과 구분됩니다.",
+                            keyboardType = KeyboardType.Number,
+                        )
                     }
                 }
-                OutlinedTextField(
-                    value = amount, onValueChange = { amount = it.take(20) },
-                    label = { Text("제공량 (${foodUnit.label}) · 필수") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true, modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = consumed, onValueChange = { consumed = it.take(20) },
-                    label = { Text("실제 섭취량 (${foodUnit.label}) · 선택") },
-                    supportingText = { Text("빈칸은 미측정, 0은 먹지 않음을 확인한 경우입니다.") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true, modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            CareType.WATER -> {
-                ChoiceRow("섭취량 측정 여부", measured, listOf(true, false),
-                    { if (it) "측정됨" else "미측정" }) { measured = it }
-                if (measured) {
-                    OutlinedTextField(
-                        value = amount, onValueChange = { amount = it.take(10) },
-                        label = { Text("음수량 (mL) · 필수") },
-                        supportingText = { Text("직접 확인한 0mL는 미측정과 구분됩니다.") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true, modifier = Modifier.fillMaxWidth(),
+                CareType.ELIMINATION -> {
+                    ChoiceRow("종류", eliminationKind, EliminationKind.entries,
+                        { it.label }) { eliminationKind = it }
+                    CareFormTextField(
+                        value = amount,
+                        onValueChange = { amount = it.take(3) },
+                        label = "횟수 (회)",
+                        keyboardType = KeyboardType.Number,
+                    )
+                    Text("관찰 사진 (선택)", style = MaterialTheme.typography.labelLarge)
+                    PetAvatar(
+                        photoStore = photoStore,
+                        name = "배변 관찰",
+                        photoFile = existing?.photoFile.takeUnless { removePhoto },
+                        previewUri = photoUri,
+                        size = 104.dp,
+                    )
+                    PetSecondaryButton(
+                        label = "사진 선택",
+                        onClick = {
+                            picker.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        },
+                    )
+                    if (photoUri != null || (existing?.photoFile != null && !removePhoto)) {
+                        TextButton(onClick = { photoUri = null; removePhoto = true }) {
+                            Text("관찰 사진 제거")
+                        }
+                    }
+                }
+                CareType.ACTIVITY -> {
+                    ChoiceRow("활동", activityKind, ActivityKind.entries,
+                        { it.label }) { activityKind = it }
+                    CareFormTextField(
+                        value = amount,
+                        onValueChange = { amount = it.take(4) },
+                        label = "지속시간 (분)",
+                        keyboardType = KeyboardType.Number,
+                    )
+                }
+                CareType.WEIGHT -> {
+                    ChoiceRow("단위", weightUnit, WeightUnit.entries,
+                        { it.label }) { if (weightUnit != it) { amount = ""; weightUnit = it } }
+                    CareFormTextField(
+                        value = amount,
+                        onValueChange = { amount = it.take(20) },
+                        label = "체중 (${weightUnit.label})",
+                        keyboardType = KeyboardType.Decimal,
                     )
                 }
             }
-            CareType.ELIMINATION -> {
-                ChoiceRow("종류", eliminationKind, EliminationKind.entries,
-                    { it.label }) { eliminationKind = it }
-                OutlinedTextField(
-                    value = amount, onValueChange = { amount = it.take(3) },
-                    label = { Text("횟수 (회)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true, modifier = Modifier.fillMaxWidth(),
-                )
-                Text("관찰 사진 (선택)", style = MaterialTheme.typography.labelLarge)
-                PetAvatar(
-                    photoStore = photoStore,
-                    name = "배변 관찰",
-                    photoFile = existing?.photoFile.takeUnless { removePhoto },
-                    previewUri = photoUri,
-                    size = 104.dp,
-                )
-                PetSecondaryButton(
-                    label = "사진 선택",
-                    onClick = {
-                        picker.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
-                    },
-                )
-                if (photoUri != null || (existing?.photoFile != null && !removePhoto)) {
-                    TextButton(onClick = { photoUri = null; removePhoto = true }) {
-                        Text("관찰 사진 제거")
-                    }
-                }
-            }
-            CareType.ACTIVITY -> {
-                ChoiceRow("활동", activityKind, ActivityKind.entries,
-                    { it.label }) { activityKind = it }
-                OutlinedTextField(
-                    value = amount, onValueChange = { amount = it.take(4) },
-                    label = { Text("지속시간 (분)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true, modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            CareType.WEIGHT -> {
-                ChoiceRow("단위", weightUnit, WeightUnit.entries,
-                    { it.label }) { if (weightUnit != it) { amount = ""; weightUnit = it } }
-                OutlinedTextField(
-                    value = amount, onValueChange = { amount = it.take(20) },
-                    label = { Text("체중 (${weightUnit.label})") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true, modifier = Modifier.fillMaxWidth(),
-                )
-            }
         }
-
         Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
             Text("관찰 시각", style = MaterialTheme.typography.labelLarge)
             val local = Instant.ofEpochMilli(occurredAt).atZone(zone)
@@ -317,11 +360,13 @@ fun CareRecordEditor(
                 },
             )
         }
-        OutlinedTextField(
+        CareFormTextField(
             value = note,
             onValueChange = { note = it.take(2_001) },
-            label = { Text("관찰 메모 (선택)") },
-            minLines = 2, maxLines = 6, modifier = Modifier.fillMaxWidth(),
+            label = "관찰 메모 (선택)",
+            singleLine = false,
+            minLines = 2,
+            maxLines = 6,
         )
         if (error != null) {
             Text(error.orEmpty(), color = MaterialTheme.colorScheme.error,
