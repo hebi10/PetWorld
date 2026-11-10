@@ -106,10 +106,10 @@ class PetWorldScreenCaptureTest {
                 forms.forEach { (label, name) ->
                     tap("빠른 기록 추가")
                     mustSee("나비의 기록 추가")
-                    tap(label)
-                    mustSee("나비 · $label 기록")
+                    openCareForm(label)
                     mustSee("닫기")
                     shot(folder, name)
+                    assertCareDateTimeRow(folder, name)
                     tap("닫기")
                     mustSee("빠른 기록 추가")
                 }
@@ -296,14 +296,19 @@ class PetWorldScreenCaptureTest {
         val middle = device.displayWidth / 2
         val high = device.displayHeight * 3 / 4
         val low = device.displayHeight / 4
-        repeat(8) {
-            device.swipe(middle, high, middle, low, 16)
+        repeat(14) {
+            dismissSystemAnr()
+            device.swipe(middle, high, middle, low, 22)
             device.waitForIdle()
             if (device.wait(Until.findObject(By.textContains(text)), 700) != null) {
                 return true
             }
         }
-        throw IllegalStateException("스크롤 후에도 화면 텍스트가 없습니다: $text")
+        val diagnostics = File(root, "diagnostics").apply { mkdirs() }
+        val id = System.currentTimeMillis().toString()
+        device.takeScreenshot(File(diagnostics, "$id-recent-content.png"))
+        device.dumpWindowHierarchy(File(diagnostics, "$id-recent-content.xml"))
+        throw IllegalStateException("스크롤 후에도 화면 텍스트가 없습니다: $text (diagnostics/$id)")
     }
 
     private fun scrollToTop() {
@@ -314,6 +319,51 @@ class PetWorldScreenCaptureTest {
             device.swipe(middle, low, middle, high, 16)
             device.waitForIdle()
         }
+    }
+
+    private fun assertCareDateTimeRow(folder: File, screenId: String) {
+        val dateSelector = By.descContains("관찰 날짜")
+        val timeSelector = By.descContains("관찰 시간")
+        val middle = device.displayWidth / 2
+        val high = device.displayHeight * 3 / 4
+        val low = device.displayHeight / 4
+        val safeBottom = (device.displayHeight * 0.86f).toInt()
+        val minTouchHeight = (context.resources.displayMetrics.density * 48).toInt()
+        var rowVerified = false
+
+        for (attempt in 0 until 12) {
+            dismissSystemAnr()
+            val bounds = try {
+                val date = device.findObject(dateSelector)?.visibleBounds
+                val time = device.findObject(timeSelector)?.visibleBounds
+                if (date != null && time != null) date to time else null
+            } catch (_: StaleObjectException) {
+                null
+            }
+            if (bounds != null) {
+                val (date, time) = bounds
+                val horizontallyAligned = date.right <= time.left &&
+                    date.top < time.bottom && time.top < date.bottom
+                if (horizontallyAligned && date.bottom <= safeBottom &&
+                    time.bottom <= safeBottom && date.height() >= minTouchHeight &&
+                    time.height() >= minTouchHeight) {
+                    rowVerified = true
+                    break
+                }
+            }
+            device.swipe(middle, high, middle, low, 22)
+            device.waitForIdle()
+        }
+
+        if (!rowVerified) {
+            device.takeScreenshot(File(folder, "$screenId-observation-failure.png"))
+            device.dumpWindowHierarchy(File(folder, "$screenId-observation-hierarchy.xml"))
+        }
+        check(rowVerified) {
+            "$screenId: 날짜·시간 버튼이 가로로 정렬되고 화면 안에 완전히 표시되어야 합니다."
+        }
+        shot(folder, "UI06B-$screenId-observation")
+        scrollToTop()
     }
 
     private fun openPetSwitcher(folder: File, stage: String) {
@@ -330,17 +380,38 @@ class PetWorldScreenCaptureTest {
         device.waitForIdle()
     }
 
-    private fun mustSee(text: String) {
-        dismissSystemAnr()
-        val found = device.wait(Until.findObject(By.textContains(text)), 25_000)
-        if (found == null) {
-            val diagnostics = File(root, "diagnostics").apply { mkdirs() }
-            val id = System.currentTimeMillis().toString()
-            device.takeScreenshot(File(diagnostics, "$id.png"))
-            device.dumpWindowHierarchy(File(diagnostics, "$id.xml"))
-            throw IllegalStateException("화면 텍스트가 없습니다: $text (diagnostics/$id)")
+    private fun openCareForm(label: String) {
+        val title = "나비 · $label 기록"
+        repeat(2) {
+            tap(label)
+            repeat(8) {
+                dismissSystemAnr()
+                if (device.wait(Until.findObject(By.textContains(title)), 1_500) != null) {
+                    device.waitForIdle()
+                    return
+                }
+            }
+            if (!device.hasObject(By.textContains("나비의 기록 추가"))) {
+                mustSee(title)
+                return
+            }
         }
-        device.waitForIdle()
+        mustSee(title)
+    }
+
+    private fun mustSee(text: String) {
+        repeat(12) {
+            dismissSystemAnr()
+            if (device.wait(Until.findObject(By.textContains(text)), 2_000) != null) {
+                device.waitForIdle()
+                return
+            }
+        }
+        val diagnostics = File(root, "diagnostics").apply { mkdirs() }
+        val id = System.currentTimeMillis().toString()
+        device.takeScreenshot(File(diagnostics, "$id.png"))
+        device.dumpWindowHierarchy(File(diagnostics, "$id.xml"))
+        throw IllegalStateException("화면 텍스트가 없습니다: $text (diagnostics/$id)")
     }
 
     private fun tap(text: String) {
