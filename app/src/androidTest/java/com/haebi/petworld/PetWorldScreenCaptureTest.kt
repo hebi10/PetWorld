@@ -246,20 +246,20 @@ class PetWorldScreenCaptureTest {
 
     private fun dismissSystemAnr() {
         val anrTitle = device.wait(Until.findObject(By.textContains("isn't responding")), 700)
+        val title = try { anrTitle?.text.orEmpty() } catch (_: StaleObjectException) { "" }
         val waitButton = device.findObject(By.text("Wait"))
         val closeButton = device.findObject(By.text("Close app"))
         if (anrTitle == null && waitButton == null && closeButton == null) return
 
         if (waitButton != null) {
-            waitButton.click()
+            try { waitButton.click() } catch (_: StaleObjectException) {}
             device.waitForIdle()
         }
         if (device.hasObject(By.textContains("isn't responding")) || device.hasObject(By.text("Close app"))) {
             val close = device.findObject(By.text("Close app"))
             if (close != null) {
-                close.click()
+                try { close.click() } catch (_: StaleObjectException) {}
             } else {
-                val title = anrTitle?.text.orEmpty()
                 when {
                     title.contains("googlesdksetup", ignoreCase = true) ->
                         device.executeShellCommand("am force-stop com.google.android.googlesdksetup")
