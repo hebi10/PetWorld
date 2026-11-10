@@ -5,6 +5,12 @@ MODE="${1:-normal}"
 OUT="qa/keyboard/$MODE"
 mkdir -p "$OUT"
 
+if [ "$MODE" = "compact-360dp-font160" ]; then
+  adb shell wm size 720x1600
+  adb shell wm density 320
+  adb shell settings put system font_scale 1.6
+fi
+
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 adb shell settings put secure show_ime_with_hard_keyboard 1
