@@ -72,7 +72,16 @@ class PetWorldScreenCaptureTest {
                 }
                 tap("반려동물 등록")
                 mustSee("이름 (필수)")
+                check(!device.hasObject(By.text("이름을 입력해 주세요."))) {
+                    "입력 이전에 필수값 오류 문구가 나타났습니다."
+                }
                 shot(folder, "S02-profile-create")
+                tap("등록 완료")
+                mustSee("프로필과 일상 기록은 기기에 저장됩니다.")
+                shot(folder, "UI10A-profile-copy")
+                scrollToTop()
+                mustSee("이름을 입력해 주세요.")
+                shot(folder, "UI10A-profile-name-required")
                 tap("닫기")
             }
             seed()
