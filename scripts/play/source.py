@@ -51,6 +51,8 @@ def release_mode(env, event, commit_subject):
             raise SourceError('Unsupported Play release mode')
         return mode
     subject = commit_subject.splitlines()[0] if commit_subject else ''
+    if re.search(r'(?<!\S)\[petworld-store04-20261111\](?!\S)', subject):
+        raise SourceError('Listing-only main commit must never deploy an Android binary')
     return 'initialize' if re.search(r'(?<!\S)\[initialize-play\](?!\S)', subject) else 'deploy'
 
 

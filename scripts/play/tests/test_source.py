@@ -27,6 +27,16 @@ class SourceTests(unittest.TestCase):
             with self.assertRaises(source.SourceError):
                 source.release_mode(dict(manual, GITHUB_REF=ref, PLAY_REQUESTED_MODE='initialize'), {}, '[initialize-play]')
 
+    def test_listing_only_push_never_deploys_any_android_binary(self):
+        env = {'GITHUB_REPOSITORY': REPO, 'GITHUB_EVENT_NAME': 'workflow_run'}
+        run = {'name': 'Android CI', 'path': '.github/workflows/android-ci.yml',
+               'event': 'push', 'conclusion': 'success', 'head_branch': 'main',
+               'head_sha': SHA, 'head_repository': {'full_name': REPO}}
+        with self.assertRaisesRegex(source.SourceError, 'Listing-only'):
+            source.release_mode(env, {'workflow_run': run},
+                                'STORE-04 Google Play listing upload [petworld-store04-20261111]')
+        self.assertEqual(source.release_mode(env, {'workflow_run': run}, 'Regular main UI update'), 'deploy')
+
     def test_manual_dispatch_only_accepts_main(self):
         for ref in ('refs/heads/feature', 'refs/tags/v1'):
             with self.assertRaises(source.SourceError):
