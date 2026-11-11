@@ -23,6 +23,7 @@ import com.haebi.petworld.data.room.PetWorldDatabase
 import com.haebi.petworld.data.toEntity
 import com.haebi.petworld.ui.theme.ThemeMode
 import com.haebi.petworld.ui.theme.PetSpacing
+import com.haebi.petworld.ui.theme.useExpandedPetLayout
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -90,6 +91,7 @@ class PetWorldScreenCaptureTest {
                 mustSee("나비의 하루")
                 assertSystemBarState(theme, it)
                 shot(folder, "S03-home")
+                assertExpandedPaneOrder("오늘의 돌봄", "최근 기록", folder, "UI10D-home-wide")
                 if (context.resources.configuration.fontScale >= 1.3f) {
                     mustSee("나이 미상")
                     shot(folder, "UI10C-home-compact")
@@ -136,6 +138,7 @@ class PetWorldScreenCaptureTest {
                 mustSee("기간: 7일")
                 mustSee("유형: 전체")
                 shot(folder, "S11-record-list")
+                assertExpandedPaneOrder("나비의 생활 기록", "기록을 선택해 주세요", folder, "UI10D-record-wide")
                 tap("기간: 7일")
                 mustSee("조회 기간")
                 shot(folder, "S13-range-picker")
@@ -155,6 +158,7 @@ class PetWorldScreenCaptureTest {
                 checkNotNull(row) { "음수 기록 카드를 찾지 못했습니다." }.click()
                 mustSee("기록 삭제")
                 shot(folder, "S12-record-detail")
+                assertExpandedPaneOrder("나비의 생활 기록", "음수 기록", folder, "UI10D-record-detail-wide")
                 tap("수정")
                 shot(folder, "S12-record-edit")
                 assertCareFormMaxWidth(folder, "S12-record-edit", "음수", edit = true)
@@ -174,6 +178,7 @@ class PetWorldScreenCaptureTest {
                 mustSee("최근 측정 4.5kg")
                 mustSee("최저 4.4kg · 최고 4.5kg")
                 shot(folder, "S14-statistics")
+                assertExpandedPaneOrder("체중 변화", "생활 기록 요약", folder, "UI10D-statistics-wide")
                 tap("더보기")
                 mustSee("데이터 관리")
                 if (context.resources.configuration.fontScale >= 1.3f) {
@@ -624,6 +629,24 @@ class PetWorldScreenCaptureTest {
             }
         }
         throw IllegalStateException("버튼/항목을 찾지 못했습니다: $text", lastError)
+    }
+
+    private fun assertExpandedPaneOrder(
+        leftLabel: String,
+        rightLabel: String,
+        folder: File,
+        captureName: String,
+    ) {
+        val config = context.resources.configuration
+        if (!useExpandedPetLayout(config.screenWidthDp, config.fontScale)) return
+        val left = device.wait(Until.findObject(By.textContains(leftLabel)), 3_000)
+        val right = device.wait(Until.findObject(By.textContains(rightLabel)), 3_000)
+        checkNotNull(left) { "왼쪽 분할 화면이 없습니다: $leftLabel" }
+        checkNotNull(right) { "오른쪽 분할 화면이 없습니다: $rightLabel" }
+        check(left.visibleBounds.centerX() < right.visibleBounds.centerX()) {
+            "넓은 화면의 좌우 패널 배치가 올바르지 않습니다: $leftLabel / $rightLabel"
+        }
+        shot(folder, captureName)
     }
 
     private fun shot(folder: File, id: String) {
