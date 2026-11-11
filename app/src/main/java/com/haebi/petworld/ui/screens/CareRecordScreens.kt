@@ -59,13 +59,21 @@ enum class CareRange(val label: String) {
 
 fun CareRange.accepts(record: CareEntity, today: LocalDate = LocalDate.now()): Boolean {
     val date = record.localDate()
-    val start = when (this) {
-        CareRange.TODAY -> today
-        CareRange.SEVEN -> today.minusDays(6)
-        CareRange.THIRTY -> today.minusDays(29)
-        CareRange.ALL -> LocalDate.MIN
+    return when (this) {
+        CareRange.TODAY -> date == today
+        CareRange.SEVEN -> date >= today.minusDays(6) && date <= today
+        CareRange.THIRTY -> date >= today.minusDays(29) && date <= today
+        CareRange.ALL -> true
     }
-    return date >= start && date <= today
+}
+
+internal fun filterCareRecords(
+    records: List<CareEntity>,
+    selectedType: CareType?,
+    selectedRange: CareRange,
+    today: LocalDate = LocalDate.now(),
+): List<CareEntity> = records.filter {
+    (selectedType == null || it.type == selectedType.name) && selectedRange.accepts(it, today)
 }
 
 internal fun CareEntity.displayRecordTime(instantMillis: Long): String {
@@ -91,9 +99,7 @@ fun CareRecordList(
 ) {
     var showRangePicker by remember { mutableStateOf(false) }
     var showTypePicker by remember { mutableStateOf(false) }
-    val filtered = records.filter {
-        (selectedType == null || it.type == selectedType.name) && selectedRange.accepts(it)
-    }
+    val filtered = filterCareRecords(records, selectedType, selectedRange)
 
     Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
         Row(
