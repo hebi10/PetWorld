@@ -51,9 +51,17 @@ data class PetDraft(
 )
 
 object PetValidation {
+    fun nameError(name: String): String? {
+        val value = name.trim()
+        return when {
+            value.isBlank() -> "이름을 입력해 주세요."
+            value.length > 40 -> "이름은 40자 이내로 입력해 주세요."
+            else -> null
+        }
+    }
+
     fun error(draft: PetDraft, today: LocalDate = LocalDate.now()): String? {
-        if (draft.name.trim().isBlank()) return "이름을 입력해 주세요."
-        if (draft.name.trim().length > 40) return "이름은 40자 이내로 입력해 주세요."
+        nameError(draft.name)?.let { return it }
         if (draft.breed.length > 80) return "품종은 80자 이내로 입력해 주세요."
         if (draft.notes.length > 2_000) return "주의사항은 2,000자 이내로 입력해 주세요."
         if (draft.birthMode == BirthMode.EXACT) {

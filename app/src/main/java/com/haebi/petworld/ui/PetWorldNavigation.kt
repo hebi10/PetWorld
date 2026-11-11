@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -77,15 +78,17 @@ import com.haebi.petworld.ui.screens.CareRange
 import com.haebi.petworld.ui.screens.CareRecordList
 import com.haebi.petworld.ui.screens.CareRecordDetail
 import com.haebi.petworld.ui.screens.CareRecordEditor
-import com.haebi.petworld.ui.screens.CareRecordRow
 import com.haebi.petworld.ui.screens.CareStatisticsScreen
 import com.haebi.petworld.ui.screens.PetHomeScreen
+import com.haebi.petworld.ui.screens.PetHealthScreen
 import com.haebi.petworld.ui.screens.PetManagerScreen
 import com.haebi.petworld.ui.screens.PetProfileEditor
 import com.haebi.petworld.ui.screens.PetSwitcherSheet
 import com.haebi.petworld.ui.screens.PetWelcomeScreen
 import com.haebi.petworld.ui.screens.PetBackupSection
 import com.haebi.petworld.ui.theme.PetSpacing
+import com.haebi.petworld.ui.theme.useCompactPetLayout
+import com.haebi.petworld.ui.theme.useExpandedPetLayout
 import com.haebi.petworld.ui.theme.ThemeMode
 
 private enum class PrimaryTab(
@@ -118,6 +121,10 @@ fun PetWorldApp(
     restoring: Boolean,
     onRestoreBackup: suspend (Uri, CharArray) -> Result<Unit>,
 ) {
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val fontScale = LocalDensity.current.fontScale
+    val compactUi = useCompactPetLayout(screenWidthDp, fontScale)
+    val expandedUi = useExpandedPetLayout(screenWidthDp, fontScale)
     var tab by rememberSaveable { mutableStateOf(PrimaryTab.HOME) }
     var showSwitcher by rememberSaveable { mutableStateOf(false) }
     var showManager by rememberSaveable { mutableStateOf(false) }
@@ -164,7 +171,8 @@ fun PetWorldApp(
         showManager = editorFromManager
     }
 
-    val showTabs = ready && current != null && !showEditor && !showManager && careEditorType == null && careDetailId == null
+    val showTabs = ready && current != null && !showEditor && !showManager &&
+        careEditorType == null && (careDetailId == null || (expandedUi && tab == PrimaryTab.RECORDS))
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -211,7 +219,10 @@ fun PetWorldApp(
                     PrimaryTab.entries.forEach { item ->
                         NavigationBarItem(
                             selected = tab == item,
-                            onClick = { tab = item },
+                            onClick = {
+                                tab = item
+                                if (item != PrimaryTab.RECORDS) careDetailId = null
+                            },
                             icon = { Icon(item.imageVector, contentDescription = null) },
                             label = { Text(item.label) },
                             alwaysShowLabel = true,
@@ -232,7 +243,10 @@ fun PetWorldApp(
             modifier = Modifier.fillMaxSize().padding(padding),
             contentAlignment = Alignment.TopCenter,
         ) {
-            Box(modifier = Modifier.fillMaxSize().widthIn(max = PetSpacing.contentMaxWidth)) {
+            val maxContentWidth = if (showTabs && expandedUi && tab in listOf(
+                PrimaryTab.HOME, PrimaryTab.RECORDS, PrimaryTab.INSIGHTS
+            )) PetSpacing.expandedContentMaxWidth else PetSpacing.contentMaxWidth
+            Box(modifier = Modifier.fillMaxSize().widthIn(max = maxContentWidth)) {
                 when {
                     petState.loadStatus == PetLoadStatus.Loading -> {
                         Column(
@@ -331,7 +345,7 @@ fun PetWorldApp(
                             },
                         )
                     }
-                    careDetailId != null -> {
+                    careDetailId != null && !(expandedUi && tab == PrimaryTab.RECORDS) -> {
                         val record = records.firstOrNull { it.id == careDetailId }
                         Column(
                             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
@@ -351,11 +365,56 @@ fun PetWorldApp(
                             )
                         }
                     }
-                    else -> Column(
+                    else -> if (expandedUi && tab == PrimaryTab.RECORDS) {
+                        Row(
+                            modifier = Modifier.fillMaxSize().padding(PetSpacing.large),
+                            horizontalArrangement = Arrangement.spacedBy(PetSpacing.large),
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f).fillMaxHeight()
+                                    .verticalScroll(rememberScrollState()),
+                            ) {
+                                CareRecordList(
+                                    petName = current.name,
+                                    records = records,
+                                    selectedType = selectedTypeFilter,
+                                    selectedRange = selectedRange,
+                                    onTypeChange = { selectedTypeFilter = it },
+                                    onRangeChange = { selectedRange = it },
+                                    onAdd = { choosingCareType = true },
+                                    onView = { careDetailId = it },
+                                )
+                            }
+                            Column(
+                                modifier = Modifier.weight(1f).fillMaxHeight()
+                                    .verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(PetSpacing.medium),
+                            ) {
+                                val record = records.firstOrNull { it.id == careDetailId }
+                                if (record == null) {
+                                    PetEmptyState(
+                                        title = "기록을 선택해 주세요",
+                                        detail = "왼쪽 목록에서 기록을 선택하면 상세 내용을 볼 수 있습니다.",
+                                    )
+                                } else {
+                                    CareRecordDetail(
+                                        record = record,
+                                        photoStore = photoStore,
+                                        onBack = { careDetailId = null },
+                                        onEdit = { startCare(CareType.valueOf(record.type), record.id) },
+                                        onDelete = onDeleteCare,
+                                        onDeleted = { careDetailId = null },
+                                    )
+                                }
+                            }
+                        }
+                    } else Column(
                         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
                             .padding(PetSpacing.large),
                         verticalArrangement = Arrangement.spacedBy(
-                            if (tab == PrimaryTab.HOME) PetSpacing.medium else PetSpacing.xLarge
+                            if (tab == PrimaryTab.HOME ||
+                                (tab == PrimaryTab.MORE && compactUi)
+                            ) PetSpacing.medium else PetSpacing.xLarge
                         ),
                     ) {
                         when (tab) {
@@ -367,6 +426,7 @@ fun PetWorldApp(
                                 onQuickAdd = { choosingCareType = true },
                                 onViewRecord = { careDetailId = it },
                                 onViewType = ::openFilteredRecords,
+                                expandedLayout = expandedUi,
                             )
                             PrimaryTab.RECORDS -> CareRecordList(
                                 petName = current.name,
@@ -378,31 +438,18 @@ fun PetWorldApp(
                                 onAdd = { choosingCareType = true },
                                 onView = { careDetailId = it },
                             )
-                            PrimaryTab.HEALTH -> {
-                                Text("${current.name}의 체중·건강", style = MaterialTheme.typography.headlineLarge)
-                                PetPrimaryButton(
-                                    label = "체중 기록",
-                                    modifier = Modifier.fillMaxWidth(),
-                                    onClick = { startCare(CareType.WEIGHT) },
-                                )
-                                records.filter { it.type == CareType.WEIGHT.name }.take(5).forEach {
-                                    CareRecordRow(it, onClick = { careDetailId = it.id })
-                                }
-                                if (records.none { it.type == CareType.WEIGHT.name }) {
-                                    PetEmptyState(
-                                        title = "체중 기록이 없습니다",
-                                        detail = "체중을 측정한 뒤 기록을 추가해 주세요.",
-                                    )
-                                }
-                                Text("증상·진료·복약·예방 관리는 후속 단계에서 제공됩니다.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
+                            PrimaryTab.HEALTH -> PetHealthScreen(
+                                petName = current.name,
+                                records = records,
+                                onAddWeight = { startCare(CareType.WEIGHT) },
+                                onViewRecord = { careDetailId = it },
+                            )
                             PrimaryTab.INSIGHTS -> CareStatisticsScreen(
                                 petName = current.name,
                                 records = records,
                                 period = statisticsRange,
                                 onPeriodChange = { statisticsRange = it },
+                                expandedLayout = expandedUi,
                             )
                             PrimaryTab.MORE -> SettingsContent(
                                 themeMode = themeMode,
@@ -513,6 +560,7 @@ fun PetWorldApp(
             photoStore = photoStore,
             onSelect = {
                 onSelectPet(it)
+                careDetailId = null
                 showSwitcher = false
             },
             onAdd = { openEditor(null, returnToManager = false) },
@@ -539,8 +587,10 @@ private fun SettingsContent(
     onRestoreBackup: suspend (Uri, CharArray) -> Result<Unit>,
 ) {
     val context = LocalContext.current
-    val compactActions = LocalConfiguration.current.screenWidthDp < 400 ||
-        LocalDensity.current.fontScale >= 1.3f
+    val compactActions = useCompactPetLayout(
+        LocalConfiguration.current.screenWidthDp,
+        LocalDensity.current.fontScale,
+    )
     Text("설정", style = MaterialTheme.typography.headlineLarge)
     PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -560,19 +610,21 @@ private fun SettingsContent(
             )
         }
         if (compactActions) {
-            Column(
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(PetSpacing.small),
+                horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
             ) {
                 PetPrimaryButton(
                     label = "프로필 관리",
                     onClick = onManage,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.weight(1.8f),
                 )
                 PetSecondaryButton(
-                    label = "반려동물 추가",
+                    label = "추가",
                     onClick = onAdd,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.weight(1f).semantics {
+                        contentDescription = "반려동물 추가"
+                    },
                 )
             }
         } else {

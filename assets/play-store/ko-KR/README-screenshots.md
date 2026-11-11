@@ -1,12 +1,12 @@
-# PetWorld — Google Play 한국어 설명 이미지 (STORE-02)
+# PetWorld UI-10-H — Google Play 실제 Android 설명 이미지
 
-- 앱: `com.haebi.petworld` / `ko-KR` / 휴대전화 설명 이미지 8장.
-- 1350×2400 RGB PNG, 알파 채널 없음, 순서 01~08.
-- 실제 Android API 35 Pixel 6 에뮬레이터에서 `PetWorldScreenCaptureTest`를 통과한 라이트 테마 캡처를 사용했습니다.
-- 출처: GitHub Actions run 42780690910, artifact 13746311772, UI-09 소스 `e3871fe00c9f986515daf97a7345d490d185aa34`.
-- 실제 캡처 화면은 비율 유지 축소만 수행했습니다. 텍스트·버튼·아이콘 등 앱 UI 픽셀을 생성하거나 편집하지 않았습니다.
-- 화면의 반려동물 이름과 기록은 테스트용 가상 데이터(나비·초코)이며 실제 사용자 데이터가 아닙니다.
-- 외부 설명 문구는 현재 구현된 홈·식사·배변·기록 목록·체중·통계·암호화 백업 UI만 설명합니다.
-- `screenshots-manifest.json`에는 원본·최종 SHA-256, 순서, 파일 크기 및 캡처 파일명을 기록했습니다.
-- 이번 작업은 **스토어 이미지 준비만** 수행합니다. 기존 AAB, 앱 버전, 서명 키, Play 트랙이나 콘솔 게시 자료를 변경하지 않습니다.
-- `main` 변경에서 Android CI 성공 시 Play internal 자동 배포가 실행될 수 있으므로, 이미지 변경 PR은 이미지 전용 등록 경로가 준비되기 전까지 병합하지 않습니다.
+- 대상: com.haebi.petworld / ko-KR, 1350×2400 RGB PNG 8장.
+- 실제 Android API 35 Pixel 6 에뮬레이터의 라이트 화면만 활용했습니다.
+- 화면 UI를 변경하거나 생성하지 않고 비율 유지 축소와 한국어 제목/중성 회색 여백만 추가했습니다.
+- 테스트용 가상 반려동물 나비/초코 데이터입니다.
+- 원본 커밋: c05bbfdd99e80c8ce498383f16548ff19c3a7191.
+- Android 화면 캡처 run: https://github.com/hebi10/PetWorld/actions/runs/42982598371
+- 원본 artifact ID: 13838288713; SHA-256: sha256:91cc7deb2e5cb0a07b1862b8d17c0b0272bd38fe7a0e3c1ec50a799e357d0b05.
+- 원본/최종 SHA-256, 용량, 순서와 화면 이름은 screenshots-manifest.json을 참조합니다.
+- 기존 앱 아이콘·대표 이미지·AAB/서명·테스트 트랙은 변경하지 않았습니다.
+- 이미지 생성과 Play API 업로드/심사/게시 상태는 서로 다릅니다.
