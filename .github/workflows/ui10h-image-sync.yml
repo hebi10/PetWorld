@@ -1,0 +1,150 @@
+name: PetWorld UI-10-H Verified Screenshot Sync
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ui10h-image-sync.yml'
+      - 'scripts/play/sync_ui10h_screenshots.py'
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: petworld-ui10h-screenshots-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  synchronize:
+    if: >-
+      github.repository == 'hebi10/PetWorld' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'release/ui10h-safe-image-sync-20261111'
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - name: Checkout exact head of same-repo PR
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Validate snapshot identity
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$GITHUB_REPOSITORY" = "hebi10/PetWorld"
+          test -n "$SOURCE_SHA"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+
+      - name: Install Android platform
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -path '*/bin/sdkmanager' -type f | head -n 1)"
+          test -n "$SDK_MANAGER"
+          "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install "platforms;android-37.0" "build-tools;36.0.0"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+
+      - name: Build debug app and UI instrumentation APK
+        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+
+      - name: Enable KVM
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+
+      - name: Capture exact-source Android UI in light and dark
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: bash .github/scripts/capture-petworld-ui.sh
+
+      - name: Preserve raw Android capture source
+        id: raw_source
+        uses: actions/upload-artifact@v4
+        with:
+          name: petworld-ui10h-raw-android-${{ github.run_id }}
+          path: qa/captures/
+          retention-days: 90
+          if-no-files-found: error
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install CI-only precise screenshot renderer and Korean fonts
+        run: |
+          python -m pip install --disable-pip-version-check Pillow==11.3.0
+          if [ ! -f /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq fonts-noto-cjk
+          fi
+
+      - name: Generate eight source-faithful Korean Play screenshots
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          SOURCE_ARTIFACT_ID: ${{ steps.raw_source.outputs.artifact-id }}
+          SOURCE_ARTIFACT_DIGEST: ${{ steps.raw_source.outputs.artifact-digest }}
+        run: |
+          python scripts/play/sync_ui10h_screenshots.py \
+            --source-sha "$SOURCE_SHA" --run-id "$GITHUB_RUN_ID" \
+            --artifact-id "$SOURCE_ARTIFACT_ID" \
+            --artifact-digest "$SOURCE_ARTIFACT_DIGEST"
+
+      - name: Validate all ten assets and upload safeguards offline
+        run: |
+          python -m unittest discover -s scripts/play/tests -p 'test_listing_images.py' -v
+          python -m unittest discover -s scripts/play/tests -p 'test_source.py' -v
+          python scripts/play/listing_images.py --mode check --report output/ui10h-listing-check.json
+
+      - name: Commit verified images to this PR head only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          TARGET_REF: release/ui10h-safe-image-sync-20261111
+        run: |
+          set -euo pipefail
+          latest="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$TARGET_REF" --jq .object.sha)"
+          test "$latest" = "$SOURCE_SHA"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            assets/play-store/ko-KR/01-home.png \
+            assets/play-store/ko-KR/02-quick-record.png \
+            assets/play-store/ko-KR/03-food.png \
+            assets/play-store/ko-KR/04-elimination.png \
+            assets/play-store/ko-KR/05-records.png \
+            assets/play-store/ko-KR/06-health.png \
+            assets/play-store/ko-KR/07-statistics.png \
+            assets/play-store/ko-KR/08-backup.png \
+            assets/play-store/ko-KR/screenshots-manifest.json \
+            assets/play-store/ko-KR/README-screenshots.md \
+            scripts/play/listing_images.py
+          git diff --cached --check
+          git diff --cached --stat
+          test -n "$(git diff --cached --name-only)"
+          git commit -m "UI-10-H sync verified Android screenshots into Play listing assets"
+          git push origin "HEAD:refs/heads/$TARGET_REF"
+
+      - name: Preserve offline validation result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: petworld-ui10h-validated-listing-${{ github.run_id }}
+          path: output/ui10h-listing-check.json
+          retention-days: 30
+          if-no-files-found: ignore
