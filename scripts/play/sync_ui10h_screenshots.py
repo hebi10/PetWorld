@@ -81,7 +81,7 @@ def main():
 
     require(re.fullmatch("[a-f0-9]{40}", args.source_sha), "Invalid Android source SHA")
     require(args.run_id > 0 and args.artifact_id > 0, "Missing screenshot artifact")
-    require(re.fullmatch("sha256:[a-f0-9]{64}", args.artifact_digest), "Missing capture digest")
+    require(re.fullmatch("(?:sha256:)?[a-f0-9]{64}", args.artifact_digest), "Missing capture digest")
     log = (CAPTURE_DIR / "instrumentation.log").read_text(encoding="utf-8", errors="replace")
     require("OK (1 test)" in log and "FAILURES!!!" not in log, "Real UI capture test failed")
 
@@ -114,7 +114,7 @@ def main():
     meta["source"] = {
         "repo": "hebi10/PetWorld", "commit": args.source_sha,
         "workflow_run": args.run_id, "artifact_id": args.artifact_id,
-        "artifact_sha256": args.artifact_digest[7:],
+        "artifact_sha256": args.artifact_digest.removeprefix("sha256:"),
         "test": "OK (1 test)",
         "test_fixture": "Synthetic examples: 나비/초코; not private user data",
     }
