@@ -13,3 +13,6 @@ object PetSpacing {
     val contentMaxWidth = 760.dp
     val careFormMaxWidth = 520.dp
 }
+
+fun useCompactPetLayout(screenWidthDp: Int, fontScale: Float): Boolean =
+    screenWidthDp < 400 || fontScale >= 1.3f
