@@ -36,6 +36,9 @@ UPLOAD_GROUPS = (('icon', (ICON,)), ('featureGraphic', (FEATURE,)),
                  ('phoneScreenshots', SCREENSHOTS))
 APPROVAL = 'PETWORLD-KO-LISTING-10'
 ONE_TIME_MARKER = '[petworld-store04-20261111]'
+UI10H_MARKER = '[petworld-ui10h-20261111]'
+CAPTURE_SOURCE_RUN_ID = 42780690910
+CAPTURE_SOURCE_COMMIT = 'e3871fe00c9f986515daf97a7345d490d185aa34'
 PNG_SIGNATURE = b'\x89PNG\r\n\x1a\n'
 MAX_SCREEN_BYTES = 8 * 1024 * 1024
 MAX_FEATURE_BYTES = 15 * 1024 * 1024
@@ -146,8 +149,8 @@ def validate(directory=ASSET_DIR):
     require(screen_manifest.get('package') == PACKAGE and screen_manifest.get('locale') == LOCALE,
             'STORE-02 manifest points to a different app/locale')
     source = screen_manifest.get('source', {})
-    require(source.get('repo') == REPO and source.get('workflow_run') == 42780690910 and
-            source.get('commit') == 'e3871fe00c9f986515daf97a7345d490d185aa34',
+    require(source.get('repo') == REPO and source.get('workflow_run') == CAPTURE_SOURCE_RUN_ID and
+            source.get('commit') == CAPTURE_SOURCE_COMMIT,
             'Unapproved Android capture provenance')
     approved = {ICON, FEATURE, *SCREENSHOTS, 'play-icon-dark-preview.png'}
     unexpected = sorted(p.name for p in directory.glob('*.png') if p.name not in approved)
@@ -223,8 +226,9 @@ def assert_upload_authorization(env, confirmation):
             commit.get('id') == sha,
             'Listing push source is not the exact trusted main commit')
     subject = commit.get('message', '').splitlines()[0]
-    require(re.search(r'(?<!\S)\[petworld-store04-20261111\](?!\S)', subject) is not None,
-            'One-time listing upload marker is missing')
+    require(any(re.search(r'(?<!\S)' + re.escape(marker) + r'(?!\S)', subject)
+                for marker in (ONE_TIME_MARKER, UI10H_MARKER)),
+            'Approved listing-only upload marker is missing')
 
 
 class PlayClient:
