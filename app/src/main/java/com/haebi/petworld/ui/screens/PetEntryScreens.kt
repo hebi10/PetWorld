@@ -32,6 +32,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
@@ -150,6 +151,9 @@ fun PetProfileEditor(
     var removePhoto by rememberSaveable(existing?.id) { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var nameWasFocused by remember { mutableStateOf(false) }
+    var nameWasBlurred by rememberSaveable(existing?.id) { mutableStateOf(false) }
+    var attemptedSave by rememberSaveable(existing?.id) { mutableStateOf(false) }
     var confirmExit by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -176,6 +180,7 @@ fun PetProfileEditor(
         newPhotoUri = photoUri,
         removePhoto = removePhoto,
     )
+    val nameError = if (nameWasBlurred || attemptedSave) PetValidation.nameError(name) else null
     val isDirty = photoUri != null || removePhoto ||
         name != existing?.name.orEmpty() || breed != existing?.breed.orEmpty() ||
         species != (existing?.species ?: PetSpecies.CAT) ||
@@ -240,8 +245,14 @@ fun PetProfileEditor(
             value = name, onValueChange = { name = it.take(41) },
             label = { Text("이름 (필수)") },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            isError = name.isBlank(),
+            modifier = Modifier.fillMaxWidth().onFocusChanged { focus ->
+                if (nameWasFocused && !focus.isFocused) nameWasBlurred = true
+                nameWasFocused = focus.isFocused
+            },
+            isError = nameError != null,
+            supportingText = if (nameError != null) {
+                { Text(nameError, color = MaterialTheme.colorScheme.error) }
+            } else null,
             enabled = !isSaving,
         )
         SelectOptions(
@@ -311,9 +322,10 @@ fun PetProfileEditor(
             modifier = Modifier.fillMaxWidth(),
             enabled = !isSaving,
             onClick = {
+                attemptedSave = true
                 val validation = PetValidation.error(draft)
                 if (validation != null) {
-                    error = validation
+                    error = validation.takeUnless { it == PetValidation.nameError(name) }
                 } else {
                     error = null
                     isSaving = true
@@ -329,7 +341,7 @@ fun PetProfileEditor(
             },
         )
         Text(
-            "이 정보는 기기에만 저장됩니다. 일상 기록과 알림은 다음 단계에서 연결됩니다.",
+            "프로필과 일상 기록은 기기에 저장됩니다. 알림 기능은 아직 제공되지 않습니다.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
