@@ -408,7 +408,7 @@ fun PetWorldApp(
                                 }
                             }
                         }
-                    } else -> Column(
+                    } else Column(
                         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
                             .padding(PetSpacing.large),
                         verticalArrangement = Arrangement.spacedBy(
