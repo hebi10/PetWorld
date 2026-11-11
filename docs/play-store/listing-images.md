@@ -45,3 +45,14 @@ python3 scripts/play/listing_images.py --mode check --report output/petworld-lis
 현재 `main`의 Android CI 성공이 내부 테스트 자동 배포로 연결될 수 있습니다. 본 PR은 STORE-01 → STORE-02 → STORE-03 순서의 **stacked Draft PR**로 유지합니다. 관련 PR을 `main`에 병합하기 전에 기존 Play 바이너리 자동 배포의 변경 감지·승인 경계를 별도로 확인해야 합니다. **이미지 전용 PR도 무심코 병합하면 내부 테스트 자동 배포가 실행될 가능성이 있습니다.**
 
 Google Play 공식 API 참고: https://developers.google.com/android-publisher/api-ref/rest/v3/edits.images
+
+## STORE-04 — 실제 등록을 위한 일회성 승인 경로 (2026-11-11)
+
+- 이번 작업의 사용자 승인 범위는 `com.haebi.petworld` / `ko-KR`의 앱 아이콘 1장, 대표 이미지 1장, 설명 이미지 8장에 한정합니다.
+- 기본 수동 실행은 기존대로 `workflow_dispatch`의 `check`와 `upload`로 유지합니다.
+- ChatGPT 연결 GitHub 작업에서는 GitHub Actions 수동 dispatch 권한이 제공되지 않으므로, 이번에 한하여 검증된 **단 한 번의 main 병합 커밋 제목**에 `[petworld-store04-20261111]`가 있는 경우에만 이미지 전용 업로드 job을 수행하도록 별도 허용합니다.
+- 해당 `push` 이벤트는 저장소·브랜치·커밋 SHA·수정된 헤드 커밋 메시지를 재검증하고, `PLAY_LISTING_APPLY`와 10개 이미지를 다시 확인합니다. 해당 마커가 없는 향후 main push는 이미지를 업로드하지 않습니다.
+- 바이너리 배포 방지: 동일 마커가 포함된 커밋에서 `Play internal release`의 source job을 실행하지 않고, `scripts/play/source.py`도 해당 커밋을 바이너리 자동 배포 대상으로 거부합니다. **마커 없는 일반 main 변경의 기존 Android 내부 테스트 자동 배포 정책은 유지**합니다.
+- 마지막 검증은 CI 결과(10개 PNG, 테스트, source gate, Android CI)를 모두 확인한 이후 병합하며, 이미지를 업로드하지 않은 경우 API 성공이라고 표현하지 않습니다.
+- 임의 재실행·재커밋으로 중복 업로드하지 않습니다. 실패 또는 결과 불명 시 Google Play API와 Console 상태를 먼저 확인합니다.
+- Google Play API 반영과 실제 심사 승인·테스터 설치 상태는 다릅니다.
