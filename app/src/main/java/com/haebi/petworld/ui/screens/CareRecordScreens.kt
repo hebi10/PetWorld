@@ -461,7 +461,7 @@ fun CareStatisticsScreen(
     }
 
     val summarySection: @Composable () -> Unit = {
-    Text("생활 기록 요약", style = MaterialTheme.typography.titleLarge)
+        Text("생활 기록 요약", style = MaterialTheme.typography.titleLarge)
         if (twoColumns) {
             summaryTypes.chunked(2).forEach { pair ->
                 Row(
