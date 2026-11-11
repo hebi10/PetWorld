@@ -160,6 +160,11 @@ class ListingTests(unittest.TestCase):
                'GITHUB_EVENT_PATH': str(path), 'PLAY_LISTING_APPLY': 'true',
                'PLAY_ACCESS_TOKEN': 'fake'}
         listing.assert_upload_authorization(env, listing.APPROVAL)
+        event['head_commit']['message'] = 'UI-10-H images [petworld-ui10h-20261111]'
+        path.write_text(json.dumps(event), encoding='utf-8')
+        listing.assert_upload_authorization(env, listing.APPROVAL)
+        event['head_commit']['message'] = 'STORE-04 [petworld-store04-20261111]'
+        path.write_text(json.dumps(event), encoding='utf-8')
         for changed in (
             {'after': 'b'*40}, {'ref': 'refs/heads/other'},
             {'repository': {'full_name': 'attacker/PetWorld'}},
