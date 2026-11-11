@@ -1,0 +1,37 @@
+{
+  "project": "PetWorld",
+  "package": "com.haebi.petworld",
+  "locale": "ko-KR",
+  "date": "2026-11-11",
+  "status": "ready for GitHub/Google Play listing asset review; not yet uploaded to Play",
+  "brand": "Pet Journal Mono — existing dog/cat/paw mark preserved",
+  "files": [
+    {
+      "path": "play-icon.png",
+      "width": 512,
+      "height": 512,
+      "mode": "RGBA",
+      "bytes": 44600,
+      "sha256": "85c0d8f320ee9cd7a06a750a0334586be7e949f708c9771a82abfa69ca681a86",
+      "source": "Google Drive 02_PetWorld_런처_라이트_512.png (02_PetWorld_런처_라이트_512.png)"
+    },
+    {
+      "path": "feature-graphic.png",
+      "width": 1024,
+      "height": 500,
+      "mode": "RGB",
+      "bytes": 56783,
+      "sha256": "58bdc500c1b901f20d193ecb09ff9d61035de9fef206b32491eb1090dce9c4e8",
+      "source": "Google Drive PetWorld_Play_Feature.png"
+    },
+    {
+      "path": "play-icon-dark-preview.png",
+      "width": 512,
+      "height": 512,
+      "mode": "RGBA",
+      "bytes": 44120,
+      "sha256": "f308ec7c8fac45d9d6c1f77b9022c62daf488d43b5484e74d1cf5ab9bec31b4f",
+      "source": "Google Drive 03_PetWorld_런처_다크_512.png (03_PetWorld_런처_다크_512.png)"
+    }
+  ]
+}
