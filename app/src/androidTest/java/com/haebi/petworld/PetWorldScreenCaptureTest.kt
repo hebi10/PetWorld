@@ -90,6 +90,10 @@ class PetWorldScreenCaptureTest {
                 mustSee("나비의 하루")
                 assertSystemBarState(theme, it)
                 shot(folder, "S03-home")
+                if (context.resources.configuration.fontScale >= 1.3f) {
+                    mustSee("나이 미상")
+                    shot(folder, "UI10C-home-compact")
+                }
                 if (ensureVisible("최근 기록")) {
                     scrollToTop()
                     mustSee("나비의 하루")
@@ -172,6 +176,10 @@ class PetWorldScreenCaptureTest {
                 shot(folder, "S14-statistics")
                 tap("더보기")
                 mustSee("데이터 관리")
+                if (context.resources.configuration.fontScale >= 1.3f) {
+                    mustSee("추가")
+                    shot(folder, "UI10C-settings-compact")
+                }
                 shot(folder, "S30-settings")
                 tap("암호화 백업 생성")
                 mustSee("백업 암호 설정")
@@ -193,6 +201,10 @@ class PetWorldScreenCaptureTest {
                 openPetSwitcher(folder, "S02-profile-edit")
                 tap("전체 프로필 관리")
                 mustSee("프로필 관리")
+                if (context.resources.configuration.fontScale >= 1.3f) {
+                    mustSee("고양이 · 사용 중")
+                    shot(folder, "UI10C-manager-compact")
+                }
                 shot(folder, "S16-profile-manager")
                 tap("영구 삭제")
                 mustSee("프로필을 삭제하시겠습니까?")
