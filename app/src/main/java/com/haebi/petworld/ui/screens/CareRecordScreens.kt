@@ -383,6 +383,11 @@ fun CareStatisticsScreen(
     onPeriodChange: (CareRange) -> Unit,
 ) {
     val selected = records.filter { period.accepts(it) }
+    val weights = weightTrendData(selected)
+    val summaryTypes = CareType.entries.filter { it != CareType.WEIGHT }
+    val twoColumns = LocalConfiguration.current.screenWidthDp >= 360 &&
+        LocalDensity.current.fontScale < 1.3f
+
     Text("${petName}의 기록 통계", style = MaterialTheme.typography.headlineLarge)
     Row(
         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -396,22 +401,85 @@ fun CareStatisticsScreen(
             )
         }
     }
-    CareType.entries.forEach { type ->
-        PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
-            Text(type.label, style = MaterialTheme.typography.titleMedium)
+
+    PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
+        Text("체중 변화", style = MaterialTheme.typography.titleLarge)
+        val latest = weights.latest
+        if (latest == null) {
             Text(
-                summarizeCare(type, selected),
-                style = MaterialTheme.typography.bodyLarge,
-            )
-            Text(
-                "${selected.count { it.type == type.name }}건의 기록",
+                "선택한 기간에 체중 기록이 없습니다.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (type == CareType.WEIGHT) {
-                val weights = selected.filter { it.type == CareType.WEIGHT.name && it.weightGrams != null }
-                WeightTrend(weights)
+            Text(
+                "체중 추이는 측정값 2개 이상부터 표시됩니다.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            Text(
+                "최근 측정 ${milliText(latest.weightGrams!!)}kg",
+                style = MaterialTheme.typography.titleLarge,
+            )
+            Text(
+                "${latest.displayDateTime()} · 측정 ${weights.entries.size}건",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (weights.entries.size >= 2) {
+                WeightTrend(weights.entries)
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        weightAxisDate(weights.entries.first()),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        weightAxisDate(weights.entries.last()),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.End,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            } else {
+                Text(
+                    "체중 추이는 측정값 2개 이상부터 표시됩니다.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
+            Text(
+                "최저 ${milliText(weights.minimumGrams!!)}kg · 최고 ${milliText(weights.maximumGrams!!)}kg",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
+
+    Text("생활 기록 요약", style = MaterialTheme.typography.titleLarge)
+    if (twoColumns) {
+        summaryTypes.chunked(2).forEach { pair ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+            ) {
+                pair.forEach { type ->
+                    CareStatisticsSummaryCard(
+                        type = type,
+                        records = selected,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+    } else {
+        summaryTypes.forEach { type ->
+            CareStatisticsSummaryCard(
+                type = type,
+                records = selected,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
     Text(
@@ -422,37 +490,51 @@ fun CareStatisticsScreen(
 }
 
 @Composable
-private fun WeightTrend(weights: List<CareEntity>) {
-    val sorted = weights.sortedBy { it.occurredAt }
-    if (sorted.size < 2) {
+private fun CareStatisticsSummaryCard(
+    type: CareType,
+    records: List<CareEntity>,
+    modifier: Modifier,
+) {
+    PetSurfaceCard(modifier = modifier) {
+        Text(type.label, style = MaterialTheme.typography.titleMedium)
+        Text(summarizeCare(type, records), style = MaterialTheme.typography.bodyMedium)
         Text(
-            "체중 추이는 측정값 2개 이상부터 표시됩니다.",
-            style = MaterialTheme.typography.bodyMedium,
+            "${records.count { it.type == type.name }}건의 기록",
+            style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        return
     }
-    val values = sorted.mapNotNull { it.weightGrams }
-    val min = values.minOrNull() ?: return
-    val max = values.maxOrNull() ?: return
+}
+
+@Composable
+private fun WeightTrend(weights: List<CareEntity>) {
+    val first = weights.first()
+    val last = weights.last()
+    val lowest = weights.minOf { it.weightGrams!! }
+    val highest = weights.maxOf { it.weightGrams!! }
+    val extent = (highest - lowest).coerceAtLeast(100L).toFloat() * 0.2f
+    val bottom = (lowest.toFloat() - extent).coerceAtLeast(0f)
+    val top = highest.toFloat() + extent
+    val height = (top - bottom).coerceAtLeast(1f)
+    val timeSpan = last.occurredAt - first.occurredAt
     val lineColor = MaterialTheme.colorScheme.onSurface
-    val top = max + (max - min).coerceAtLeast(100L) / 5
-    val bottom = min - (max - min).coerceAtLeast(100L) / 5
-    val denominator = (top - bottom).coerceAtLeast(1L).toFloat()
+
     Canvas(modifier = Modifier.fillMaxWidth().height(120.dp)) {
-        val vertices = values.mapIndexed { idx, grams ->
-            val x = idx.toFloat() * size.width / (values.size - 1)
-            val y = size.height - ((grams - bottom).toFloat() / denominator) * size.height
-            Offset(x, y)
+        val vertices = weights.mapIndexed { index, record ->
+            val fraction = if (timeSpan > 0L) {
+                ((record.occurredAt - first.occurredAt).toDouble() / timeSpan).toFloat()
+            } else {
+                index.toFloat() / (weights.size - 1)
+            }
+            val x = fraction.coerceIn(0f, 1f) * size.width
+            val y = size.height - ((record.weightGrams!!.toFloat() - bottom) / height) * size.height
+            Offset(x, y.coerceIn(0f, size.height))
         }
-        vertices.zipWithNext { first, second ->
-            drawLine(lineColor, first, second, strokeWidth = 3.dp.toPx(),
-                cap = StrokeCap.Round)
+        vertices.zipWithNext { from, to ->
+            drawLine(lineColor, from, to, strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
         }
-        vertices.forEach { p -> drawCircle(lineColor, radius = 3.dp.toPx(), center = p) }
+        vertices.forEach { point ->
+            drawCircle(lineColor, radius = 3.dp.toPx(), center = point)
+        }
     }
-    Text(
-        "처음 ${milliText(values.first())}kg → 최근 ${milliText(values.last())}kg",
-        style = MaterialTheme.typography.bodyMedium,
-    )
 }
