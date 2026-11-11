@@ -19,7 +19,8 @@ jobs:
     if: >-
       github.repository == 'hebi10/PetWorld' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.head.ref == 'release/ui10h-safe-image-sync-20261111'
+      github.event.pull_request.head.ref == 'release/ui10h-safe-image-sync-20261111' &&
+      github.event.pull_request.head.sha == '3e0918e813f9a3bc7fbf7f229837df856bb73b86'
     runs-on: ubuntu-latest
     timeout-minutes: 65
     steps:
