@@ -404,7 +404,7 @@ fun CareStatisticsScreen(
     }
 
     val weightSection: @Composable () -> Unit = {
-    PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
+        PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
             Text("체중 변화", style = MaterialTheme.typography.titleLarge)
             val latest = weights.latest
             if (latest == null) {
