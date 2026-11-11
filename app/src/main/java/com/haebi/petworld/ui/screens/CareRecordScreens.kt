@@ -68,11 +68,15 @@ fun CareRange.accepts(record: CareEntity, today: LocalDate = LocalDate.now()): B
     return date >= start && date <= today
 }
 
-fun CareEntity.displayDateTime(): String {
+internal fun CareEntity.displayRecordTime(instantMillis: Long): String {
     val zone = runCatching { ZoneId.of(timezoneId) }.getOrDefault(ZoneId.systemDefault())
-    return Instant.ofEpochMilli(occurredAt).atZone(zone)
+    return Instant.ofEpochMilli(instantMillis).atZone(zone)
         .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.KOREAN))
 }
+
+fun CareEntity.displayDateTime(): String = displayRecordTime(occurredAt)
+
+internal fun CareEntity.hasBeenEdited(): Boolean = updatedAt > createdAt
 
 @Composable
 fun CareRecordList(
@@ -288,7 +292,11 @@ fun CareRecordDetail(
     val scope = rememberCoroutineScope()
     Text("${CareType.valueOf(record.type).label} 기록", style = MaterialTheme.typography.headlineMedium)
     PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
-        Text(record.displayDateTime(), style = MaterialTheme.typography.bodyMedium)
+        Text(
+            "발생 시각 · ${record.displayDateTime()}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Text(record.displayValue(), style = MaterialTheme.typography.titleLarge)
         if (record.photoFile != null) {
             Text("관찰 사진", style = MaterialTheme.typography.labelLarge)
@@ -299,6 +307,19 @@ fun CareRecordDetail(
             Text("관찰 메모", style = MaterialTheme.typography.labelLarge)
             Text(record.note, style = MaterialTheme.typography.bodyLarge)
         }
+        HorizontalDivider()
+        Text(
+            "작성 시각 · ${record.displayRecordTime(record.createdAt)}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            if (record.hasBeenEdited())
+                "수정 시각 · ${record.displayRecordTime(record.updatedAt)}"
+            else "수정 시각 · 수정 내역 없음",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
     if (error != null) {
         Text(error.orEmpty(), color = MaterialTheme.colorScheme.error,
