@@ -206,7 +206,7 @@ def assert_upload_authorization(env, confirmation):
     require(bool(env.get('PLAY_ACCESS_TOKEN')), 'PLAY_ACCESS_TOKEN is required')
     event_name = env.get('GITHUB_EVENT_NAME')
     if event_name == 'workflow_dispatch':
-        return
+        return False
     require(event_name == 'push', 'Listing upload requires a manual or trusted one-time main push')
     # The one-time approved main push may trigger upload exactly once. GitHub
     # controls the event payload outside the repository and workflow workspace.
@@ -226,9 +226,11 @@ def assert_upload_authorization(env, confirmation):
             commit.get('id') == sha,
             'Listing push source is not the exact trusted main commit')
     subject = commit.get('message', '').splitlines()[0]
-    require(any(re.search(r'(?<!\S)' + re.escape(marker) + r'(?!\S)', subject)
-                for marker in (ONE_TIME_MARKER, UI10H_MARKER)),
+    original_marker = re.search(r'(?<!\S)' + re.escape(ONE_TIME_MARKER) + r'(?!\S)', subject)
+    screenshot_marker = re.search(r'(?<!\S)' + re.escape(UI10H_MARKER) + r'(?!\S)', subject)
+    require(bool(original_marker or screenshot_marker),
             'Approved listing-only upload marker is missing')
+    return bool(screenshot_marker)
 
 
 class PlayClient:
@@ -277,16 +279,23 @@ def exact_image_set(images, expected):
     return True
 
 
-def upload(directory, manifest, client):
+def upload(directory, manifest, client, screenshots_only=False):
     """Single image-only edit; never touches tracks, AAB, listing text, or testers."""
     editor_id, committed = None, False
-    expected = {kind: [] for kind, _ in UPLOAD_GROUPS}
+    groups = tuple((kind, names) for kind, names in UPLOAD_GROUPS
+                   if not screenshots_only or kind == 'phoneScreenshots')
+    expected = {kind: [] for kind, _ in groups}
+    preserved = {}
     by_name = {item['name']: item for item in manifest}
     try:
         start = client.request('POST', '/edits', {})
         editor_id = start.get('id')
         require(editor_id and re.fullmatch(r'[A-Za-z0-9._-]+', editor_id), 'Google Play edit ID invalid')
-        for kind, names in UPLOAD_GROUPS:
+        if screenshots_only:
+            for kind in ('icon', 'featureGraphic'):
+                path = f'/edits/{editor_id}/listings/{LOCALE}/{kind}'
+                preserved[kind] = client.request('GET', path).get('images', [])
+        for kind, names in groups:
             url = f'/edits/{editor_id}/listings/{LOCALE}/{kind}'
             client.request('DELETE', url)
             for filename in names:
@@ -316,11 +325,16 @@ def upload(directory, manifest, client):
     require(verify_id and re.fullmatch(r'[A-Za-z0-9._-]+', verify_id),
             'Commit accepted; fresh verification edit unavailable')
     try:
-        for kind, _ in UPLOAD_GROUPS:
+        for kind, _ in groups:
             path = f'/edits/{verify_id}/listings/{LOCALE}/{kind}'
             image_set = client.request('GET', path)
             require(exact_image_set(image_set.get('images', []), expected[kind]),
                     f'Commit accepted but fresh {kind} readback differs; inspect Play Console')
+        for kind, original_images in preserved.items():
+            path = f'/edits/{verify_id}/listings/{LOCALE}/{kind}'
+            current_images = client.request('GET', path).get('images', [])
+            require(current_images == original_images,
+                    f'Play committed but untouched {kind} images changed')
     finally:
         client.request('DELETE', f'/edits/{verify_id}')
     return {'api_committed': True, 'fresh_readback': True, 'scope': list(expected),
@@ -340,8 +354,9 @@ def main(argv=None, env=None, client_factory=PlayClient):
               'validated': len(assets), 'images': assets, 'api_committed': False,
               'fresh_readback': False}
     if args.mode == 'upload':
-        assert_upload_authorization(env, args.confirm)
-        result = upload(args.directory, assets, client_factory(env['PLAY_ACCESS_TOKEN']))
+        screenshots_only = assert_upload_authorization(env, args.confirm)
+        result = upload(args.directory, assets, client_factory(env['PLAY_ACCESS_TOKEN']),
+                        screenshots_only=screenshots_only)
         report.update(result)
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)

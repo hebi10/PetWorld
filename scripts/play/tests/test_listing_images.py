@@ -159,10 +159,10 @@ class ListingTests(unittest.TestCase):
                'GITHUB_REF': 'refs/heads/main', 'GITHUB_SHA': sha,
                'GITHUB_EVENT_PATH': str(path), 'PLAY_LISTING_APPLY': 'true',
                'PLAY_ACCESS_TOKEN': 'fake'}
-        listing.assert_upload_authorization(env, listing.APPROVAL)
+        self.assertFalse(listing.assert_upload_authorization(env, listing.APPROVAL))
         event['head_commit']['message'] = 'UI-10-H images [petworld-ui10h-20261111]'
         path.write_text(json.dumps(event), encoding='utf-8')
-        listing.assert_upload_authorization(env, listing.APPROVAL)
+        self.assertTrue(listing.assert_upload_authorization(env, listing.APPROVAL))
         event['head_commit']['message'] = 'STORE-04 [petworld-store04-20261111]'
         path.write_text(json.dumps(event), encoding='utf-8')
         for changed in (
@@ -189,6 +189,20 @@ class ListingTests(unittest.TestCase):
         self.assertEqual(fake.edits,{})
         self.assertFalse(any('/tracks/' in path or '/bundles' in path or '/apks' in path
                              for _,path,_ in fake.calls))
+
+    def test_ui10h_upload_preserves_icon_and_feature_graphic(self):
+        fake = FakePlay()
+        fake.live['icon'] = [{'id': 'existing-icon', 'sha256': 'a' * 64}]
+        fake.live['featureGraphic'] = [{'id': 'existing-graphic', 'sha256': 'b' * 64}]
+        result = listing.upload(self.folder, listing.validate(self.folder), fake,
+                                screenshots_only=True)
+        self.assertEqual(result['image_count'], 8)
+        self.assertEqual(result['scope'], ['phoneScreenshots'])
+        self.assertEqual(fake.live['icon'], [{'id': 'existing-icon', 'sha256': 'a' * 64}])
+        self.assertEqual(fake.live['featureGraphic'], [{'id': 'existing-graphic', 'sha256': 'b' * 64}])
+        self.assertFalse(any(method == 'DELETE' and
+                             (path.endswith('/icon') or path.endswith('/featureGraphic'))
+                             for method, path, _ in fake.calls))
 
     def test_mocked_readback_mismatch_rejected(self):
         fake=FakePlay(fail_readback=True)
