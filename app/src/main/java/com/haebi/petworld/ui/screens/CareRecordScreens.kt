@@ -405,93 +405,92 @@ fun CareStatisticsScreen(
 
     val weightSection: @Composable () -> Unit = {
     PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
-        Text("체중 변화", style = MaterialTheme.typography.titleLarge)
-        val latest = weights.latest
-        if (latest == null) {
-            Text(
-                "선택한 기간에 체중 기록이 없습니다.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                "체중 추이는 측정값 2개 이상부터 표시됩니다.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        } else {
-            Text(
-                "최근 측정 ${milliText(latest.weightGrams!!)}kg",
-                style = MaterialTheme.typography.titleLarge,
-            )
-            Text(
-                "${latest.displayDateTime()} · 측정 ${weights.entries.size}건",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (weights.entries.size >= 2) {
-                WeightTrend(weights.entries)
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        weightAxisDate(weights.entries.first()),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        weightAxisDate(weights.entries.last()),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.End,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            } else {
+            Text("체중 변화", style = MaterialTheme.typography.titleLarge)
+            val latest = weights.latest
+            if (latest == null) {
+                Text(
+                    "선택한 기간에 체중 기록이 없습니다.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Text(
                     "체중 추이는 측정값 2개 이상부터 표시됩니다.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-            Text(
-                "최저 ${milliText(weights.minimumGrams!!)}kg · 최고 ${milliText(weights.maximumGrams!!)}kg",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
-    }
-    }
-    val summarySection: @Composable () -> Unit = {
-
-
-    Text("생활 기록 요약", style = MaterialTheme.typography.titleLarge)
-    if (twoColumns) {
-        summaryTypes.chunked(2).forEach { pair ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
-            ) {
-                pair.forEach { type ->
-                    CareStatisticsSummaryCard(
-                        type = type,
-                        records = selected,
-                        modifier = Modifier.weight(1f),
+            } else {
+                Text(
+                    "최근 측정 ${milliText(latest.weightGrams!!)}kg",
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                Text(
+                    "${latest.displayDateTime()} · 측정 ${weights.entries.size}건",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (weights.entries.size >= 2) {
+                    WeightTrend(weights.entries)
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            weightAxisDate(weights.entries.first()),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            weightAxisDate(weights.entries.last()),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.End,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                } else {
+                    Text(
+                        "체중 추이는 측정값 2개 이상부터 표시됩니다.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                Text(
+                    "최저 ${milliText(weights.minimumGrams!!)}kg · 최고 ${milliText(weights.maximumGrams!!)}kg",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
         }
-    } else {
-        summaryTypes.forEach { type ->
-            CareStatisticsSummaryCard(
-                type = type,
-                records = selected,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
     }
-    Text(
-        "미측정값과 기록이 없는 날짜는 0으로 계산하지 않습니다. 입력된 자료의 요약이며 건강 진단이 아닙니다.",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+
+    val summarySection: @Composable () -> Unit = {
+    Text("생활 기록 요약", style = MaterialTheme.typography.titleLarge)
+        if (twoColumns) {
+            summaryTypes.chunked(2).forEach { pair ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+                ) {
+                    pair.forEach { type ->
+                        CareStatisticsSummaryCard(
+                            type = type,
+                            records = selected,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            }
+        } else {
+            summaryTypes.forEach { type ->
+                CareStatisticsSummaryCard(
+                    type = type,
+                    records = selected,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+        Text(
+            "미측정값과 기록이 없는 날짜는 0으로 계산하지 않습니다. 입력된 자료의 요약이며 건강 진단이 아닙니다.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 
     if (expandedLayout) {
