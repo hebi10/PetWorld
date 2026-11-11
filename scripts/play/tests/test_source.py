@@ -35,6 +35,9 @@ class SourceTests(unittest.TestCase):
         with self.assertRaisesRegex(source.SourceError, 'Listing-only'):
             source.release_mode(env, {'workflow_run': run},
                                 'STORE-04 Google Play listing upload [petworld-store04-20261111]')
+        with self.assertRaisesRegex(source.SourceError, 'Listing-only'):
+            source.release_mode(env, {'workflow_run': run},
+                                'UI-10-H images [petworld-ui10h-20261111]')
         self.assertEqual(source.release_mode(env, {'workflow_run': run}, 'Regular main UI update'), 'deploy')
 
     def test_manual_dispatch_only_accepts_main(self):
