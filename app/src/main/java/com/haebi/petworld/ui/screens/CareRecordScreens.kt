@@ -25,6 +25,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.semantics.Role
@@ -341,6 +344,35 @@ fun CareRecordDetail(
             },
         )
     }
+}
+
+internal data class WeightTrendData(
+    val entries: List<CareEntity>,
+    val latest: CareEntity?,
+    val minimumGrams: Long?,
+    val maximumGrams: Long?,
+)
+
+internal fun weightTrendData(records: List<CareEntity>): WeightTrendData {
+    val measured = records.filter {
+        it.type == CareType.WEIGHT.name && it.weightGrams != null
+    }.sortedWith(
+        compareBy<CareEntity> { it.occurredAt }
+            .thenBy { it.createdAt }
+            .thenBy { it.id }
+    )
+    return WeightTrendData(
+        entries = measured,
+        latest = measured.lastOrNull(),
+        minimumGrams = measured.minOfOrNull { it.weightGrams!! },
+        maximumGrams = measured.maxOfOrNull { it.weightGrams!! },
+    )
+}
+
+internal fun weightAxisDate(record: CareEntity): String {
+    val zone = runCatching { ZoneId.of(record.timezoneId) }.getOrDefault(ZoneId.systemDefault())
+    return Instant.ofEpochMilli(record.occurredAt).atZone(zone)
+        .format(DateTimeFormatter.ofPattern("M/d", Locale.KOREAN))
 }
 
 @Composable
