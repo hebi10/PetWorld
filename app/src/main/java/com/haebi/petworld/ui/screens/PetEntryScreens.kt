@@ -157,6 +157,7 @@ fun PetProfileEditor(
     var confirmExit by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val formScrollState = rememberScrollState()
     val picker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
     ) { uri: Uri? ->
@@ -199,7 +200,7 @@ fun PetProfileEditor(
 
     Column(
         modifier = Modifier.fillMaxSize().imePadding()
-            .verticalScroll(rememberScrollState()).padding(PetSpacing.large),
+            .verticalScroll(formScrollState).padding(PetSpacing.large),
         verticalArrangement = Arrangement.spacedBy(PetSpacing.large),
     ) {
         Row(
@@ -325,7 +326,11 @@ fun PetProfileEditor(
                 attemptedSave = true
                 val validation = PetValidation.error(draft)
                 if (validation != null) {
-                    error = validation.takeUnless { it == PetValidation.nameError(name) }
+                    val invalidName = validation == PetValidation.nameError(name)
+                    error = validation.takeUnless { invalidName }
+                    if (invalidName) {
+                        scope.launch { formScrollState.scrollTo(0) }
+                    }
                 } else {
                     error = null
                     isSaving = true
