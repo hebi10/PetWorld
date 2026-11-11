@@ -13,6 +13,7 @@ import com.haebi.petworld.ui.components.PetSurfaceCard
 import com.haebi.petworld.ui.theme.PetSpacing
 
 internal data class RecentWeightSummary(
+    val entries: List<CareEntity>,
     val latest: CareEntity?,
     val previous: CareEntity?,
     val differenceGrams: Long?,
@@ -25,7 +26,7 @@ internal fun recentWeightSummary(records: List<CareEntity>): RecentWeightSummary
     val difference = latest?.weightGrams?.let { current ->
         previous?.weightGrams?.let { current - it }
     }
-    return RecentWeightSummary(latest, previous, difference)
+    return RecentWeightSummary(measured, latest, previous, difference)
 }
 
 internal fun formatWeightDifference(grams: Long): String = when {
@@ -42,7 +43,7 @@ fun PetHealthScreen(
     onViewRecord: (String) -> Unit,
 ) {
     val summary = recentWeightSummary(records)
-    val measured = weightTrendData(records).entries
+    val measured = summary.entries
 
     Text("${petName}의 체중·건강", style = MaterialTheme.typography.headlineLarge)
 
