@@ -381,11 +381,12 @@ fun CareStatisticsScreen(
     records: List<CareEntity>,
     period: CareRange,
     onPeriodChange: (CareRange) -> Unit,
+    expandedLayout: Boolean = false,
 ) {
     val selected = records.filter { period.accepts(it) }
     val weights = weightTrendData(selected)
     val summaryTypes = CareType.entries.filter { it != CareType.WEIGHT }
-    val twoColumns = LocalConfiguration.current.screenWidthDp >= 360 &&
+    val twoColumns = !expandedLayout && LocalConfiguration.current.screenWidthDp >= 360 &&
         LocalDensity.current.fontScale < 1.3f
 
     Text("${petName}의 기록 통계", style = MaterialTheme.typography.headlineLarge)
@@ -402,6 +403,7 @@ fun CareStatisticsScreen(
         }
     }
 
+    val weightSection: @Composable () -> Unit = {
     PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
         Text("체중 변화", style = MaterialTheme.typography.titleLarge)
         val latest = weights.latest
@@ -456,6 +458,9 @@ fun CareStatisticsScreen(
             )
         }
     }
+    }
+    val summarySection: @Composable () -> Unit = {
+
 
     Text("생활 기록 요약", style = MaterialTheme.typography.titleLarge)
     if (twoColumns) {
@@ -487,6 +492,20 @@ fun CareStatisticsScreen(
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+    }
+
+    if (expandedLayout) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(PetSpacing.large),
+        ) {
+            Column(modifier = Modifier.weight(1.15f)) { weightSection() }
+            Column(modifier = Modifier.weight(1f)) { summarySection() }
+        }
+    } else {
+        weightSection()
+        summarySection()
+    }
 }
 
 @Composable
