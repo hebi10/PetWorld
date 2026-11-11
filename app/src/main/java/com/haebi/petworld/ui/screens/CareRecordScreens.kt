@@ -25,6 +25,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.semantics.Role
@@ -56,20 +59,32 @@ enum class CareRange(val label: String) {
 
 fun CareRange.accepts(record: CareEntity, today: LocalDate = LocalDate.now()): Boolean {
     val date = record.localDate()
-    val start = when (this) {
-        CareRange.TODAY -> today
-        CareRange.SEVEN -> today.minusDays(6)
-        CareRange.THIRTY -> today.minusDays(29)
-        CareRange.ALL -> LocalDate.MIN
+    return when (this) {
+        CareRange.TODAY -> date == today
+        CareRange.SEVEN -> date >= today.minusDays(6) && date <= today
+        CareRange.THIRTY -> date >= today.minusDays(29) && date <= today
+        CareRange.ALL -> true
     }
-    return date >= start && date <= today
 }
 
-fun CareEntity.displayDateTime(): String {
+internal fun filterCareRecords(
+    records: List<CareEntity>,
+    selectedType: CareType?,
+    selectedRange: CareRange,
+    today: LocalDate = LocalDate.now(),
+): List<CareEntity> = records.filter {
+    (selectedType == null || it.type == selectedType.name) && selectedRange.accepts(it, today)
+}
+
+internal fun CareEntity.displayRecordTime(instantMillis: Long): String {
     val zone = runCatching { ZoneId.of(timezoneId) }.getOrDefault(ZoneId.systemDefault())
-    return Instant.ofEpochMilli(occurredAt).atZone(zone)
+    return Instant.ofEpochMilli(instantMillis).atZone(zone)
         .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.KOREAN))
 }
+
+fun CareEntity.displayDateTime(): String = displayRecordTime(occurredAt)
+
+internal fun CareEntity.hasBeenEdited(): Boolean = updatedAt > createdAt
 
 @Composable
 fun CareRecordList(
@@ -84,9 +99,7 @@ fun CareRecordList(
 ) {
     var showRangePicker by remember { mutableStateOf(false) }
     var showTypePicker by remember { mutableStateOf(false) }
-    val filtered = records.filter {
-        (selectedType == null || it.type == selectedType.name) && selectedRange.accepts(it)
-    }
+    val filtered = filterCareRecords(records, selectedType, selectedRange)
 
     Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
         Row(
@@ -285,7 +298,11 @@ fun CareRecordDetail(
     val scope = rememberCoroutineScope()
     Text("${CareType.valueOf(record.type).label} 기록", style = MaterialTheme.typography.headlineMedium)
     PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
-        Text(record.displayDateTime(), style = MaterialTheme.typography.bodyMedium)
+        Text(
+            "발생 시각 · ${record.displayDateTime()}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Text(record.displayValue(), style = MaterialTheme.typography.titleLarge)
         if (record.photoFile != null) {
             Text("관찰 사진", style = MaterialTheme.typography.labelLarge)
@@ -296,6 +313,19 @@ fun CareRecordDetail(
             Text("관찰 메모", style = MaterialTheme.typography.labelLarge)
             Text(record.note, style = MaterialTheme.typography.bodyLarge)
         }
+        HorizontalDivider()
+        Text(
+            "작성 시각 · ${record.displayRecordTime(record.createdAt)}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            if (record.hasBeenEdited())
+                "수정 시각 · ${record.displayRecordTime(record.updatedAt)}"
+            else "수정 시각 · 수정 내역 없음",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
     if (error != null) {
         Text(error.orEmpty(), color = MaterialTheme.colorScheme.error,
@@ -343,14 +373,49 @@ fun CareRecordDetail(
     }
 }
 
+internal data class WeightTrendData(
+    val entries: List<CareEntity>,
+    val latest: CareEntity?,
+    val minimumGrams: Long?,
+    val maximumGrams: Long?,
+)
+
+internal fun weightTrendData(records: List<CareEntity>): WeightTrendData {
+    val measured = records.filter {
+        it.type == CareType.WEIGHT.name && it.weightGrams != null
+    }.sortedWith(
+        compareBy<CareEntity> { it.occurredAt }
+            .thenBy { it.createdAt }
+            .thenBy { it.id }
+    )
+    return WeightTrendData(
+        entries = measured,
+        latest = measured.lastOrNull(),
+        minimumGrams = measured.minOfOrNull { it.weightGrams!! },
+        maximumGrams = measured.maxOfOrNull { it.weightGrams!! },
+    )
+}
+
+internal fun weightAxisDate(record: CareEntity): String {
+    val zone = runCatching { ZoneId.of(record.timezoneId) }.getOrDefault(ZoneId.systemDefault())
+    return Instant.ofEpochMilli(record.occurredAt).atZone(zone)
+        .format(DateTimeFormatter.ofPattern("M/d", Locale.KOREAN))
+}
+
 @Composable
 fun CareStatisticsScreen(
     petName: String,
     records: List<CareEntity>,
     period: CareRange,
     onPeriodChange: (CareRange) -> Unit,
+    expandedLayout: Boolean = false,
 ) {
     val selected = records.filter { period.accepts(it) }
+    val weights = weightTrendData(selected)
+    val summaryTypes = CareType.entries.filter { it != CareType.WEIGHT }
+    val twoColumns = !expandedLayout && LocalConfiguration.current.screenWidthDp >= 360 &&
+        LocalDensity.current.fontScale < 1.3f
+
     Text("${petName}의 기록 통계", style = MaterialTheme.typography.headlineLarge)
     Row(
         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -364,63 +429,157 @@ fun CareStatisticsScreen(
             )
         }
     }
-    CareType.entries.forEach { type ->
+
+    val weightSection: @Composable () -> Unit = {
         PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
-            Text(type.label, style = MaterialTheme.typography.titleMedium)
-            Text(
-                summarizeCare(type, selected),
-                style = MaterialTheme.typography.bodyLarge,
-            )
-            Text(
-                "${selected.count { it.type == type.name }}건의 기록",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (type == CareType.WEIGHT) {
-                val weights = selected.filter { it.type == CareType.WEIGHT.name && it.weightGrams != null }
-                WeightTrend(weights)
+            Text("체중 변화", style = MaterialTheme.typography.titleLarge)
+            val latest = weights.latest
+            if (latest == null) {
+                Text(
+                    "선택한 기간에 체중 기록이 없습니다.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "체중 추이는 측정값 2개 이상부터 표시됩니다.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Text(
+                    "최근 측정 ${milliText(latest.weightGrams!!)}kg",
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                Text(
+                    "${latest.displayDateTime()} · 측정 ${weights.entries.size}건",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (weights.entries.size >= 2) {
+                    WeightTrend(weights.entries)
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            weightAxisDate(weights.entries.first()),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            weightAxisDate(weights.entries.last()),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.End,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                } else {
+                    Text(
+                        "체중 추이는 측정값 2개 이상부터 표시됩니다.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    "최저 ${milliText(weights.minimumGrams!!)}kg · 최고 ${milliText(weights.maximumGrams!!)}kg",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
         }
     }
-    Text(
-        "미측정값과 기록이 없는 날짜는 0으로 계산하지 않습니다. 입력된 자료의 요약이며 건강 진단이 아닙니다.",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+
+    val summarySection: @Composable () -> Unit = {
+        Text("생활 기록 요약", style = MaterialTheme.typography.titleLarge)
+        if (twoColumns) {
+            summaryTypes.chunked(2).forEach { pair ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+                ) {
+                    pair.forEach { type ->
+                        CareStatisticsSummaryCard(
+                            type = type,
+                            records = selected,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            }
+        } else {
+            summaryTypes.forEach { type ->
+                CareStatisticsSummaryCard(
+                    type = type,
+                    records = selected,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+        Text(
+            "미측정값과 기록이 없는 날짜는 0으로 계산하지 않습니다. 입력된 자료의 요약이며 건강 진단이 아닙니다.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+
+    if (expandedLayout) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(PetSpacing.large),
+        ) {
+            Column(modifier = Modifier.weight(1.15f)) { weightSection() }
+            Column(modifier = Modifier.weight(1f)) { summarySection() }
+        }
+    } else {
+        weightSection()
+        summarySection()
+    }
+}
+
+@Composable
+private fun CareStatisticsSummaryCard(
+    type: CareType,
+    records: List<CareEntity>,
+    modifier: Modifier,
+) {
+    PetSurfaceCard(modifier = modifier) {
+        Text(type.label, style = MaterialTheme.typography.titleMedium)
+        Text(summarizeCare(type, records), style = MaterialTheme.typography.bodyMedium)
+        Text(
+            "${records.count { it.type == type.name }}건의 기록",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable
 private fun WeightTrend(weights: List<CareEntity>) {
-    val sorted = weights.sortedBy { it.occurredAt }
-    if (sorted.size < 2) {
-        Text(
-            "체중 추이는 측정값 2개 이상부터 표시됩니다.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        return
-    }
-    val values = sorted.mapNotNull { it.weightGrams }
-    val min = values.minOrNull() ?: return
-    val max = values.maxOrNull() ?: return
+    val first = weights.first()
+    val last = weights.last()
+    val lowest = weights.minOf { it.weightGrams!! }
+    val highest = weights.maxOf { it.weightGrams!! }
+    val extent = (highest - lowest).coerceAtLeast(100L).toFloat() * 0.2f
+    val bottom = (lowest.toFloat() - extent).coerceAtLeast(0f)
+    val top = highest.toFloat() + extent
+    val height = (top - bottom).coerceAtLeast(1f)
+    val timeSpan = last.occurredAt - first.occurredAt
     val lineColor = MaterialTheme.colorScheme.onSurface
-    val top = max + (max - min).coerceAtLeast(100L) / 5
-    val bottom = min - (max - min).coerceAtLeast(100L) / 5
-    val denominator = (top - bottom).coerceAtLeast(1L).toFloat()
+
     Canvas(modifier = Modifier.fillMaxWidth().height(120.dp)) {
-        val vertices = values.mapIndexed { idx, grams ->
-            val x = idx.toFloat() * size.width / (values.size - 1)
-            val y = size.height - ((grams - bottom).toFloat() / denominator) * size.height
-            Offset(x, y)
+        val vertices = weights.mapIndexed { index, record ->
+            val fraction = if (timeSpan > 0L) {
+                ((record.occurredAt - first.occurredAt).toDouble() / timeSpan).toFloat()
+            } else {
+                index.toFloat() / (weights.size - 1)
+            }
+            val x = fraction.coerceIn(0f, 1f) * size.width
+            val y = size.height - ((record.weightGrams!!.toFloat() - bottom) / height) * size.height
+            Offset(x, y.coerceIn(0f, size.height))
         }
-        vertices.zipWithNext { first, second ->
-            drawLine(lineColor, first, second, strokeWidth = 3.dp.toPx(),
-                cap = StrokeCap.Round)
+        vertices.zipWithNext { from, to ->
+            drawLine(lineColor, from, to, strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
         }
-        vertices.forEach { p -> drawCircle(lineColor, radius = 3.dp.toPx(), center = p) }
+        vertices.forEach { point ->
+            drawCircle(lineColor, radius = 3.dp.toPx(), center = point)
+        }
     }
-    Text(
-        "처음 ${milliText(values.first())}kg → 최근 ${milliText(values.last())}kg",
-        style = MaterialTheme.typography.bodyMedium,
-    )
 }

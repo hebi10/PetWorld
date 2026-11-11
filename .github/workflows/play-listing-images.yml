@@ -67,7 +67,8 @@ jobs:
         inputs.mode == 'upload' &&
         inputs.confirmation == 'PETWORLD-KO-LISTING-10') ||
        (github.event_name == 'push' &&
-        contains(github.event.head_commit.message, '[petworld-store04-20261111]')))
+        (contains(github.event.head_commit.message, '[petworld-store04-20261111]') ||
+         contains(github.event.head_commit.message, '[petworld-ui10h-20261111]'))))
     concurrency:
       group: play-com-haebi-petworld
       cancel-in-progress: false
