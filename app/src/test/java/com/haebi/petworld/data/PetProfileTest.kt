@@ -23,6 +23,19 @@ class PetProfileTest {
         assertEquals("이름을 입력해 주세요.", PetValidation.error(draft().copy(name = "   "), today))
     }
 
+    @Test fun profileNameFieldAndSaveShareValidationRules() {
+        assertNull(PetValidation.nameError("나비"))
+        assertNull(PetValidation.nameError(" 나비 "))
+        assertEquals("이름을 입력해 주세요.", PetValidation.nameError(""))
+        assertEquals("이름을 입력해 주세요.", PetValidation.nameError("   "))
+        assertEquals("이름은 40자 이내로 입력해 주세요.",
+            PetValidation.nameError("가".repeat(41)))
+        assertEquals(PetValidation.nameError("   "),
+            PetValidation.error(draft().copy(name = "   "), today))
+        assertEquals(PetValidation.nameError("가".repeat(41)),
+            PetValidation.error(draft().copy(name = "가".repeat(41)), today))
+    }
+
     @Test fun birthdayCannotBeInTheFuture() {
         val value = draft().copy(birthMode = BirthMode.EXACT, birthday = "2027-01-01")
         assertEquals("생일을 올바르게 선택해 주세요.", PetValidation.error(value, today))
