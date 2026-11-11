@@ -86,6 +86,7 @@ import com.haebi.petworld.ui.screens.PetSwitcherSheet
 import com.haebi.petworld.ui.screens.PetWelcomeScreen
 import com.haebi.petworld.ui.screens.PetBackupSection
 import com.haebi.petworld.ui.theme.PetSpacing
+import com.haebi.petworld.ui.theme.useCompactPetLayout
 import com.haebi.petworld.ui.theme.ThemeMode
 
 private enum class PrimaryTab(
@@ -118,6 +119,10 @@ fun PetWorldApp(
     restoring: Boolean,
     onRestoreBackup: suspend (Uri, CharArray) -> Result<Unit>,
 ) {
+    val compactUi = useCompactPetLayout(
+        LocalConfiguration.current.screenWidthDp,
+        LocalDensity.current.fontScale,
+    )
     var tab by rememberSaveable { mutableStateOf(PrimaryTab.HOME) }
     var showSwitcher by rememberSaveable { mutableStateOf(false) }
     var showManager by rememberSaveable { mutableStateOf(false) }
@@ -355,7 +360,9 @@ fun PetWorldApp(
                         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
                             .padding(PetSpacing.large),
                         verticalArrangement = Arrangement.spacedBy(
-                            if (tab == PrimaryTab.HOME) PetSpacing.medium else PetSpacing.xLarge
+                            if (tab == PrimaryTab.HOME ||
+                                (tab == PrimaryTab.MORE && compactUi)
+                            ) PetSpacing.medium else PetSpacing.xLarge
                         ),
                     ) {
                         when (tab) {
@@ -539,8 +546,10 @@ private fun SettingsContent(
     onRestoreBackup: suspend (Uri, CharArray) -> Result<Unit>,
 ) {
     val context = LocalContext.current
-    val compactActions = LocalConfiguration.current.screenWidthDp < 400 ||
-        LocalDensity.current.fontScale >= 1.3f
+    val compactActions = useCompactPetLayout(
+        LocalConfiguration.current.screenWidthDp,
+        LocalDensity.current.fontScale,
+    )
     Text("설정", style = MaterialTheme.typography.headlineLarge)
     PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -560,19 +569,21 @@ private fun SettingsContent(
             )
         }
         if (compactActions) {
-            Column(
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(PetSpacing.small),
+                horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
             ) {
                 PetPrimaryButton(
                     label = "프로필 관리",
                     onClick = onManage,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.weight(1.8f),
                 )
                 PetSecondaryButton(
-                    label = "반려동물 추가",
+                    label = "추가",
                     onClick = onAdd,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.weight(1f).semantics {
+                        contentDescription = "반려동물 추가"
+                    },
                 )
             }
         } else {
