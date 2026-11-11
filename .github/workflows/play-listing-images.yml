@@ -1,6 +1,12 @@
 name: PetWorld Korean Play listing images
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'assets/play-store/**'
+      - 'scripts/play/listing_images.py'
+      - '.github/workflows/play-listing-images.yml'
   pull_request:
     paths:
       - 'assets/play-store/**'
@@ -55,11 +61,13 @@ jobs:
   upload:
     needs: validate
     if: >-
-      github.event_name == 'workflow_dispatch' &&
       github.repository == 'hebi10/PetWorld' &&
       github.ref == 'refs/heads/main' &&
-      inputs.mode == 'upload' &&
-      inputs.confirmation == 'PETWORLD-KO-LISTING-10'
+      ((github.event_name == 'workflow_dispatch' &&
+        inputs.mode == 'upload' &&
+        inputs.confirmation == 'PETWORLD-KO-LISTING-10') ||
+       (github.event_name == 'push' &&
+        contains(github.event.head_commit.message, '[petworld-store04-20261111]')))
     concurrency:
       group: play-com-haebi-petworld
       cancel-in-progress: false
@@ -117,7 +125,7 @@ jobs:
         env:
           PLAY_LISTING_APPLY: 'true'
           PLAY_ACCESS_TOKEN: ${{ steps.wif.outputs.access_token || steps.json.outputs.access_token }}
-          CONFIRMATION: ${{ inputs.confirmation }}
+          CONFIRMATION: ${{ (github.event_name == 'push' && 'PETWORLD-KO-LISTING-10') || inputs.confirmation }}
         run: |
           python3 scripts/play/listing_images.py \
             --mode upload --confirm "$CONFIRMATION" \
