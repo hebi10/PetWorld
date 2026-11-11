@@ -148,6 +148,33 @@ class ListingTests(unittest.TestCase):
                 listing.assert_upload_authorization({**env,k:bad},listing.APPROVAL)
         with self.assertRaises(listing.ListingError): listing.assert_upload_authorization(env,'wrong')
 
+    def test_trusted_store04_main_push_authorization(self):
+        sha = 'a' * 40
+        event = {'after': sha, 'ref': 'refs/heads/main',
+                 'repository': {'full_name': listing.REPO},
+                 'head_commit': {'id': sha, 'message': 'STORE-04 [petworld-store04-20261111]'}}
+        path = Path(self.tmp.name) / 'event.json'
+        path.write_text(json.dumps(event), encoding='utf-8')
+        env = {'GITHUB_REPOSITORY': listing.REPO, 'GITHUB_EVENT_NAME': 'push',
+               'GITHUB_REF': 'refs/heads/main', 'GITHUB_SHA': sha,
+               'GITHUB_EVENT_PATH': str(path), 'PLAY_LISTING_APPLY': 'true',
+               'PLAY_ACCESS_TOKEN': 'fake'}
+        listing.assert_upload_authorization(env, listing.APPROVAL)
+        for changed in (
+            {'after': 'b'*40}, {'ref': 'refs/heads/other'},
+            {'repository': {'full_name': 'attacker/PetWorld'}},
+            {'head_commit': {'id': sha, 'message': 'unapproved commit'}},
+        ):
+            invalid = {**event, **changed}
+            path.write_text(json.dumps(invalid), encoding='utf-8')
+            with self.assertRaises(listing.ListingError):
+                listing.assert_upload_authorization(env, listing.APPROVAL)
+        path.write_text(json.dumps(event), encoding='utf-8')
+        for overrides in ({'GITHUB_SHA': 'b'*40}, {'GITHUB_REF': 'refs/heads/feature'},
+                          {'GITHUB_EVENT_NAME': 'pull_request'}, {'PLAY_LISTING_APPLY': 'false'}):
+            with self.assertRaises(listing.ListingError):
+                listing.assert_upload_authorization({**env, **overrides}, listing.APPROVAL)
+
     def test_mocked_commit_and_fresh_readback(self):
         fake=FakePlay();result=listing.upload(self.folder,listing.validate(self.folder),fake)
         self.assertEqual(result['image_count'],10)
