@@ -61,14 +61,49 @@ fun PetHomeScreen(
     onQuickAdd: () -> Unit,
     onViewRecord: (String) -> Unit,
     onViewType: (CareType) -> Unit,
+    expandedLayout: Boolean = false,
 ) {
     val day = LocalDate.now()
     val todayLabel = day.format(DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREAN))
     val todayRecords = records.filter { it.localDate() == day }
-    val screenWidthDp = LocalConfiguration.current.screenWidthDp
-    val fontScale = LocalDensity.current.fontScale
-    val compactLayout = useCompactPetLayout(screenWidthDp, fontScale)
-    val summaryColumnCount = if (compactLayout) 2 else 3
+    val compactLayout = useCompactPetLayout(
+        LocalConfiguration.current.screenWidthDp,
+        LocalDensity.current.fontScale,
+    )
+    val summaryColumnCount = if (expandedLayout || compactLayout) 2 else 3
+
+    if (expandedLayout) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(PetSpacing.large),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(PetSpacing.medium),
+            ) {
+                PetHomeIntro(selected, photoStore, todayLabel, compactLayout, onEdit)
+                PetHomeDailySummary(todayRecords, summaryColumnCount, onQuickAdd, onViewType)
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                PetHomeRecentRecords(records, onViewRecord)
+            }
+        }
+    } else {
+        PetHomeIntro(selected, photoStore, todayLabel, compactLayout, onEdit)
+        PetHomeDailySummary(todayRecords, summaryColumnCount, onQuickAdd, onViewType)
+        PetHomeRecentRecords(records, onViewRecord)
+    }
+}
+
+@Composable
+private fun PetHomeIntro(
+    selected: PetProfile,
+    photoStore: PetPhotoStore,
+    todayLabel: String,
+    compactLayout: Boolean,
+    onEdit: () -> Unit,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall)) {
         Text(
             todayLabel,
@@ -148,7 +183,15 @@ fun PetHomeScreen(
             )
         }
     }
+}
 
+@Composable
+private fun PetHomeDailySummary(
+    todayRecords: List<CareEntity>,
+    summaryColumnCount: Int,
+    onQuickAdd: () -> Unit,
+    onViewType: (CareType) -> Unit,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -212,7 +255,13 @@ fun PetHomeScreen(
             }
         }
     }
+}
 
+@Composable
+private fun PetHomeRecentRecords(
+    records: List<CareEntity>,
+    onViewRecord: (String) -> Unit,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
         Text("최근 기록", style = MaterialTheme.typography.titleLarge)
         val recent = records.sortedWith(
