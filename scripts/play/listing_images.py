@@ -35,6 +35,7 @@ SOURCES = (
 UPLOAD_GROUPS = (('icon', (ICON,)), ('featureGraphic', (FEATURE,)),
                  ('phoneScreenshots', SCREENSHOTS))
 APPROVAL = 'PETWORLD-KO-LISTING-10'
+ONE_TIME_MARKER = '[petworld-store04-20261111]'
 PNG_SIGNATURE = b'\x89PNG\r\n\x1a\n'
 MAX_SCREEN_BYTES = 8 * 1024 * 1024
 MAX_FEATURE_BYTES = 15 * 1024 * 1024
@@ -196,12 +197,34 @@ def validate(directory=ASSET_DIR):
 
 def assert_upload_authorization(env, confirmation):
     require(env.get('GITHUB_REPOSITORY') == REPO, 'Listing upload restricted to PetWorld')
-    require(env.get('GITHUB_EVENT_NAME') == 'workflow_dispatch' and
-            env.get('GITHUB_REF') == 'refs/heads/main',
-            'Listing upload requires a manual action on main')
+    require(env.get('GITHUB_REF') == 'refs/heads/main', 'Listing upload requires main')
     require(confirmation == APPROVAL and env.get('PLAY_LISTING_APPLY') == 'true',
             'Explicit listing-only approval is missing')
     require(bool(env.get('PLAY_ACCESS_TOKEN')), 'PLAY_ACCESS_TOKEN is required')
+    event_name = env.get('GITHUB_EVENT_NAME')
+    if event_name == 'workflow_dispatch':
+        return
+    require(event_name == 'push', 'Listing upload requires a manual or trusted one-time main push')
+    # The one-time approved main push may trigger upload exactly once. GitHub
+    # controls the event payload outside the repository and workflow workspace.
+    event_path = env.get('GITHUB_EVENT_PATH')
+    require(bool(event_path), 'Trusted GitHub push metadata is missing')
+    try:
+        event = json.loads(Path(event_path).read_text(encoding='utf-8'))
+    except (OSError, ValueError) as exc:
+        raise ListingError('Trusted GitHub push metadata is unreadable') from exc
+    sha = env.get('GITHUB_SHA', '')
+    commit = event.get('head_commit') or {}
+    require(re.fullmatch('[a-f0-9]{40}', sha or '') is not None and
+            event.get('after') == sha and
+            event.get('ref') == 'refs/heads/main' and
+            event.get('deleted') is not True and
+            event.get('repository', {}).get('full_name') == REPO and
+            commit.get('id') == sha,
+            'Listing push source is not the exact trusted main commit')
+    subject = commit.get('message', '').splitlines()[0]
+    require(re.search(r'(?<!\S)\[petworld-store04-20261111\](?!\S)', subject) is not None,
+            'One-time listing upload marker is missing')
 
 
 class PlayClient:
