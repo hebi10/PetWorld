@@ -77,12 +77,12 @@ class PetWorldScreenCaptureTest {
                 }
                 shot(folder, "S02-profile-create")
                 tap("등록 완료")
+                mustSee("이름을 입력해 주세요.")
+                shot(folder, "UI10A-profile-name-required")
                 ensureVisible("프로필과 일상 기록은 기기에 저장됩니다.")
                 mustSee("프로필과 일상 기록은 기기에 저장됩니다.")
                 shot(folder, "UI10A-profile-copy")
                 scrollToTop()
-                mustSee("이름을 입력해 주세요.")
-                shot(folder, "UI10A-profile-name-required")
                 tap("닫기")
             }
             seed()
