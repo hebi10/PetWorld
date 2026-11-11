@@ -1,0 +1,77 @@
+name: PetWorld UI-10-H Post-Merge Real Screens
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  capture-main:
+    if: >-
+      github.repository == 'hebi10/PetWorld' &&
+      contains(github.event.head_commit.message, '[petworld-ui10h-20261111]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout immutable merged main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+
+      - name: Install Android platform
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -path '*/bin/sdkmanager' -type f | head -n 1)"
+          test -n "$SDK_MANAGER"
+          "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install "platforms;android-37.0" "build-tools;36.0.0"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+
+      - name: Validate signed-off Play assets without upload
+        run: |
+          python3 -m unittest discover -s scripts/play/tests -p test_listing_images.py -v
+          python3 scripts/play/listing_images.py --mode check --report output/ui10h-main-listing-check.json
+
+      - name: Build app and screenshot tests from exact merged source
+        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+
+      - name: Enable KVM
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+
+      - name: Real Android light and dark full-screen recapture
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: bash .github/scripts/capture-petworld-ui.sh
+
+      - name: Record source SHA for exact run
+        run: |
+          echo "$GITHUB_SHA" > qa/captures/merged-main-source.txt
+
+      - name: Upload newest real main screens and verification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: petworld-ui10h-main-actual-${{ github.run_id }}
+          path: |
+            qa/captures/
+            output/ui10h-main-listing-check.json
+          if-no-files-found: warn
+          retention-days: 90

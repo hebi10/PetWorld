@@ -6,14 +6,14 @@
   "generated_date": "2026-11-11",
   "source": {
     "repo": "hebi10/PetWorld",
-    "commit": "e3871fe00c9f986515daf97a7345d490d185aa34",
-    "workflow_run": 42780690910,
-    "artifact_id": 13746311772,
-    "artifact_sha256": "9827d7d32d601877819faf1172d8bb3aa2503956a238ccdf4a684b3192daa3de",
+    "commit": "c05bbfdd99e80c8ce498383f16548ff19c3a7191",
+    "workflow_run": 42982598371,
+    "artifact_id": 13838288713,
+    "artifact_sha256": "91cc7deb2e5cb0a07b1862b8d17c0b0272bd38fe7a0e3c1ec50a799e357d0b05",
     "test": "OK (1 test)",
     "test_fixture": "Synthetic examples: 나비/초코; not private user data"
   },
-  "rendering": "Real full-size Android captures; aspect-preserving resampling with outer Korean captions and neutral margins. App UI unchanged.",
+  "rendering": "Real Android captures, aspect-preserving resampling and Korean captions. Original UI unchanged.",
   "files": [
     {
       "order": 1,
@@ -21,12 +21,12 @@
       "title": "오늘의 돌봄을 한눈에",
       "subtitle": "식사·음수·배변·활동·체중의 하루 기록",
       "original_capture": "screenshots/light/S03-home.png",
-      "original_sha256": "e285d2a85e9f2697b562425ea1531b673f8acf81d4572c4f30e7588b3b7beff0",
-      "image_sha256": "6d219a991c6d94f855b02f04e2cac27ecc423734406017231ee113ce867759ee",
+      "original_sha256": "05488b09d5712c65fa064d31b0c90797a6e8df2af5b15cef312db2eadb662b05",
+      "image_sha256": "514f56bbfc9843c27fe547c400b6870048bc0d4a5eff3246a9130b3c13a65ff4",
       "width": 1350,
       "height": 2400,
       "mode": "RGB",
-      "bytes": 199469
+      "bytes": 208722
     },
     {
       "order": 2,
@@ -34,12 +34,12 @@
       "title": "필요한 기록을 빠르게",
       "subtitle": "다섯 가지 일상 기록을 바로 선택",
       "original_capture": "screenshots/light/S05-quick-record-sheet.png",
-      "original_sha256": "c5ddca61bf40b1d6e9a025aed1bf075d02ff76e937207685ca0396c56e15eaed",
-      "image_sha256": "92a9761ba5dd203891664ea1d506f387591367212fdfbf903cac9c1433325d0e",
+      "original_sha256": "371754c92a3d38fa05b0cea9a77903b60b547d7292784a476c0c36184f39012f",
+      "image_sha256": "0d8488a42627d8ffb8555d05a0a4ed814ad7e163cb3dbeb2f7a6d50f17319cba",
       "width": 1350,
       "height": 2400,
       "mode": "RGB",
-      "bytes": 171379
+      "bytes": 177678
     },
     {
       "order": 3,
@@ -47,12 +47,12 @@
       "title": "식사량을 구분해 기록",
       "subtitle": "제공량과 실제 섭취량을 따로 관리",
       "original_capture": "screenshots/light/S06-food-form.png",
-      "original_sha256": "351be51cfaa0542d46b80ac7fb253e4f855f78cd06d0ab2e1dfeb2a0c584785c",
-      "image_sha256": "4f99d9577ac46ac5f8ef19a2ed9265b42f27e19ca067313bf90b3193945db7e9",
+      "original_sha256": "378d09418403d0535f77e9365255c208cab58e7820c98b9c6b003514565acb9b",
+      "image_sha256": "923ab18bf8a97201768bdfbe4bb4fa9f49cc15afbf56b8a474c4b0a986a95124",
       "width": 1350,
       "height": 2400,
       "mode": "RGB",
-      "bytes": 168027
+      "bytes": 175365
     },
     {
       "order": 4,
@@ -60,12 +60,12 @@
       "title": "배변과 관찰 정보까지",
       "subtitle": "소변·대변, 횟수, 사진과 메모 입력",
       "original_capture": "screenshots/light/S08-elimination-form.png",
-      "original_sha256": "c4b83a7a945d189dce6db6bdbadbc539ec89888a4f95cb715d26de725ef68599",
-      "image_sha256": "ee78bc45d1ffdf05c56a182b9e9f4302f309cf7f8ed34a29520c97b064c1cb5e",
+      "original_sha256": "5e1e241e539ff696fce08e93847a7ca3183a8d3beef2e5ebe12db320d4bf2f82",
+      "image_sha256": "dd6aaf6a14409fa16c7523b3da5cf68b9d9b30d246cc7f4ffe227b569e2547fa",
       "width": 1350,
       "height": 2400,
       "mode": "RGB",
-      "bytes": 136884
+      "bytes": 140879
     },
     {
       "order": 5,
@@ -73,12 +73,12 @@
       "title": "날짜와 유형별 기록 확인",
       "subtitle": "반려동물별 기록을 목록에서 조회",
       "original_capture": "screenshots/light/S11-record-list.png",
-      "original_sha256": "9c5db6bba3b4921d039945eba091e59dd2a011f8f303ac338ef147774dd148b8",
-      "image_sha256": "61d26e1ff53f3cd02fa0dd1cac390cb2e482698b601aff46cf1f8ceeae27dbba",
+      "original_sha256": "e603e4d774cf57f157c14fd1fe55a370b8133b81ca6fc368eb91c3b6eb25113b",
+      "image_sha256": "70979b5f1db8397e39c268eb3ddea4ab7ee1d05fb693cc4eae7026c8a2193561",
       "width": 1350,
       "height": 2400,
       "mode": "RGB",
-      "bytes": 181755
+      "bytes": 186398
     },
     {
       "order": 6,
@@ -86,12 +86,12 @@
       "title": "체중 기록을 모아보기",
       "subtitle": "측정 날짜와 체중 이력을 확인",
       "original_capture": "screenshots/light/S18-health.png",
-      "original_sha256": "9b31454df73910b21f610937fc90896347ef35140bab23d4fb0ffa03107ae0f8",
-      "image_sha256": "e7cd7005fc53920139073a5302de23a18fcb9d1b93dcbe214c90397be984f4fd",
+      "original_sha256": "785ac6d50747b09df186bde2e373a6de9b8848a721a124c799aaddf868b3aacd",
+      "image_sha256": "954314ec92b25ac1d7a9802cb4943bf3f40927c8eaf872fe79666511c2365f27",
       "width": 1350,
       "height": 2400,
       "mode": "RGB",
-      "bytes": 141139
+      "bytes": 201787
     },
     {
       "order": 7,
@@ -99,12 +99,12 @@
       "title": "생활 기록을 통계로",
       "subtitle": "선택 기간의 돌봄 내역을 요약",
       "original_capture": "screenshots/light/S14-statistics.png",
-      "original_sha256": "032161bdc46f9836c7644b4fba6bf4c2f1d75a6be1441fcc64ce5321b87a4428",
-      "image_sha256": "24ac30a4c79f4b12d39d47a3aec7b8ee0e1672c8c48409ff39aaf10588f83610",
+      "original_sha256": "d895b9dfac068b173111656d6df5d873e09b32dd5a7db4d6626e17d4f95e268e",
+      "image_sha256": "8f2921954a6060e618ba26d730a55aab3236bae8c0c7d874e861638431c608df",
       "width": 1350,
       "height": 2400,
       "mode": "RGB",
-      "bytes": 139020
+      "bytes": 188566
     },
     {
       "order": 8,
@@ -112,13 +112,13 @@
       "title": "백업 암호를 직접 설정",
       "subtitle": "소중한 기록을 암호화해 백업",
       "original_capture": "screenshots/light/S31-backup-password-dialog.png",
-      "original_sha256": "47650aa1eaf8470622d6f4e9b2788a8c926219f16599cf1ab5c02ebf2425207b",
-      "image_sha256": "de7f28b76edca7789b8e4766b20cc745935f5ef3c2f6c169d56a03c4ee104ba3",
+      "original_sha256": "30c5f704d95671b39c85230a65b7c43d8764b84d9e41f0b03ec908f5686fe49d",
+      "image_sha256": "8991a8892a062b56cd41d2be9cf8e84c5dfe4398b6dc58fa199dee1feadbde24",
       "width": 1350,
       "height": 2400,
       "mode": "RGB",
-      "bytes": 176275
+      "bytes": 187719
     }
   ],
-  "play_upload_status": "not submitted; asset preparation only"
+  "play_upload_status": "UI-10-H assets prepared; Play API readback pending"
 }

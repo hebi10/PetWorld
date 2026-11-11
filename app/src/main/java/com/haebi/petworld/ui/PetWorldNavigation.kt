@@ -78,9 +78,9 @@ import com.haebi.petworld.ui.screens.CareRange
 import com.haebi.petworld.ui.screens.CareRecordList
 import com.haebi.petworld.ui.screens.CareRecordDetail
 import com.haebi.petworld.ui.screens.CareRecordEditor
-import com.haebi.petworld.ui.screens.CareRecordRow
 import com.haebi.petworld.ui.screens.CareStatisticsScreen
 import com.haebi.petworld.ui.screens.PetHomeScreen
+import com.haebi.petworld.ui.screens.PetHealthScreen
 import com.haebi.petworld.ui.screens.PetManagerScreen
 import com.haebi.petworld.ui.screens.PetProfileEditor
 import com.haebi.petworld.ui.screens.PetSwitcherSheet
@@ -438,26 +438,12 @@ fun PetWorldApp(
                                 onAdd = { choosingCareType = true },
                                 onView = { careDetailId = it },
                             )
-                            PrimaryTab.HEALTH -> {
-                                Text("${current.name}의 체중·건강", style = MaterialTheme.typography.headlineLarge)
-                                PetPrimaryButton(
-                                    label = "체중 기록",
-                                    modifier = Modifier.fillMaxWidth(),
-                                    onClick = { startCare(CareType.WEIGHT) },
-                                )
-                                records.filter { it.type == CareType.WEIGHT.name }.take(5).forEach {
-                                    CareRecordRow(it, onClick = { careDetailId = it.id })
-                                }
-                                if (records.none { it.type == CareType.WEIGHT.name }) {
-                                    PetEmptyState(
-                                        title = "체중 기록이 없습니다",
-                                        detail = "체중을 측정한 뒤 기록을 추가해 주세요.",
-                                    )
-                                }
-                                Text("증상·진료·복약·예방 관리는 후속 단계에서 제공됩니다.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
+                            PrimaryTab.HEALTH -> PetHealthScreen(
+                                petName = current.name,
+                                records = records,
+                                onAddWeight = { startCare(CareType.WEIGHT) },
+                                onViewRecord = { careDetailId = it },
+                            )
                             PrimaryTab.INSIGHTS -> CareStatisticsScreen(
                                 petName = current.name,
                                 records = records,

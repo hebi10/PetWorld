@@ -56,3 +56,12 @@ Google Play 공식 API 참고: https://developers.google.com/android-publisher/a
 - 마지막 검증은 CI 결과(10개 PNG, 테스트, source gate, Android CI)를 모두 확인한 이후 병합하며, 이미지를 업로드하지 않은 경우 API 성공이라고 표현하지 않습니다.
 - 임의 재실행·재커밋으로 중복 업로드하지 않습니다. 실패 또는 결과 불명 시 Google Play API와 Console 상태를 먼저 확인합니다.
 - Google Play API 반영과 실제 심사 승인·테스터 설치 상태는 다릅니다.
+
+## UI-10-H — 실제 화면 8장만 동기화 (2026-11-11)
+
+- 이번 UI 변경에서는 앱 아이콘과 대표 그래픽 파일·Google Play 이미지 ID를 보존합니다.
+- 한 번의 승인된 main 커밋 제목에 `[petworld-ui10h-20261111]`가 있을 때만 Google Play `ko-KR/phoneScreenshots` 이미지 8장을 교체합니다.
+- UI-10-H API 편집은 원래 `icon`·`featureGraphic` 이미지 목록을 조회만 하며, 교체 전후 이미지 ID·해시·순서가 동일한지 확인합니다.
+- `scripts/play/listing_images.py`의 기존 STORE-04 이미지 10종 일회성 업로드 및 수동 실행 경로는 변경하지 않습니다.
+- `Play internal release`와 `scripts/play/source.py`가 동일 커밋의 Android 바이너리 자동 배포를 이중 차단합니다.
+- 실제 Google Play 커밋/재조회와 Console 심사·게시·테스터 설치 여부는 별도로 확인합니다.
