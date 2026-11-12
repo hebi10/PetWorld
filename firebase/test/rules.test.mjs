@@ -326,7 +326,9 @@ test('FB-04-FINAL: changed UUID payload is rejected and leaves stored data untou
 test('FB-04-FINAL: bytes-hashed photo is reusable but cannot be replaced by a retry', async () => {
   const alice = env.authenticatedContext('alice').storage(bucket);
   const bob = env.authenticatedContext('bob').storage(bucket);
-  const photo = ref(alice, pathFor('alice'));
+  const isolatedFilename = 'pet_44444444-4444-4444-8444-444444444444.jpg';
+  const isolatedPath = pathFor('alice', 'pet-1', isolatedFilename);
+  const photo = ref(alice, isolatedPath);
   const localBytes = new Uint8Array([0xff, 0xd8, 0x11, 0x22, 0xff, 0xd9]);
   const sha = createHash('sha256').update(localBytes).digest('hex');
   await assertSucceeds(uploadBytes(photo, localBytes, { contentType: 'image/jpeg' }));
@@ -335,7 +337,7 @@ test('FB-04-FINAL: bytes-hashed photo is reusable but cannot be replaced by a re
   await assertFails(uploadBytes(photo, new Uint8Array([0xff, 0xd8, 0, 0xff, 0xd9]), {
     contentType: 'image/jpeg',
   }));
-  await assertFails(getBytes(ref(bob, pathFor('alice'))));
+  await assertFails(getBytes(ref(bob, isolatedPath)));
   const afterRetry = await assertSucceeds(getBytes(photo));
   deepStrictEqual(createHash('sha256').update(afterRetry).digest('hex'), sha);
 });
