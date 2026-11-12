@@ -48,14 +48,13 @@ keytool -genkeypair -noprompt \
   -keypass "$password" \
   > /dev/null
 
-python3 - "$workdir/petworld-dev.p12" <<'PY' |
+python3 - "$workdir/petworld-dev.p12" <<'PY' | gh secret set PETWORLD_DEV_KEYSTORE_BASE64 --repo "$REPO" --env "$ENVIRONMENT"
 import base64
 import pathlib
 import sys
 data = pathlib.Path(sys.argv[1]).read_bytes()
 sys.stdout.write(base64.b64encode(data).decode("ascii"))
 PY
-  gh secret set PETWORLD_DEV_KEYSTORE_BASE64 --repo "$REPO" --env "$ENVIRONMENT"
 
 printf '%s' "$password" |
   gh secret set PETWORLD_DEV_STORE_PASSWORD --repo "$REPO" --env "$ENVIRONMENT"
