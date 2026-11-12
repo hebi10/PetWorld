@@ -333,13 +333,13 @@ test('FB-04-FINAL: bytes-hashed photo is reusable but cannot be replaced by a re
   const sha = createHash('sha256').update(localBytes).digest('hex');
   await assertSucceeds(uploadBytes(photo, localBytes, { contentType: 'image/jpeg' }));
   const serverBytes = await assertSucceeds(getBytes(photo));
-  deepStrictEqual(createHash('sha256').update(serverBytes).digest('hex'), sha);
+  deepStrictEqual(createHash('sha256').update(Buffer.from(serverBytes)).digest('hex'), sha);
   await assertFails(uploadBytes(photo, new Uint8Array([0xff, 0xd8, 0, 0xff, 0xd9]), {
     contentType: 'image/jpeg',
   }));
   await assertFails(getBytes(ref(bob, isolatedPath)));
   const afterRetry = await assertSucceeds(getBytes(photo));
-  deepStrictEqual(createHash('sha256').update(afterRetry).digest('hex'), sha);
+  deepStrictEqual(createHash('sha256').update(Buffer.from(afterRetry)).digest('hex'), sha);
 });
 
 test('FB-04-FINAL: no Guest records means no initial upload or user ready marker', async () => {
