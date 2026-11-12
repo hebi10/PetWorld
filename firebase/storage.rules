@@ -13,6 +13,7 @@ service firebase.storage {
       allow get: if owner(uid);
       allow list: if false;
       allow create: if owner(uid) &&
+        resource == null &&
         permittedPhoto(fileName) &&
         request.resource.size > 0 &&
         request.resource.size <= 5 * 1024 * 1024 &&
