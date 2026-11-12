@@ -1,6 +1,7 @@
 package com.haebi.petworld.data
 
 import android.content.Context
+import com.haebi.petworld.data.account.LocalAccountScope
 import androidx.room.withTransaction
 import com.haebi.petworld.data.backup.PetWorldMutationGate
 import com.haebi.petworld.data.room.CareEntity
@@ -12,10 +13,11 @@ import kotlinx.coroutines.sync.withLock
 class CareRepository(
     context: Context,
     private val database: PetWorldDatabase,
+    private val scope: LocalAccountScope = LocalAccountScope.Guest,
 ) {
     private val dao = database.careDao()
     private val pets = database.petDao()
-    private val photos = PetPhotoStore(context.applicationContext)
+    private val photos = PetPhotoStore(context.applicationContext, scope)
     private val mutex = PetWorldMutationGate.mutex
 
     fun observeAll(): Flow<List<CareEntity>> = dao.observeAll()
