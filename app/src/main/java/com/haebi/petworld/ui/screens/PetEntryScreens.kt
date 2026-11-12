@@ -59,6 +59,7 @@ import java.time.format.DateTimeFormatter
 fun PetWelcomeScreen(
     archivedCount: Int,
     onStart: () -> Unit,
+    onOpenAccount: (() -> Unit)? = null,
     onManageArchived: () -> Unit,
     restoring: Boolean,
     onRestore: suspend (Uri, CharArray) -> Result<Unit>,
@@ -86,11 +87,29 @@ fun PetWelcomeScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        PetPrimaryButton(
-            label = "반려동물 등록",
-            onClick = onStart,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        if (onOpenAccount != null) {
+            PetPrimaryButton(
+                label = "Google 계정으로 시작",
+                onClick = onOpenAccount,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            PetSecondaryButton(
+                label = "로그인 없이 사용",
+                onClick = onStart,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                "Google 로그인을 하더라도 기존 기록은 이 기기에만 저장됩니다.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            PetPrimaryButton(
+                label = "반려동물 등록",
+                onClick = onStart,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         if (archivedCount > 0) {
             PetSecondaryButton(
                 label = "보관한 프로필 보기 (${archivedCount})",
