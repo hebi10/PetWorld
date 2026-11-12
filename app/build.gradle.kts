@@ -150,6 +150,8 @@ dependencies {
     if (firebaseDevConfigured) {
         add("firebaseDevImplementation", platform(libs.firebase.bom))
         add("firebaseDevImplementation", libs.firebase.auth)
+        add("firebaseDevImplementation", libs.firebase.firestore)
+        add("firebaseDevImplementation", libs.firebase.storage)
         add("firebaseDevImplementation", libs.credentials)
         add("firebaseDevImplementation", libs.credentials.play.services.auth)
         add("firebaseDevImplementation", libs.googleid)
