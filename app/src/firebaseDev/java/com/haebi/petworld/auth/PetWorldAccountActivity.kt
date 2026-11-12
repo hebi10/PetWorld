@@ -116,7 +116,7 @@ class PetWorldAccountActivity : ComponentActivity() {
                             Text(email, style = MaterialTheme.typography.bodyMedium)
                         }
                         Text(
-                            "Firebase 로그인 상태가 감지됐습니다. 클라우드 기록 동기화는 아직 시작되지 않았습니다.",
+                            "로그인 상태가 확인됐습니다. 이 계정의 로컬 기록은 비회원 기록과 분리되어 있습니다. 클라우드 동기화는 아직 시작되지 않았습니다.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -127,9 +127,9 @@ class PetWorldAccountActivity : ComponentActivity() {
             PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
                 Text("이 기기의 기록", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "현재 반려동물 프로필과 돌봄 기록은 이 기기에만 저장됩니다. " +
-                        "Google 계정에 연결하거나 로그아웃해도 로컬 기록은 삭제·이전되지 않습니다. " +
-                        "계정별 기록 분리와 클라우드 동기화는 추후 제공됩니다.",
+                    "비회원과 Google 계정은 이 기기에서 서로 다른 데이터 저장소를 사용합니다. " +
+                        "로그인하거나 로그아웃해도 기존 비회원 기록은 보존되며 자동 복사되지 않습니다. " +
+                        "클라우드 업로드·기기 간 동기화는 아직 제공하지 않습니다.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -147,7 +147,7 @@ class PetWorldAccountActivity : ComponentActivity() {
                         scope.launch {
                             try {
                                 feedback = when (readyGateway.signIn(this@PetWorldAccountActivity)) {
-                                    is GoogleLoginOutcome.SignedIn -> "Google 계정에 연결했습니다. 기존 기록은 이 기기에 그대로 보관됩니다."
+                                    is GoogleLoginOutcome.SignedIn -> "Google 계정에 연결했습니다. 비회원 기록은 이전하지 않고 별도로 보관합니다."
                                     GoogleLoginOutcome.Cancelled -> "Google 계정 선택을 취소했습니다."
                                     GoogleLoginOutcome.Busy -> "이미 로그인 요청을 처리 중입니다."
                                     GoogleLoginOutcome.MissingConfiguration -> "Firebase 로그인 설정을 확인해 주세요."
@@ -164,6 +164,30 @@ class PetWorldAccountActivity : ComponentActivity() {
                 )
             }
             if (auth != null && currentAccount != null) {
+                PetSecondaryButton(
+                    label = "실제 Firebase 인증 확인",
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !waiting,
+                    onClick = {
+                        val readyGateway = gateway ?: return@PetSecondaryButton
+                        waiting = true
+                        feedback = null
+                        scope.launch {
+                            try {
+                                feedback = if (runCatching {
+                                        readyGateway.verifyLiveSession()
+                                    }.getOrDefault(false)
+                                ) {
+                                    "Firebase 계정의 인증 토큰을 온라인으로 갱신했습니다. 사용자 정보는 공개하지 않습니다."
+                                } else {
+                                    "온라인 Firebase 인증을 확인하지 못했습니다. 네트워크와 계정 상태를 확인해 주세요."
+                                }
+                            } finally {
+                                waiting = false
+                            }
+                        }
+                    },
+                )
                 PetSecondaryButton(
                     label = "로그아웃",
                     modifier = Modifier.fillMaxWidth(),
