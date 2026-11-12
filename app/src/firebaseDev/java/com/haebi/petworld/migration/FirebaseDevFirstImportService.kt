@@ -16,6 +16,7 @@ import com.haebi.petworld.data.ThemePreferences
 import com.haebi.petworld.data.account.LocalAccountScope
 import com.haebi.petworld.data.account.photoDirectoryName
 import com.haebi.petworld.data.backup.PetWorldMutationGate
+import com.haebi.petworld.data.migration.FirstImportGuards
 import com.haebi.petworld.data.migration.FirstImportPayloads
 import com.haebi.petworld.data.room.CareEntity
 import com.haebi.petworld.data.room.PetEntity
@@ -251,7 +252,7 @@ class FirebaseDevFirstImportService(private val context: Context) {
             extraCloudDocuments = remote.extra,
             conflicts = remote.conflicts,
             sourceFingerprint = source.fingerprint,
-            accountFingerprint = (LocalAccountScope.fromFirebaseUid(uid) as LocalAccountScope.SignedIn).key,
+            accountFingerprint = FirstImportGuards.accountFingerprint(uid),
         )
     }
 
@@ -271,12 +272,7 @@ class FirebaseDevFirstImportService(private val context: Context) {
             "계정에 다른 데이터가 있습니다. 추가 방식의 이전을 선택해 주세요."
         }
         val uid = checkedUid()
-        require(
-            (LocalAccountScope.fromFirebaseUid(uid) as LocalAccountScope.SignedIn).key ==
-                preview.accountFingerprint
-        ) {
-            "미리보기 이후 로그인 계정이 변경됐습니다. 다시 확인해 주세요."
-        }
+        FirstImportGuards.requireSameAccount(preview.accountFingerprint, uid)
         val onlineUid = auth.currentUser?.also { user ->
             user.getIdToken(true).awaitImport()
         }?.uid
@@ -285,14 +281,18 @@ class FirebaseDevFirstImportService(private val context: Context) {
         }
         PetWorldMutationGate.mutex.withLock {
             val source = guestSnapshotLocked()
-            require(source.fingerprint == preview.sourceFingerprint) {
-                "미리보기 이후 기기 기록이 변경됐습니다. 다시 확인해 주세요."
-            }
+            FirstImportGuards.requireFreshSource(preview.sourceFingerprint, source.fingerprint)
             val current = remoteReview(uid, source)
             if (current.conflicts > 0) throw FirstImportConflict()
-            if (current.extra > 0 && !allowCloudExtras) {
-                error("계정의 기존 클라우드 데이터를 다시 확인해 주세요.")
-            }
+            FirstImportGuards.requireFreshReview(
+                approvedMatching = preview.matchingCloudDocuments,
+                approvedExtra = preview.extraCloudDocuments,
+                approvedConflicts = preview.conflicts,
+                latestMatching = current.matching,
+                latestExtra = current.extra,
+                latestConflicts = current.conflicts,
+                allowCloudExtras = allowCloudExtras,
+            )
             val scope = LocalAccountScope.fromFirebaseUid(uid) as LocalAccountScope.SignedIn
             check(checkpoint.edit().putString(scope.key, source.fingerprint).commit()) {
                 "재시도 체크포인트를 저장하지 못했습니다."
