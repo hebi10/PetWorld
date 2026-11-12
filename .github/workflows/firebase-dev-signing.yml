@@ -52,11 +52,16 @@ jobs:
                 "mobilesdk_app_id": "1:1234567890:android:0000000000000000",
                 "android_client_info": {"package_name": "com.haebi.petworld.dev"}
               },
-              "api_key": [{"current_key": "fake-ci-key"}]
+              "api_key": [{"current_key": "fake-ci-key"}],
+              "oauth_client": [{"client_type": 3, "client_id": "ci-dev-web-client.example"}]
             }],
             "configuration_version": "1"
           }
           JSON
+      - name: Verify the isolated synthetic Firebase client configuration
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_fb02_android_config_guard.py' -v
+          python3 scripts/firebase/android_config_guard.py --ci-demo --dev app/src/firebaseDev/google-services.json
       - name: Build temporary developer APK then run signingReport
         run: |
           ./gradlew :app:assembleFirebaseDev :app:signingReport --no-daemon > "$RUNNER_TEMP/petworld-signing-report.txt"
@@ -117,10 +122,25 @@ jobs:
               out.write('PETWORLD_DEV_KEYSTORE_PATH=' + str(path) + '\n')
               out.write('PETWORLD_DEV_REQUIRE_STABLE_SIGNING=true\n')
           PY
-      - name: Create synthetic development Firebase config
+      - name: Stage verified development config (real if provided, synthetic otherwise)
+        env:
+          DEV_CONFIG_BASE64: ${{ secrets.PETWORLD_DEV_GOOGLE_SERVICES_JSON_BASE64 }}
         run: |
           mkdir -p app/src/firebaseDev
-          cat > app/src/firebaseDev/google-services.json <<'JSON'
+          if [[ -n "$DEV_CONFIG_BASE64" ]]; then
+            python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+          data = base64.b64decode(os.environ['DEV_CONFIG_BASE64'], validate=True)
+          config = Path('app/src/firebaseDev/google-services.json')
+          config.write_bytes(data)
+          config.chmod(0o600)
+          PY
+            python3 scripts/firebase/android_config_guard.py --dev app/src/firebaseDev/google-services.json
+            echo 'Verified actual petworld-dev Firebase configuration. This job validates signing but not interactive login.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            cat > app/src/firebaseDev/google-services.json <<'JSON'
           {
             "project_info": {"project_number": "1234567890", "project_id": "demo-petworld-fb01"},
             "client": [{
@@ -128,11 +148,15 @@ jobs:
                 "mobilesdk_app_id": "1:1234567890:android:0000000000000000",
                 "android_client_info": {"package_name": "com.haebi.petworld.dev"}
               },
-              "api_key": [{"current_key": "fake-ci-key"}]
+              "api_key": [{"current_key": "fake-ci-key"}],
+              "oauth_client": [{"client_type": 3, "client_id": "ci-dev-web-client.example"}]
             }],
             "configuration_version": "1"
           }
           JSON
+            python3 scripts/firebase/android_config_guard.py --ci-demo --dev app/src/firebaseDev/google-services.json
+            echo 'SYNTHETIC Firebase config: actual Google login has NOT been tested.' >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Verify exact fixed signing certificate and development APK
         env:
           PETWORLD_DEV_STORE_PASSWORD: ${{ secrets.PETWORLD_DEV_STORE_PASSWORD }}
