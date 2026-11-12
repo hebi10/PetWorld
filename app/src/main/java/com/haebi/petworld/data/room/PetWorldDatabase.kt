@@ -1,6 +1,8 @@
 package com.haebi.petworld.data.room
 
 import android.content.Context
+import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.account.databaseFileName
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
@@ -180,19 +182,27 @@ abstract class PetWorldDatabase : RoomDatabase() {
     abstract fun careDao(): CareDao
 
     companion object {
-        private const val DATABASE_NAME = "petworld_profiles.db"
-        @Volatile private var instance: PetWorldDatabase? = null
+        private val instances = mutableMapOf<String, PetWorldDatabase>()
 
-        fun get(context: Context): PetWorldDatabase =
-            instance ?: synchronized(this) {
-                instance ?: Room.databaseBuilder(
+        fun get(context: Context): PetWorldDatabase = get(context, LocalAccountScope.Guest)
+
+        @Synchronized
+        fun get(context: Context, scope: LocalAccountScope): PetWorldDatabase {
+            val name = scope.databaseFileName
+            return instances.getOrPut(name) {
+                Room.databaseBuilder(
                     context.applicationContext,
                     PetWorldDatabase::class.java,
-                    DATABASE_NAME,
+                    name,
                 )
                     .addMigrations(MIGRATION_1_2)
                     .build()
-                    .also { instance = it }
             }
+        }
+
+        @Synchronized
+        fun closeScope(scope: LocalAccountScope) {
+            instances.remove(scope.databaseFileName)?.close()
+        }
     }
 }
