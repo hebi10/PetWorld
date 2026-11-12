@@ -1,6 +1,8 @@
 package com.haebi.petworld.data
 
 import android.content.Context
+import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.account.photoDirectoryName
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -11,8 +13,11 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
 
-class PetPhotoStore(private val context: Context) {
-    private val directory get() = File(context.filesDir, "pet_photos").apply { mkdirs() }
+class PetPhotoStore(
+    private val context: Context,
+    private val scope: LocalAccountScope = LocalAccountScope.Guest,
+) {
+    private val directory get() = File(context.filesDir, scope.photoDirectoryName).apply { mkdirs() }
 
     fun fileFor(name: String?): File? {
         if (name == null || !Regex("pet_[a-z0-9-]+\\.jpg").matches(name)) return null
