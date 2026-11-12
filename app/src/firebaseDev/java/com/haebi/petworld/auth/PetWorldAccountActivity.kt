@@ -116,7 +116,7 @@ class PetWorldAccountActivity : ComponentActivity() {
                             Text(email, style = MaterialTheme.typography.bodyMedium)
                         }
                         Text(
-                            "Firebase 사용자 ID가 확인되었습니다. 클라우드 기록 동기화는 아직 시작되지 않았습니다.",
+                            "Firebase 로그인 상태가 감지됐습니다. 클라우드 기록 동기화는 아직 시작되지 않았습니다.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -193,7 +193,7 @@ class PetWorldAccountActivity : ComponentActivity() {
                 )
             }
             PetSecondaryButton(
-                label = "로그인 없이 사용",
+                label = if (currentAccount == null) "로그인 없이 사용" else "기록 화면으로",
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !waiting,
                 onClick = onClose,
