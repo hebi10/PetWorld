@@ -52,3 +52,32 @@ jobs:
 
       - name: Assemble debug
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Verify isolated Firebase development APK
+        run: |
+          mkdir -p app/src/firebaseDev
+          cat > app/src/firebaseDev/google-services.json <<'JSON'
+          {
+            "project_info": {"project_number": "1234567890", "project_id": "demo-petworld-fb01"},
+            "client": [{
+              "client_info": {
+                "mobilesdk_app_id": "1:1234567890:android:0000000000000000",
+                "android_client_info": {"package_name": "com.haebi.petworld.dev"}
+              },
+              "api_key": [{"current_key": "fake-ci-key"}]
+            }],
+            "configuration_version": "1"
+          }
+          JSON
+          ./gradlew :app:assembleDebug :app:assembleFirebaseDev --no-daemon --stacktrace
+          AAPT2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
+          DEBUG_APK="app/build/outputs/apk/debug/app-debug.apk"
+          DEV_APK="$(find app/build/outputs/apk -iname '*firebasedev*.apk' -type f -print -quit)"
+          test -n "$DEV_APK"
+          "$AAPT2" dump badging "$DEBUG_APK" | grep -F "package: name='com.haebi.petworld'"
+          "$AAPT2" dump badging "$DEV_APK" | grep -F "package: name='com.haebi.petworld.dev'"
+          "$AAPT2" dump resources "$DEV_APK" | grep -F 'demo-petworld-fb01'
+          "$AAPT2" dump resources "$DEBUG_APK" > "$RUNNER_TEMP/petworld-debug-resources.txt"
+          if grep -Fq 'demo-petworld-fb01' "$RUNNER_TEMP/petworld-debug-resources.txt"; then
+            exit 1
+          fi
