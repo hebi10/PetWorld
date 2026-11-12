@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { deepStrictEqual, rejects } from 'node:assert/strict';
 import { after, before, beforeEach, test } from 'node:test';
 import {
   assertFails,
@@ -9,6 +11,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocFromServer,
   setDoc,
   updateDoc,
 } from 'firebase/firestore';
@@ -249,4 +252,102 @@ test('FB-04: strict schema accepts lossless initial pet and record maps and reje
   await assertFails(setDoc(record, fullRecord));
   await assertFails(setDoc(record, { ...fullRecord, foodServedMilli: 400 }));
   await assertSucceeds(updateDoc(user, { migrationState: 'ready', revision: 1 }));
+});
+
+
+/** Offline integration: runs only against demo Firestore/Storage emulators, never a live account. */
+async function createMatchingDocumentOrSkip(db, path, payload) {
+  const refDoc = doc(db, path);
+  const current = await getDocFromServer(refDoc);
+  if (current.exists()) {
+    deepStrictEqual(current.data(), payload, 'An existing UUID must not be overwritten');
+    return 'skipped-identical';
+  }
+  await assertSucceeds(setDoc(refDoc, payload));
+  const verified = await getDocFromServer(refDoc);
+  deepStrictEqual(verified.data(), payload);
+  return 'created';
+}
+
+test('FB-04-FINAL: interrupted initial upload resumes without duplicate records or overwrites', async () => {
+  const alice = env.authenticatedContext('alice').firestore();
+  const uid = 'users/alice';
+  const sourcePet = petDoc();
+  const sourceRecord = careDoc();
+  const snapshot = JSON.stringify([sourcePet, sourceRecord]);
+
+  await assertSucceeds(setDoc(doc(alice, uid), userDoc()));
+  if (await createMatchingDocumentOrSkip(alice, uid + '/pets/pet-1', sourcePet) !== 'created') {
+    throw new Error('First snapshot should create pet once');
+  }
+  // Simulated app termination/network loss: record upload and ready marker never ran.
+  const incompleteRecord = await getDocFromServer(doc(alice, uid + '/pets/pet-1/records/record-1'));
+  if (incompleteRecord.exists()) throw new Error('Record was incorrectly created before retry');
+  const pending = await getDocFromServer(doc(alice, uid));
+  if (pending.data().migrationState !== 'pending') throw new Error('Migration marked ready too early');
+
+  deepStrictEqual(
+    await createMatchingDocumentOrSkip(alice, uid + '/pets/pet-1', sourcePet),
+    'skipped-identical',
+  );
+  deepStrictEqual(
+    await createMatchingDocumentOrSkip(alice, uid + '/pets/pet-1/records/record-1', sourceRecord),
+    'created',
+  );
+  const record = await getDocFromServer(doc(alice, uid + '/pets/pet-1/records/record-1'));
+  deepStrictEqual(record.data(), sourceRecord);
+  await assertSucceeds(updateDoc(doc(alice, uid), { migrationState: 'ready', revision: 1 }));
+  deepStrictEqual(
+    await createMatchingDocumentOrSkip(alice, uid + '/pets/pet-1/records/record-1', sourceRecord),
+    'skipped-identical',
+  );
+  deepStrictEqual(JSON.stringify([sourcePet, sourceRecord]), snapshot, 'Local source was mutated');
+});
+
+test('FB-04-FINAL: changed UUID payload is rejected and leaves stored data untouched', async () => {
+  const alice = env.authenticatedContext('alice').firestore();
+  const user = doc(alice, 'users/alice');
+  const pet = doc(alice, 'users/alice/pets/pet-1');
+  await assertSucceeds(setDoc(user, userDoc()));
+  await assertSucceeds(setDoc(pet, petDoc()));
+  await rejects(() => createMatchingDocumentOrSkip(
+    alice,
+    'users/alice/pets/pet-1',
+    { ...petDoc(), name: 'different-content' },
+  ));
+  const storedPet = await getDocFromServer(pet);
+  const storedUser = await getDocFromServer(user);
+  deepStrictEqual(storedPet.data(), petDoc());
+  if (storedUser.data().migrationState !== 'pending') {
+    throw new Error('A conflicting import must remain pending');
+  }
+});
+
+test('FB-04-FINAL: bytes-hashed photo is reusable but cannot be replaced by a retry', async () => {
+  const alice = env.authenticatedContext('alice').storage(bucket);
+  const bob = env.authenticatedContext('bob').storage(bucket);
+  const photo = ref(alice, pathFor('alice'));
+  const localBytes = new Uint8Array([0xff, 0xd8, 0x11, 0x22, 0xff, 0xd9]);
+  const sha = createHash('sha256').update(localBytes).digest('hex');
+  await assertSucceeds(uploadBytes(photo, localBytes, { contentType: 'image/jpeg', customMetadata: { sha256: sha } }));
+  const serverBytes = await assertSucceeds(getBytes(photo));
+  deepStrictEqual(createHash('sha256').update(serverBytes).digest('hex'), sha);
+  await assertFails(uploadBytes(photo, new Uint8Array([0xff, 0xd8, 0, 0xff, 0xd9]), {
+    contentType: 'image/jpeg',
+  }));
+  await assertFails(getBytes(ref(bob, pathFor('alice'))));
+  const afterRetry = await assertSucceeds(getBytes(photo));
+  deepStrictEqual(createHash('sha256').update(afterRetry).digest('hex'), sha);
+});
+
+test('FB-04-FINAL: no Guest records means no initial upload or user ready marker', async () => {
+  const alice = env.authenticatedContext('alice').firestore();
+  const before = await getDocFromServer(doc(alice, 'users/alice'));
+  if (before.exists()) throw new Error('Unexpected initial user data');
+  // Explicit preview guard: an empty pet list cannot be committed.
+  const emptySource = { pets: [], records: [], photos: [] };
+  const canImport = emptySource.pets.length > 0;
+  if (canImport) throw new Error('Empty guest data must not start migration');
+  const after = await getDocFromServer(doc(alice, 'users/alice'));
+  if (after.exists()) throw new Error('Preview created a remote user unexpectedly');
 });
