@@ -37,8 +37,10 @@ jobs:
           test -n "$SDK_MANAGER"
           "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install "platforms;android-37.0" "build-tools;36.0.0"
           echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
-      - name: Verify signing report parser
-        run: python3 -m unittest discover -s scripts -p 'test_fb01_dev_signing.py' -v
+      - name: Verify provisioning script syntax and signing parser
+        run: |
+          bash -n scripts/firebase/provision_fixed_dev_signer.sh
+          python3 -m unittest discover -s scripts -p 'test_fb01_dev_signing.py' -v
       - name: Create synthetic Firebase development config
         run: |
           mkdir -p app/src/firebaseDev
