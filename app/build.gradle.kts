@@ -1,7 +1,19 @@
+import com.google.gms.googleservices.GoogleServicesPlugin.GoogleServicesPluginConfig
+import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.ksp.plugin)
+    alias(libs.plugins.google.services) apply false
+}
+
+val firebaseDevConfigured = file("src/firebaseDev/google-services.json").isFile
+if (firebaseDevConfigured) {
+    apply(plugin = "com.google.gms.google-services")
+    configure<GoogleServicesPluginConfig> {
+        missingGoogleServicesStrategy = MissingGoogleServicesStrategy.IGNORE
+    }
 }
 
 val releaseStore = providers.environmentVariable("ANDROID_RELEASE_KEYSTORE_PATH").orNull
@@ -43,6 +55,13 @@ android {
     }
 
     buildTypes {
+        if (firebaseDevConfigured) {
+            create("firebaseDev") {
+                initWith(getByName("debug"))
+                applicationIdSuffix = ".dev"
+                matchingFallbacks += "debug"
+            }
+        }
         release {
             isMinifyEnabled = false
             if (releaseSigningReady) {
@@ -66,6 +85,11 @@ android {
 }
 
 dependencies {
+    if (firebaseDevConfigured) {
+        add("firebaseDevImplementation", platform(libs.firebase.bom))
+        add("firebaseDevImplementation", libs.firebase.auth)
+    }
+
     implementation(libs.activity.compose)
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.lifecycle.viewmodel)
