@@ -10,7 +10,10 @@ plugins {
 
 val firebaseDevConfigured = file("src/firebaseDev/google-services.json").isFile
 val firebaseProdConfigured = file("src/release/google-services.json").isFile
-val productionReleaseRequested = gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }
+val productionReleaseRequested = gradle.startParameter.taskNames.any { requested ->
+    val task = requested.substringAfterLast(':').lowercase()
+    task.contains("release") || task in setOf("assemble", "bundle", "build", "publish")
+}
 val productionFirebaseApproved = providers.environmentVariable("PETWORLD_ENABLE_PRODUCTION_FIREBASE")
     .orElse("false").get().equals("true", ignoreCase = true)
 if (firebaseProdConfigured && productionReleaseRequested && !productionFirebaseApproved) {
