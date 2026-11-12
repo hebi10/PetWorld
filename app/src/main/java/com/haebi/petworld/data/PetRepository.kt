@@ -1,6 +1,7 @@
 package com.haebi.petworld.data
 
 import android.content.Context
+import com.haebi.petworld.data.account.LocalAccountScope
 import androidx.room.withTransaction
 import com.haebi.petworld.data.backup.PetWorldMutationGate
 import com.haebi.petworld.data.room.PetWorldDatabase
@@ -24,9 +25,10 @@ sealed interface PetLoadStatus {
 class PetRepository(
     context: Context,
     private val database: PetWorldDatabase = PetWorldDatabase.get(context),
+    private val scope: LocalAccountScope = LocalAccountScope.Guest,
 ) {
     private val dao = database.petDao()
-    private val photos = PetPhotoStore(context.applicationContext)
+    private val photos = PetPhotoStore(context.applicationContext, scope)
     val photoStore: PetPhotoStore get() = photos
     private val mutex = PetWorldMutationGate.mutex
 
