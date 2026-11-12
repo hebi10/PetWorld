@@ -58,9 +58,14 @@ jobs:
           python3 scripts/firebase/prepare_android_config.py firebaseDev
           python3 scripts/firebase/prepare_android_config.py release
           ./gradlew :app:assembleDebug :app:assembleFirebaseDev --no-daemon --stacktrace
-          ANDROID_RELEASE_KEYSTORE_PATH="$HOME/.android/debug.keystore" \
+          RELEASE_TEST_KEYSTORE="$RUNNER_TEMP/petworld-firebase-config-ci.p12"
+          trap 'rm -f "$RELEASE_TEST_KEYSTORE"' EXIT
+          keytool -genkeypair -storetype PKCS12 -keystore "$RELEASE_TEST_KEYSTORE" \
+            -alias firebase-config-ci -keyalg RSA -keysize 2048 -validity 1 \
+            -dname "CN=PetWorld Firebase config CI" -storepass android -keypass android
+          ANDROID_RELEASE_KEYSTORE_PATH="$RELEASE_TEST_KEYSTORE" \
             ANDROID_RELEASE_STORE_PASSWORD=android \
-            ANDROID_RELEASE_KEY_ALIAS=androiddebugkey \
+            ANDROID_RELEASE_KEY_ALIAS=firebase-config-ci \
             ANDROID_RELEASE_KEY_PASSWORD=android \
             ./gradlew :app:assembleRelease --no-daemon --stacktrace
 
