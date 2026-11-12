@@ -9,7 +9,14 @@ plugins {
 }
 
 val firebaseDevConfigured = file("src/firebaseDev/google-services.json").isFile
-if (firebaseDevConfigured) {
+val firebaseProdConfigured = file("src/release/google-services.json").isFile
+val productionReleaseRequested = gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }
+val productionFirebaseApproved = providers.environmentVariable("PETWORLD_ENABLE_PRODUCTION_FIREBASE")
+    .orElse("false").get().equals("true", ignoreCase = true)
+if (firebaseProdConfigured && productionReleaseRequested && !productionFirebaseApproved) {
+    throw GradleException("Production Firebase release requires explicit PETWORLD_ENABLE_PRODUCTION_FIREBASE approval")
+}
+if (firebaseDevConfigured || firebaseProdConfigured) {
     apply(plugin = "com.google.gms.google-services")
     configure<GoogleServicesPluginConfig> {
         missingGoogleServicesStrategy = MissingGoogleServicesStrategy.IGNORE
@@ -116,6 +123,9 @@ dependencies {
     if (firebaseDevConfigured) {
         add("firebaseDevImplementation", platform(libs.firebase.bom))
         add("firebaseDevImplementation", libs.firebase.auth)
+        add("firebaseDevImplementation", libs.credentials)
+        add("firebaseDevImplementation", libs.credentials.play.services.auth)
+        add("firebaseDevImplementation", libs.googleid)
     }
 
     implementation(libs.activity.compose)
