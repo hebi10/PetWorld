@@ -106,6 +106,7 @@ private enum class PrimaryTab(
 @Composable
 fun PetWorldApp(
     themeMode: ThemeMode,
+    guestScope: Boolean = true,
     petState: PetUiState,
     careFeed: CareFeedState,
     photoStore: PetPhotoStore,
@@ -310,6 +311,7 @@ fun PetWorldApp(
                     )
                     current == null -> PetWelcomeScreen(
                         archivedCount = petState.profiles.count { it.isArchived },
+                        allowGuestBackup = guestScope,
                         onStart = { openEditor(null, returnToManager = false) },
                         onOpenAccount = onOpenAccount,
                         onManageArchived = { showManager = true },
@@ -471,6 +473,7 @@ fun PetWorldApp(
                             )
                             PrimaryTab.MORE -> SettingsContent(
                                 themeMode = themeMode,
+                                guestScope = guestScope,
                                 profileCount = petState.profiles.size,
                                 onOpenAccount = onOpenAccount,
                                 onThemeModeChange = onThemeModeChange,
@@ -598,6 +601,7 @@ private fun FeaturePlaceholder(title: String, description: String) {
 @Composable
 private fun SettingsContent(
     themeMode: ThemeMode,
+    guestScope: Boolean,
     profileCount: Int,
     onOpenAccount: (() -> Unit)?,
     onThemeModeChange: (ThemeMode) -> Unit,
@@ -716,7 +720,19 @@ private fun SettingsContent(
             }
         }
     }
-    PetBackupSection(restoring = restoring, onRestore = onRestoreBackup)
+    if (guestScope) {
+        PetBackupSection(restoring = restoring, onRestore = onRestoreBackup)
+    } else {
+        PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
+            Text("백업·복원", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "현재 Google 계정의 로컬 데이터는 별도로 보관됩니다. " +
+                    "계정별 암호화 백업·복원은 검증 완료 후 제공됩니다.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
     PetSecondaryButton(
         label = "개인정보처리방침",
         modifier = Modifier.fillMaxWidth(),
