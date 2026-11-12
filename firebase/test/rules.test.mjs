@@ -206,6 +206,7 @@ test('Storage: type, path, overwrite and permanent deletion remain restricted', 
     contentType: 'image/jpeg',
   }));
   await assertSucceeds(uploadBytes(valid, new Uint8Array([1]), { contentType: 'image/jpeg' }));
+  await assertSucceeds(getBytes(valid));
   await assertFails(uploadBytes(valid, new Uint8Array([2]), { contentType: 'image/jpeg' }));
   await assertFails(deleteObject(valid));
 });
