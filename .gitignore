@@ -14,6 +14,7 @@ captures/
 *.key
 service-account*.json
 google-services.json
+.firebaserc
 .DS_Store
 Thumbs.db
 __pycache__/
