@@ -57,9 +57,9 @@ jobs:
             "configuration_version": "1"
           }
           JSON
-      - name: Run Android signingReport without stable signer
+      - name: Build temporary developer APK then run signingReport
         run: |
-          ./gradlew :app:signingReport --no-daemon > "$RUNNER_TEMP/petworld-signing-report.txt"
+          ./gradlew :app:assembleFirebaseDev :app:signingReport --no-daemon > "$RUNNER_TEMP/petworld-signing-report.txt"
           python3 scripts/firebase/dev_signing_report.py \
             --mode ephemeral \
             --report "$RUNNER_TEMP/petworld-signing-report.txt"
