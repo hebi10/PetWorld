@@ -184,7 +184,7 @@ test('Storage: guest and different UID cannot access a private image', async () 
   const alice = env.authenticatedContext('alice').storage(bucket);
   const bob = env.authenticatedContext('bob').storage(bucket);
   const guest = env.unauthenticatedContext().storage(bucket);
-  const path = pathFor('alice');
+  const path = pathFor('alice', 'pet-1', 'pet_22222222-2222-4222-8222-222222222222.jpg');
   await assertSucceeds(uploadBytes(ref(alice, path), new Uint8Array([1, 2, 3]), {
     contentType: 'image/jpeg',
   }));
@@ -197,7 +197,7 @@ test('Storage: guest and different UID cannot access a private image', async () 
 
 test('Storage: type, path, overwrite and permanent deletion remain restricted', async () => {
   const alice = env.authenticatedContext('alice').storage(bucket);
-  const valid = ref(alice, pathFor('alice'));
+  const valid = ref(alice, pathFor('alice', 'pet-1', 'pet_33333333-3333-4333-8333-333333333333.jpg'));
   await assertFails(uploadBytes(valid, new Uint8Array([1]), { contentType: 'image/png' }));
   await assertFails(uploadBytes(ref(alice, pathFor('alice', 'pet-1', 'evil.png')), new Uint8Array([1]), {
     contentType: 'image/jpeg',
