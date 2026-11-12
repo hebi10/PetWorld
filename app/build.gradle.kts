@@ -22,6 +22,23 @@ val releaseAlias = providers.environmentVariable("ANDROID_RELEASE_KEY_ALIAS").or
 val releaseKeyPassword = providers.environmentVariable("ANDROID_RELEASE_KEY_PASSWORD").orNull
 val releaseSigningReady = listOf(releaseStore, releaseStorePassword, releaseAlias, releaseKeyPassword)
     .all { !it.isNullOrBlank() }
+
+val devStorePath = providers.environmentVariable("PETWORLD_DEV_KEYSTORE_PATH").orNull
+val devStorePassword = providers.environmentVariable("PETWORLD_DEV_STORE_PASSWORD").orNull
+val devKeyAlias = providers.environmentVariable("PETWORLD_DEV_KEY_ALIAS").orNull
+val devKeyPassword = providers.environmentVariable("PETWORLD_DEV_KEY_PASSWORD").orNull
+val devSignerFields = listOf(devStorePath, devStorePassword, devKeyAlias, devKeyPassword)
+val devSignerProvided = devSignerFields.count { !it.isNullOrBlank() }
+val devSigningReady = devSignerProvided == devSignerFields.size
+val requireFixedDevSigning = providers.environmentVariable("PETWORLD_DEV_REQUIRE_STABLE_SIGNING")
+    .orElse("false").get().equals("true", ignoreCase = true)
+
+if (firebaseDevConfigured && (devSignerProvided in 1..3 || (requireFixedDevSigning && !devSigningReady))) {
+    throw GradleException("firebaseDev requires all four dedicated development signing settings")
+}
+if (firebaseDevConfigured && devSigningReady && !file(devStorePath!!).isFile) {
+    throw GradleException("Dedicated firebaseDev keystore file does not exist")
+}
 val releaseVersionCode = providers.environmentVariable("ANDROID_VERSION_CODE").orElse("1").get()
     .toIntOrNull()?.takeIf { it in 1..2100000000 }
     ?: throw GradleException("ANDROID_VERSION_CODE must be a positive supported integer")
@@ -52,6 +69,14 @@ android {
                 keyPassword = releaseKeyPassword
             }
         }
+        if (firebaseDevConfigured && devSigningReady) {
+            create("firebaseDevFixed") {
+                storeFile = file(devStorePath!!)
+                storePassword = devStorePassword
+                keyAlias = devKeyAlias
+                keyPassword = devKeyPassword
+            }
+        }
     }
 
     buildTypes {
@@ -60,6 +85,9 @@ android {
                 initWith(getByName("debug"))
                 applicationIdSuffix = ".dev"
                 matchingFallbacks += "debug"
+                if (devSigningReady) {
+                    signingConfig = signingConfigs.getByName("firebaseDevFixed")
+                }
             }
         }
         release {

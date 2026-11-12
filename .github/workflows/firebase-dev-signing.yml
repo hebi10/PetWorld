@@ -1,0 +1,159 @@
+name: PetWorld firebaseDev signing fingerprints
+
+on:
+  pull_request:
+    paths:
+      - app/build.gradle.kts
+      - scripts/firebase/dev_signing_report.py
+      - scripts/test_fb01_dev_signing.py
+      - .github/workflows/firebase-dev-signing.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pr-preflight:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact PR source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - name: Install Android platform
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -path '*/bin/sdkmanager' -type f | head -n 1)"
+          test -n "$SDK_MANAGER"
+          "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install "platforms;android-37.0" "build-tools;36.0.0"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+      - name: Verify provisioning script syntax and signing parser
+        run: |
+          bash -n scripts/firebase/provision_fixed_dev_signer.sh
+          python3 -m unittest discover -s scripts -p 'test_fb01_dev_signing.py' -v
+      - name: Create synthetic Firebase development config
+        run: |
+          mkdir -p app/src/firebaseDev
+          cat > app/src/firebaseDev/google-services.json <<'JSON'
+          {
+            "project_info": {"project_number": "1234567890", "project_id": "demo-petworld-fb01"},
+            "client": [{
+              "client_info": {
+                "mobilesdk_app_id": "1:1234567890:android:0000000000000000",
+                "android_client_info": {"package_name": "com.haebi.petworld.dev"}
+              },
+              "api_key": [{"current_key": "fake-ci-key"}]
+            }],
+            "configuration_version": "1"
+          }
+          JSON
+      - name: Build temporary developer APK then run signingReport
+        run: |
+          ./gradlew :app:assembleFirebaseDev :app:signingReport --no-daemon > "$RUNNER_TEMP/petworld-signing-report.txt"
+          python3 scripts/firebase/dev_signing_report.py \
+            --mode ephemeral \
+            --report "$RUNNER_TEMP/petworld-signing-report.txt"
+          echo "::notice::The CI runner's debug signing certificate is NOT persistent and MUST NOT be registered in Firebase."
+
+  fixed-fingerprint:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    environment: petworld-dev-signing
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout approved main source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - name: Install Android platform
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -path '*/bin/sdkmanager' -type f | head -n 1)"
+          test -n "$SDK_MANAGER"
+          "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install "platforms;android-37.0" "build-tools;36.0.0"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+      - name: Restore dedicated stable signer from protected GitHub secrets
+        env:
+          KEYSTORE_BASE64: ${{ secrets.PETWORLD_DEV_KEYSTORE_BASE64 }}
+          PETWORLD_DEV_STORE_PASSWORD: ${{ secrets.PETWORLD_DEV_STORE_PASSWORD }}
+          PETWORLD_DEV_KEY_ALIAS: ${{ secrets.PETWORLD_DEV_KEY_ALIAS }}
+          PETWORLD_DEV_KEY_PASSWORD: ${{ secrets.PETWORLD_DEV_KEY_PASSWORD }}
+        run: |
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          keys = (
+              'KEYSTORE_BASE64', 'PETWORLD_DEV_STORE_PASSWORD',
+              'PETWORLD_DEV_KEY_ALIAS', 'PETWORLD_DEV_KEY_PASSWORD'
+          )
+          if any(not os.environ.get(key) for key in keys):
+              raise SystemExit('Dedicated firebaseDev signing secrets are not configured.')
+          path = Path(os.environ['RUNNER_TEMP']) / 'petworld-dev-signing.jks'
+          path.write_bytes(base64.b64decode(os.environ['KEYSTORE_BASE64'], validate=True))
+          os.chmod(path, 0o600)
+          if not path.stat().st_size:
+              raise SystemExit('The configured keystore is empty.')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as out:
+              out.write('PETWORLD_DEV_KEYSTORE_PATH=' + str(path) + '\n')
+              out.write('PETWORLD_DEV_REQUIRE_STABLE_SIGNING=true\n')
+          PY
+      - name: Create synthetic development Firebase config
+        run: |
+          mkdir -p app/src/firebaseDev
+          cat > app/src/firebaseDev/google-services.json <<'JSON'
+          {
+            "project_info": {"project_number": "1234567890", "project_id": "demo-petworld-fb01"},
+            "client": [{
+              "client_info": {
+                "mobilesdk_app_id": "1:1234567890:android:0000000000000000",
+                "android_client_info": {"package_name": "com.haebi.petworld.dev"}
+              },
+              "api_key": [{"current_key": "fake-ci-key"}]
+            }],
+            "configuration_version": "1"
+          }
+          JSON
+      - name: Verify exact fixed signing certificate and development APK
+        env:
+          PETWORLD_DEV_STORE_PASSWORD: ${{ secrets.PETWORLD_DEV_STORE_PASSWORD }}
+          PETWORLD_DEV_KEY_ALIAS: ${{ secrets.PETWORLD_DEV_KEY_ALIAS }}
+          PETWORLD_DEV_KEY_PASSWORD: ${{ secrets.PETWORLD_DEV_KEY_PASSWORD }}
+        run: |
+          ./gradlew :app:signingReport :app:assembleFirebaseDev --no-daemon > "$RUNNER_TEMP/petworld-signing-report.txt"
+          keytool -list -v \
+            -keystore "$PETWORLD_DEV_KEYSTORE_PATH" \
+            -alias "$PETWORLD_DEV_KEY_ALIAS" \
+            -storepass:env PETWORLD_DEV_STORE_PASSWORD \
+            > "$RUNNER_TEMP/petworld-keytool-certificate.txt"
+          APK="$(find app/build/outputs/apk -type f -iname '*firebasedev*.apk' -print -quit)"
+          test -n "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$APK" | grep -F "package: name='com.haebi.petworld.dev'"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK" > "$RUNNER_TEMP/petworld-apksigner.txt"
+          python3 scripts/firebase/dev_signing_report.py \
+            --mode stable \
+            --report "$RUNNER_TEMP/petworld-signing-report.txt" \
+            --keytool "$RUNNER_TEMP/petworld-keytool-certificate.txt" \
+            --apksigner "$RUNNER_TEMP/petworld-apksigner.txt"
+      - name: Remove private keystore material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/petworld-dev-signing.jks"
