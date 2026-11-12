@@ -1,6 +1,8 @@
 package com.haebi.petworld
 
 import android.content.Context
+import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.account.isGuest
 import android.net.Uri
 import com.haebi.petworld.data.backup.PetWorldBackupRestorer
 import com.haebi.petworld.data.backup.PetWorldRecoveryJournal
@@ -49,6 +51,7 @@ class MainViewModel(
     private val preferences: ThemePreferences,
     private val pets: PetRepository,
     private val care: CareRepository,
+    private val accountScope: LocalAccountScope = LocalAccountScope.Guest,
 ) : ViewModel() {
     val photoStore: PetPhotoStore = pets.photoStore
     private val reloadCare = MutableStateFlow(0L)
@@ -68,6 +71,11 @@ class MainViewModel(
     fun retryCare() { reloadCare.value += 1L }
 
     suspend fun restoreBackup(source: Uri, password: CharArray): Result<Unit> {
+        if (!accountScope.isGuest) {
+            return Result.failure(
+                IllegalStateException("로그인 계정의 백업 복원은 계정별 복구가 준비된 뒤 사용할 수 있습니다.")
+            )
+        }
         if (restoring.value) {
             return Result.failure(IllegalStateException("복원 작업이 이미 진행 중입니다."))
         }
@@ -158,18 +166,22 @@ class MainViewModel(
     }
 
     companion object {
-        fun factory(context: Context): ViewModelProvider.Factory =
+        fun factory(
+            context: Context,
+            scope: LocalAccountScope = LocalAccountScope.Guest,
+        ): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
                     require(modelClass.isAssignableFrom(MainViewModel::class.java))
                     @Suppress("UNCHECKED_CAST")
                     val app = context.applicationContext
-                    val db = PetWorldDatabase.get(app)
+                    val db = PetWorldDatabase.get(app, scope)
                     return MainViewModel(
                         app,
-                        ThemePreferences(app),
-                        PetRepository(app, db),
-                        CareRepository(app, db),
+                        ThemePreferences(app, scope),
+                        PetRepository(app, db, scope),
+                        CareRepository(app, db, scope),
+                        accountScope = scope,
                     ) as T
                 }
             }
