@@ -95,8 +95,8 @@ def main() -> None:
         summary = (
             "### PetWorld fixed firebaseDev signing certificate\n"
             "**Verified: Gradle signingReport = keytool certificate = signed APK.**\n\n"
-            f"- Firebase dev SHA-1: \`{colonized(apk_cert['sha1'])}\`\n"
-            f"- Firebase dev SHA-256: \`{colonized(apk_cert['sha256'])}\`\n\n"
+            f"- Firebase dev SHA-1: `{colonized(apk_cert['sha1'])}`\n"
+            f"- Firebase dev SHA-256: `{colonized(apk_cert['sha256'])}`\n\n"
             "Register only for **petworld-dev / com.haebi.petworld.dev**, "
             "never for the Play production app.\n"
         )
