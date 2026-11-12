@@ -98,8 +98,13 @@ class FirebaseDevFirstImportService(private val context: Context) {
         check(!firebase.options.storageBucket.isNullOrBlank()) {
             "개발 Firebase Storage 설정이 필요합니다."
         }
-        return auth.currentUser?.uid?.takeIf { it.isNotBlank() }
+        val user = auth.currentUser
             ?: error("Google 계정으로 먼저 로그인해 주세요.")
+        check(!user.isAnonymous && user.providerData.any { it.providerId == "google.com" }) {
+            "Google 계정으로 로그인한 뒤에만 기록을 이전할 수 있습니다."
+        }
+        return user.uid.takeIf { it.isNotBlank() }
+            ?: error("Google 계정 인증을 다시 확인해 주세요.")
     }
 
     private fun assertSameUser(uid: String) {
