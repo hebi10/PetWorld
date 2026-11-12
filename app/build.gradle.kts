@@ -79,6 +79,11 @@ if (gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = tr
 android {
     namespace = "com.haebi.petworld"
     compileSdk = 37
+    if (firebaseDevConfigured && gradle.startParameter.taskNames.any {
+            it.contains("FirebaseDevAndroidTest", ignoreCase = true)
+        }) {
+        testBuildType = "firebaseDev"
+    }
 
     defaultConfig {
         applicationId = "com.haebi.petworld"
