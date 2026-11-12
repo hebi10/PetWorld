@@ -62,24 +62,27 @@ jobs:
             ANDROID_RELEASE_STORE_PASSWORD=android \
             ANDROID_RELEASE_KEY_ALIAS=androiddebugkey \
             ANDROID_RELEASE_KEY_PASSWORD=android \
-            ./gradlew :app:processReleaseGoogleServices --no-daemon --stacktrace
+            ./gradlew :app:assembleRelease --no-daemon --stacktrace
 
           AAPT2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
           DEBUG_APK="app/build/outputs/apk/debug/app-debug.apk"
           DEV_APK="$(find app/build/outputs/apk -iname '*firebasedev*.apk' -type f -print -quit)"
-          RELEASE_VALUES="app/build/generated/res/google-services/release/values/values.xml"
+          RELEASE_APK="app/build/outputs/apk/release/app-release.apk"
           test -n "$DEV_APK"
           "$AAPT2" dump badging "$DEBUG_APK" > "$RUNNER_TEMP/petworld-debug-badging.txt"
           "$AAPT2" dump badging "$DEV_APK" > "$RUNNER_TEMP/petworld-dev-badging.txt"
+          "$AAPT2" dump badging "$RELEASE_APK" > "$RUNNER_TEMP/petworld-release-badging.txt"
+          grep -Fq "package: name='com.haebi.petworld'" "$RUNNER_TEMP/petworld-release-badging.txt"
           grep -Fq "package: name='com.haebi.petworld'" "$RUNNER_TEMP/petworld-debug-badging.txt"
           grep -Fq "package: name='com.haebi.petworld.dev'" "$RUNNER_TEMP/petworld-dev-badging.txt"
           "$AAPT2" dump resources "$DEBUG_APK" > "$RUNNER_TEMP/petworld-debug-resources.txt"
           "$AAPT2" dump resources "$DEV_APK" > "$RUNNER_TEMP/petworld-dev-resources.txt"
+          "$AAPT2" dump resources "$RELEASE_APK" > "$RUNNER_TEMP/petworld-release-resources.txt"
           grep -Fq 'petworld-dev' "$RUNNER_TEMP/petworld-dev-resources.txt"
-          grep -Fq 'petworld-prod-3b5c5' "$RELEASE_VALUES"
+          grep -Fq 'petworld-prod-3b5c5' "$RUNNER_TEMP/petworld-release-resources.txt"
           if grep -Eq 'petworld-dev|petworld-prod-3b5c5' "$RUNNER_TEMP/petworld-debug-resources.txt" \
             || grep -Fq 'petworld-prod-3b5c5' "$RUNNER_TEMP/petworld-dev-resources.txt" \
-            || grep -Fq 'petworld-dev' "$RELEASE_VALUES"; then
+            || grep -Fq 'petworld-dev' "$RUNNER_TEMP/petworld-release-resources.txt"; then
             echo "::error::Firebase configuration crossed build variants."
             exit 1
           fi
@@ -99,3 +102,9 @@ jobs:
     uses: ./.github/workflows/firebase-dev-signing.yml
     with:
       branch_validation: true
+    secrets:
+      PETWORLD_DEV_KEYSTORE_BASE64: ${{ secrets.PETWORLD_DEV_KEYSTORE_BASE64 }}
+      PETWORLD_DEV_STORE_PASSWORD: ${{ secrets.PETWORLD_DEV_STORE_PASSWORD }}
+      PETWORLD_DEV_KEY_ALIAS: ${{ secrets.PETWORLD_DEV_KEY_ALIAS }}
+      PETWORLD_DEV_KEY_PASSWORD: ${{ secrets.PETWORLD_DEV_KEY_PASSWORD }}
+      PETWORLD_DEV_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.PETWORLD_DEV_GOOGLE_SERVICES_JSON_BASE64 }}
