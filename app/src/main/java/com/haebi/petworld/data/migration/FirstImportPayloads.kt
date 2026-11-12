@@ -49,12 +49,12 @@ object FirstImportPayloads {
         require(value.activityKind == null || value.activityKind.length <= 40)
         require(value.weightInputUnit == null || value.weightInputUnit.length <= 8)
         require(value.photoFile == null || value.photoFile.length <= 100)
-        require(value.foodServedMilli == null || value.foodServedMilli in 0..9_999_999_999_999L)
-        require(value.foodConsumedMilli == null || value.foodConsumedMilli in 0..9_999_999_999_999L)
-        require(value.waterMl == null || value.waterMl in 0..1_000_000_000L)
+        require(value.foodServedMilli == null || value.foodServedMilli in 0L..9_999_999_999_999L)
+        require(value.foodConsumedMilli == null || value.foodConsumedMilli in 0L..9_999_999_999_999L)
+        require(value.waterMl == null || value.waterMl in 0L..1_000_000_000L)
         require(value.eliminationCount == null || value.eliminationCount in 0..100)
         require(value.activityMinutes == null || value.activityMinutes in 0..1440)
-        require(value.weightGrams == null || value.weightGrams in 0..9_999_999_999_999L)
+        require(value.weightGrams == null || value.weightGrams in 0L..9_999_999_999_999L)
         return sortedMapOf(
             "id" to value.id,
             "petId" to value.petId,
