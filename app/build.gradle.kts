@@ -145,6 +145,9 @@ dependencies {
     if (firebaseDevConfigured) {
         add("firebaseDevImplementation", platform(libs.firebase.bom))
         add("firebaseDevImplementation", libs.firebase.auth)
+        add("firebaseDevImplementation", libs.credentials)
+        add("firebaseDevImplementation", libs.credentials.play.services.auth)
+        add("firebaseDevImplementation", libs.googleid)
     }
     if (firebaseReleaseConfigured) {
         add("releaseImplementation", platform(libs.firebase.bom))
