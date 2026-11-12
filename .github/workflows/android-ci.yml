@@ -64,11 +64,31 @@ jobs:
                 "mobilesdk_app_id": "1:1234567890:android:0000000000000000",
                 "android_client_info": {"package_name": "com.haebi.petworld.dev"}
               },
-              "api_key": [{"current_key": "fake-ci-key"}]
+              "api_key": [{"current_key": "fake-ci-key"}],
+              "oauth_client": [{"client_type": 3, "client_id": "ci-dev-web-client.example"}]
             }],
             "configuration_version": "1"
           }
           JSON
+          mkdir -p app/src/release
+          cat > app/src/release/google-services.json <<'JSON'
+          {
+            "project_info": {"project_number": "1234567891", "project_id": "demo-petworld-prod"},
+            "client": [{
+              "client_info": {
+                "mobilesdk_app_id": "1:1234567891:android:0000000000000001",
+                "android_client_info": {"package_name": "com.haebi.petworld"}
+              },
+              "api_key": [{"current_key": "fake-ci-key"}],
+              "oauth_client": [{"client_type": 3, "client_id": "ci-prod-web-client.example"}]
+            }],
+            "configuration_version": "1"
+          }
+          JSON
+          python3 -m unittest discover -s scripts -p 'test_fb02_android_config_guard.py' -v
+          python3 scripts/firebase/android_config_guard.py --ci-demo \
+            --dev app/src/firebaseDev/google-services.json \
+            --prod app/src/release/google-services.json
           ./gradlew :app:assembleDebug :app:assembleFirebaseDev --no-daemon --stacktrace
           AAPT2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
           DEBUG_APK="app/build/outputs/apk/debug/app-debug.apk"
