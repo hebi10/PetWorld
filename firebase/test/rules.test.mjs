@@ -329,7 +329,7 @@ test('FB-04-FINAL: bytes-hashed photo is reusable but cannot be replaced by a re
   const photo = ref(alice, pathFor('alice'));
   const localBytes = new Uint8Array([0xff, 0xd8, 0x11, 0x22, 0xff, 0xd9]);
   const sha = createHash('sha256').update(localBytes).digest('hex');
-  await assertSucceeds(uploadBytes(photo, localBytes, { contentType: 'image/jpeg', customMetadata: { sha256: sha } }));
+  await assertSucceeds(uploadBytes(photo, localBytes, { contentType: 'image/jpeg' }));
   const serverBytes = await assertSucceeds(getBytes(photo));
   deepStrictEqual(createHash('sha256').update(serverBytes).digest('hex'), sha);
   await assertFails(uploadBytes(photo, new Uint8Array([0xff, 0xd8, 0, 0xff, 0xd9]), {
