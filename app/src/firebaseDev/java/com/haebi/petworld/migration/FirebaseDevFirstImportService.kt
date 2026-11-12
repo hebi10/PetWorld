@@ -313,7 +313,6 @@ class FirebaseDevFirstImportService(private val context: Context) {
                 if (!photoExists(target)) {
                     val metadata = StorageMetadata.Builder()
                         .setContentType("image/jpeg")
-                        .setCustomMetadata("sha256", photo.digest)
                         .build()
                     try {
                         target.putFile(Uri.fromFile(photo.file), metadata).awaitImport()
