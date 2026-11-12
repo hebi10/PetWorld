@@ -19,3 +19,12 @@ Thumbs.db
 __pycache__/
 *.py[cod]
 output/
+
+# Firebase emulator and local development artifacts
+.firebase/
+firebase/node_modules/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+firebase/.env
+firebase/.env.*
