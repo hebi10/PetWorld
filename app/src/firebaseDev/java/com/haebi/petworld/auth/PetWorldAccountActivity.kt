@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
+import com.haebi.petworld.migration.FirstImportSection
 import com.haebi.petworld.ui.components.PetPrimaryButton
 import com.haebi.petworld.ui.components.PetSecondaryButton
 import com.haebi.petworld.ui.components.PetSurfaceCard
@@ -164,6 +165,7 @@ class PetWorldAccountActivity : ComponentActivity() {
                 )
             }
             if (auth != null && currentAccount != null) {
+                FirstImportSection(auth)
                 PetSecondaryButton(
                     label = "실제 Firebase 인증 확인",
                     modifier = Modifier.fillMaxWidth(),

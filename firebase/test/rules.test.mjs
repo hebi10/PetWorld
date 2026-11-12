@@ -210,3 +210,43 @@ test('Storage: type, path, overwrite and permanent deletion remain restricted', 
   await assertFails(uploadBytes(valid, new Uint8Array([2]), { contentType: 'image/jpeg' }));
   await assertFails(deleteObject(valid));
 });
+
+
+test('FB-04: strict schema accepts lossless initial pet and record maps and rejects overwrite', async () => {
+  const db = env.authenticatedContext('alice').firestore();
+  const user = doc(db, 'users/alice');
+  const pet = doc(db, 'users/alice/pets/pet-1');
+  const record = doc(db, 'users/alice/pets/pet-1/records/record-1');
+  await assertSucceeds(setDoc(user, userDoc()));
+  const fullPet = {
+    ...petDoc(),
+    breed: '',
+    sex: 'UNKNOWN',
+    neuterStatus: 'UNKNOWN',
+    notes: '원본 메모',
+  };
+  const fullRecord = {
+    ...careDoc(),
+    foodProductName: '원본 사료',
+    foodServedMilli: 0,
+    foodConsumedMilli: null,
+    waterMl: null,
+    eliminationKind: null,
+    eliminationCount: null,
+    activityKind: null,
+    activityMinutes: null,
+    weightGrams: null,
+    weightInputUnit: null,
+    photoFile: null,
+  };
+  await assertSucceeds(setDoc(pet, fullPet));
+  await assertSucceeds(setDoc(record, fullRecord));
+  const remote = await assertSucceeds(getDoc(record));
+  if (remote.data().foodServedMilli !== 0 || remote.data().foodConsumedMilli !== null) {
+    throw new Error('Initial import must keep measured zero distinct from unknown null.');
+  }
+  await assertFails(setDoc(pet, fullPet));
+  await assertFails(setDoc(record, fullRecord));
+  await assertFails(setDoc(record, { ...fullRecord, foodServedMilli: 400 }));
+  await assertSucceeds(updateDoc(user, { migrationState: 'ready', revision: 1 }));
+});
