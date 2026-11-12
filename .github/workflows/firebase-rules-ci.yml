@@ -5,6 +5,7 @@ on:
     paths:
       - firebase.json
       - firebase/**
+      - scripts/firebase/**
       - .github/workflows/firebase-rules-ci.yml
   workflow_dispatch:
 
@@ -25,6 +26,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Verify offline Firebase connection readiness
+        run: node scripts/firebase/check-connection-readiness.mjs
 
       - name: Set up Java for emulators
         uses: actions/setup-java@v4
