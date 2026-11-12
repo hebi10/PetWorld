@@ -39,6 +39,7 @@ data class FirstImportPreview(
     val extraCloudDocuments: Int,
     val conflicts: Int,
     val sourceFingerprint: String,
+    val accountFingerprint: String,
 ) {
     val canImport: Boolean get() = petCount > 0 && conflicts == 0
 }
@@ -250,6 +251,7 @@ class FirebaseDevFirstImportService(private val context: Context) {
             extraCloudDocuments = remote.extra,
             conflicts = remote.conflicts,
             sourceFingerprint = source.fingerprint,
+            accountFingerprint = (LocalAccountScope.fromFirebaseUid(uid) as LocalAccountScope.SignedIn).key,
         )
     }
 
@@ -269,6 +271,18 @@ class FirebaseDevFirstImportService(private val context: Context) {
             "계정에 다른 데이터가 있습니다. 추가 방식의 이전을 선택해 주세요."
         }
         val uid = checkedUid()
+        require(
+            (LocalAccountScope.fromFirebaseUid(uid) as LocalAccountScope.SignedIn).key ==
+                preview.accountFingerprint
+        ) {
+            "미리보기 이후 로그인 계정이 변경됐습니다. 다시 확인해 주세요."
+        }
+        val onlineUid = auth.currentUser?.also { user ->
+            user.getIdToken(true).awaitImport()
+        }?.uid
+        check(onlineUid == uid) {
+            "Firebase 인증이 변경됐습니다. 다시 로그인하고 미리보기를 확인해 주세요."
+        }
         PetWorldMutationGate.mutex.withLock {
             val source = guestSnapshotLocked()
             require(source.fingerprint == preview.sourceFingerprint) {
