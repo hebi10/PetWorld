@@ -19,7 +19,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref || github.ref_name }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -53,31 +53,63 @@ jobs:
       - name: Assemble debug
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Verify isolated Firebase development APK
+      - name: Verify isolated development and release Firebase configuration
         run: |
-          mkdir -p app/src/firebaseDev
-          cat > app/src/firebaseDev/google-services.json <<'JSON'
-          {
-            "project_info": {"project_number": "1234567890", "project_id": "demo-petworld-fb01"},
-            "client": [{
-              "client_info": {
-                "mobilesdk_app_id": "1:1234567890:android:0000000000000000",
-                "android_client_info": {"package_name": "com.haebi.petworld.dev"}
-              },
-              "api_key": [{"current_key": "fake-ci-key"}]
-            }],
-            "configuration_version": "1"
-          }
-          JSON
+          python3 scripts/firebase/prepare_android_config.py firebaseDev
+          python3 scripts/firebase/prepare_android_config.py release
           ./gradlew :app:assembleDebug :app:assembleFirebaseDev --no-daemon --stacktrace
+          RELEASE_TEST_KEYSTORE="$RUNNER_TEMP/petworld-firebase-config-ci.p12"
+          trap 'rm -f "$RELEASE_TEST_KEYSTORE"' EXIT
+          keytool -genkeypair -storetype PKCS12 -keystore "$RELEASE_TEST_KEYSTORE" \
+            -alias firebase-config-ci -keyalg RSA -keysize 2048 -validity 1 \
+            -dname "CN=PetWorld Firebase config CI" -storepass android -keypass android
+          ANDROID_RELEASE_KEYSTORE_PATH="$RELEASE_TEST_KEYSTORE" \
+            ANDROID_RELEASE_STORE_PASSWORD=android \
+            ANDROID_RELEASE_KEY_ALIAS=firebase-config-ci \
+            ANDROID_RELEASE_KEY_PASSWORD=android \
+            ./gradlew :app:assembleRelease --no-daemon --stacktrace
+
           AAPT2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
           DEBUG_APK="app/build/outputs/apk/debug/app-debug.apk"
           DEV_APK="$(find app/build/outputs/apk -iname '*firebasedev*.apk' -type f -print -quit)"
+          RELEASE_APK="app/build/outputs/apk/release/app-release.apk"
           test -n "$DEV_APK"
-          "$AAPT2" dump badging "$DEBUG_APK" | grep -F "package: name='com.haebi.petworld'"
-          "$AAPT2" dump badging "$DEV_APK" | grep -F "package: name='com.haebi.petworld.dev'"
-          "$AAPT2" dump resources "$DEV_APK" | grep -F 'demo-petworld-fb01'
+          "$AAPT2" dump badging "$DEBUG_APK" > "$RUNNER_TEMP/petworld-debug-badging.txt"
+          "$AAPT2" dump badging "$DEV_APK" > "$RUNNER_TEMP/petworld-dev-badging.txt"
+          "$AAPT2" dump badging "$RELEASE_APK" > "$RUNNER_TEMP/petworld-release-badging.txt"
+          grep -Fq "package: name='com.haebi.petworld'" "$RUNNER_TEMP/petworld-release-badging.txt"
+          grep -Fq "package: name='com.haebi.petworld'" "$RUNNER_TEMP/petworld-debug-badging.txt"
+          grep -Fq "package: name='com.haebi.petworld.dev'" "$RUNNER_TEMP/petworld-dev-badging.txt"
           "$AAPT2" dump resources "$DEBUG_APK" > "$RUNNER_TEMP/petworld-debug-resources.txt"
-          if grep -Fq 'demo-petworld-fb01' "$RUNNER_TEMP/petworld-debug-resources.txt"; then
+          "$AAPT2" dump resources "$DEV_APK" > "$RUNNER_TEMP/petworld-dev-resources.txt"
+          "$AAPT2" dump resources "$RELEASE_APK" > "$RUNNER_TEMP/petworld-release-resources.txt"
+          grep -Fq 'petworld-dev' "$RUNNER_TEMP/petworld-dev-resources.txt"
+          grep -Fq 'petworld-prod-3b5c5' "$RUNNER_TEMP/petworld-release-resources.txt"
+          if grep -Eq 'petworld-dev|petworld-prod-3b5c5' "$RUNNER_TEMP/petworld-debug-resources.txt" \
+            || grep -Fq 'petworld-prod-3b5c5' "$RUNNER_TEMP/petworld-dev-resources.txt" \
+            || grep -Fq 'petworld-dev' "$RUNNER_TEMP/petworld-release-resources.txt"; then
+            echo "::error::Firebase configuration crossed build variants."
             exit 1
           fi
+
+          cp app/src/firebaseDev/google-services.json app/src/release/google-services.json
+          if ./gradlew :app:help --no-daemon > "$RUNNER_TEMP/petworld-swapped-config.txt" 2>&1; then
+            echo "::error::Gradle accepted the development Firebase project for release."
+            exit 1
+          fi
+          grep -Fq 'release/google-services.json must use Firebase project petworld-prod-3b5c5' \
+            "$RUNNER_TEMP/petworld-swapped-config.txt"
+
+  firebase-dev-integration:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/feature/fb-02-a-firebase-integration'
+    uses: ./.github/workflows/firebase-dev-signing.yml
+    with:
+      branch_validation: true
+    secrets:
+      PETWORLD_DEV_KEYSTORE_BASE64: ${{ secrets.PETWORLD_DEV_KEYSTORE_BASE64 }}
+      PETWORLD_DEV_STORE_PASSWORD: ${{ secrets.PETWORLD_DEV_STORE_PASSWORD }}
+      PETWORLD_DEV_KEY_ALIAS: ${{ secrets.PETWORLD_DEV_KEY_ALIAS }}
+      PETWORLD_DEV_KEY_PASSWORD: ${{ secrets.PETWORLD_DEV_KEY_PASSWORD }}
+      PETWORLD_DEV_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.PETWORLD_DEV_GOOGLE_SERVICES_JSON_BASE64 }}

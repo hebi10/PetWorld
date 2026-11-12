@@ -1,5 +1,6 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.GoogleServicesPluginConfig
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import groovy.json.JsonSlurper
 
 plugins {
     alias(libs.plugins.android.application)
@@ -8,8 +9,36 @@ plugins {
     alias(libs.plugins.google.services) apply false
 }
 
-val firebaseDevConfigured = file("src/firebaseDev/google-services.json").isFile
-if (firebaseDevConfigured) {
+fun firebaseConfigAvailable(config: File, expectedProject: String): Boolean {
+    if (!config.isFile) return false
+    val data = try {
+        JsonSlurper().parse(config) as? Map<*, *>
+    } catch (_: Exception) {
+        throw GradleException("${config.parentFile.name}/google-services.json is not valid JSON")
+    }
+    val project = data?.get("project_info") as? Map<*, *>
+    if (project?.get("project_id") != expectedProject) {
+        throw GradleException("${config.parentFile.name}/google-services.json must use Firebase project $expectedProject")
+    }
+    return true
+}
+
+val sharedFirebasePaths = listOf(
+    "google-services.json",
+    "src/main/google-services.json",
+    "src/debug/google-services.json",
+)
+if (sharedFirebasePaths.any { file(it).isFile }) {
+    throw GradleException("Place Firebase settings in src/firebaseDev or src/release for the matching app")
+}
+
+val firebaseDevConfigured = firebaseConfigAvailable(
+    file("src/firebaseDev/google-services.json"), "petworld-dev",
+)
+val firebaseReleaseConfigured = firebaseConfigAvailable(
+    file("src/release/google-services.json"), "petworld-prod-3b5c5",
+)
+if (firebaseDevConfigured || firebaseReleaseConfigured) {
     apply(plugin = "com.google.gms.google-services")
     configure<GoogleServicesPluginConfig> {
         missingGoogleServicesStrategy = MissingGoogleServicesStrategy.IGNORE
@@ -116,6 +145,10 @@ dependencies {
     if (firebaseDevConfigured) {
         add("firebaseDevImplementation", platform(libs.firebase.bom))
         add("firebaseDevImplementation", libs.firebase.auth)
+    }
+    if (firebaseReleaseConfigured) {
+        add("releaseImplementation", platform(libs.firebase.bom))
+        add("releaseImplementation", libs.firebase.auth)
     }
 
     implementation(libs.activity.compose)
