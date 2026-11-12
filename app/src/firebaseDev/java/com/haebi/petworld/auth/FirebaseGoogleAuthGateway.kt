@@ -82,6 +82,25 @@ class FirebaseGoogleAuthGateway(
         }
     }
 
+    suspend fun verifyLiveSession(): Boolean {
+        val expectedUid = firebaseAuth.currentUser?.uid ?: return false
+        return suspendCancellableCoroutine { continuation: CancellableContinuation<Boolean> ->
+            val current = firebaseAuth.currentUser
+            if (current == null || current.uid != expectedUid) {
+                continuation.resume(false)
+                return@suspendCancellableCoroutine
+            }
+            current.getIdToken(true).addOnCompleteListener { result ->
+                if (!continuation.isActive) return@addOnCompleteListener
+                continuation.resume(
+                    result.isSuccessful &&
+                        !result.result?.token.isNullOrBlank() &&
+                        firebaseAuth.currentUser?.uid == expectedUid
+                )
+            }
+        }
+    }
+
     suspend fun signOut(activity: Activity) {
         firebaseAuth.signOut()
         runCatching {
