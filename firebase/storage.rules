@@ -1,0 +1,27 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function owner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function permittedPhoto(fileName) {
+      return fileName.matches('^pet_[0-9a-f-]{36}[.]jpg$');
+    }
+
+    match /users/{uid}/pets/{petId}/photos/{fileName} {
+      allow get: if owner(uid);
+      allow list: if false;
+      allow create: if owner(uid) &&
+        permittedPhoto(fileName) &&
+        request.resource.size > 0 &&
+        request.resource.size <= 5 * 1024 * 1024 &&
+        request.resource.contentType == 'image/jpeg';
+      allow update, delete: if false;
+    }
+
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
