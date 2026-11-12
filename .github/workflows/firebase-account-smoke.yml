@@ -72,10 +72,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-boot-timeout: 600
-          script: |
-            ./gradlew :app:connectedFirebaseDevAndroidTest \
-              -Pandroid.testInstrumentationRunnerArguments.class=com.haebi.petworld.FirebaseDevAccountSmokeTest \
-              --no-daemon --stacktrace
+          script: ./gradlew :app:connectedFirebaseDevAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.haebi.petworld.FirebaseDevAccountSmokeTest --no-daemon --stacktrace
 
       - name: Upload account UI QA reports
         if: always()
