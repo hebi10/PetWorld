@@ -1,0 +1,88 @@
+name: PetWorld Firebase account UI smoke QA
+
+on:
+  pull_request:
+    paths:
+      - 'app/src/firebaseDev/**'
+      - 'app/src/androidTestFirebaseDev/**'
+      - 'app/src/main/java/com/haebi/petworld/ui/**'
+      - '.github/workflows/firebase-account-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firebase-account-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Checkout exact PR source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+
+      - name: Install Android platform
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -path '*/bin/sdkmanager' -type f | head -n 1)"
+          test -n "$SDK_MANAGER"
+          "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install "platforms;android-37.0" "build-tools;36.0.0"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+
+      - name: Write synthetic Firebase development settings only
+        run: |
+          python3 scripts/firebase/prepare_android_config.py firebaseDev
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('app/src/firebaseDev/google-services.json')
+          data = json.loads(path.read_text(encoding='utf-8'))
+          data['client'][0]['oauth_client'] = [
+              {'client_type': 3, 'client_id': 'ci-only-web-client.example'}
+          ]
+          path.write_text(json.dumps(data), encoding='utf-8')
+          PY
+          test ! -e app/src/release/google-services.json
+          echo "Synthetic Firebase config: no real Google login or server access" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Compile developer app and instrumentation APK
+        run: ./gradlew :app:assembleFirebaseDev :app:assembleFirebaseDevAndroidTest --no-daemon --stacktrace
+
+      - name: Enable KVM
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+
+      - name: Run guest account UI smoke on Android 35
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: |
+            ./gradlew :app:connectedFirebaseDevAndroidTest \
+              -Pandroid.testInstrumentationRunnerArguments.class=com.haebi.petworld.FirebaseDevAccountSmokeTest \
+              --no-daemon --stacktrace
+
+      - name: Upload account UI QA reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: petworld-fb02b-account-ui-smoke
+          path: |
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+          if-no-files-found: warn
