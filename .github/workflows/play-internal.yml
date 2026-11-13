@@ -1,12 +1,13 @@
 name: Play internal release
 
 on:
-  workflow_run:
-    workflows: ["Android CI"]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
     inputs:
+      ops01_release_approved:
+        description: 'OPS-01 manual Play publish approval after final QA'
+        required: true
+        type: boolean
+        default: false
       mode:
         description: 'check = validation/access; build = signed AAB; initialize = first internal draft; deploy = internal update'
         required: true
@@ -51,6 +52,13 @@ jobs:
       sha: ${{ steps.source.outputs.sha }}
       mode: ${{ steps.source.outputs.release_mode }}
     steps:
+      - name: OPS-01 enforce manual Play release approval
+        if: inputs.mode == 'deploy' || inputs.mode == 'initialize'
+        env:
+          OPS01_RELEASE_APPROVED: ${{ inputs.ops01_release_approved }}
+        run: |
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$OPS01_RELEASE_APPROVED" = true
       - uses: actions/checkout@v4
         with:
           ref: main
