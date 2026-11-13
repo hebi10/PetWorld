@@ -402,7 +402,7 @@ def findings():
                 problems.append("INTERNAL: must use existing AAB, not rebuild it")
         elif file == "play-closed-release.yml":
             for body in jobs(source).values():
-                if re.search(r"(?i)(?:python(?:3)?|node)\\s+[^\\n]*(?:publisher[.]py|play_publish[.]py)[^\\n]*\\b(?:deploy|initialize|upload)\\b[^\\n]*--bundle", body):
+                if re.search(r"(?i)(?:python(?:3)?|node)\s+[^\n]*(?:publisher[.]py|play_publish[.]py)[^\n]*\b(?:deploy|initialize|upload)\b[^\n]*--bundle", body):
                     problems.append("CLOSED_BINARY: closed promotion must not upload a new AAB")
             if not all(k in source for k in ("PROMOTE_VERIFIED_INTERNAL_VERSION",
                                              "inputs.mode == 'promote'")):
