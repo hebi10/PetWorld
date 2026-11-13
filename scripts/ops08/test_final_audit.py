@@ -3,6 +3,7 @@ import importlib.util
 import os
 from pathlib import Path
 import re
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -15,6 +16,17 @@ spec.loader.exec_module(audit)
 class FinalPolicyTests(unittest.TestCase):
     def test_checked_out_git_source_has_complete_sha(self):
         self.assertRegex(audit.verified_head(), r"^[0-9a-f]{40}$")
+
+    def test_modified_audited_policy_blocks_head_attestation(self):
+        sha = "a" * 40
+        with patch.dict(os.environ, {"GITHUB_SHA": sha}):
+            with patch.object(audit.subprocess, "run", side_effect=[
+                subprocess.CompletedProcess(args=["git"], returncode=0, stdout=sha + "\n"),
+                subprocess.CompletedProcess(args=["git"], returncode=0,
+                                            stdout=" M scripts/ops07/audit.py\n"),
+            ]):
+                with self.assertRaisesRegex(RuntimeError, "do not match"):
+                    audit.verified_head()
 
     def test_main_validation_is_not_claimed_for_pull_requests(self):
         with patch.dict(os.environ, {"GITHUB_REF": "refs/pull/123/merge"}):
