@@ -10,6 +10,23 @@ on:
       - 'docs/play-store/listing-images.md'
   workflow_dispatch:
     inputs:
+      ops06_store_approved:
+        description: 'Separately approve the reviewed ko-KR Play images after final QA'
+        required: true
+        type: boolean
+        default: false
+      ops06_confirmation:
+        description: 'For upload type APPLY_VERIFIED_PLAY_STORE_ASSETS'
+        required: false
+        type: string
+      ops06_expected_main_sha:
+        description: 'Exact current main SHA for approved assets'
+        required: false
+        type: string
+      ops06_batch_id:
+        description: 'KST release batch YYYY-MM-DD-petworld'
+        required: false
+        type: string
       ops01_release_approved:
         description: 'Explicit Play mutation approval after final QA'
         type: boolean
@@ -60,17 +77,10 @@ jobs:
   upload:
     needs: validate
     if: >-
-      github.event_name == 'workflow_dispatch' && inputs.ops01_release_approved == true &&
-      (
-      github.repository == 'hebi10/PetWorld' &&
-      github.ref == 'refs/heads/main' &&
-      ((github.event_name == 'workflow_dispatch' &&
-        inputs.mode == 'upload' &&
-        inputs.confirmation == 'PETWORLD-KO-LISTING-10') ||
-       (github.event_name == 'push' &&
-        (contains(github.event.head_commit.message, '[petworld-store04-20261111]') ||
-         contains(github.event.head_commit.message, '[petworld-ui10h-20261111]'))))
-      )
+      github.repository == 'hebi10/PetWorld' && github.ref == 'refs/heads/main' &&
+      github.event_name == 'workflow_dispatch' && inputs.mode == 'upload' &&
+      inputs.ops01_release_approved == true && inputs.ops06_store_approved == true &&
+      inputs.confirmation == 'PETWORLD-KO-LISTING-10'
     concurrency:
       group: play-com-haebi-petworld
       cancel-in-progress: false
@@ -98,6 +108,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: OPS-06 verify approved store image bytes and exact source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPS06_STORE_APPROVED: ${{ inputs.ops06_store_approved }}
+          OPS06_CONFIRMATION: ${{ inputs.ops06_confirmation }}
+          OPS06_EXPECTED_MAIN_SHA: ${{ inputs.ops06_expected_main_sha }}
+          OPS06_BATCH_ID: ${{ inputs.ops06_batch_id }}
+        run: python3 scripts/ops06/store_gate.py apply
       - name: Check Play authentication configuration
         id: credentials
         env:
