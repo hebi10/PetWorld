@@ -401,6 +401,9 @@ def findings():
             if any(k in source for k in ("bundleRelease", "assembleRelease")):
                 problems.append("INTERNAL: must use existing AAB, not rebuild it")
         elif file == "play-closed-release.yml":
+            for body in jobs(source).values():
+                if re.search(r"(?i)(?:python(?:3)?|node)\\s+[^\\n]*(?:publisher[.]py|play_publish[.]py)[^\\n]*\\b(?:deploy|initialize|upload)\\b[^\\n]*--bundle", body):
+                    problems.append("CLOSED_BINARY: closed promotion must not upload a new AAB")
             if not all(k in source for k in ("PROMOTE_VERIFIED_INTERNAL_VERSION",
                                              "inputs.mode == 'promote'")):
                 problems.append("CLOSED: separate approved same-version promotion missing")
@@ -449,7 +452,7 @@ def findings():
         if not release or guard not in release or not re.search(
                 r'if \[\[ "\$FINAL_RELEASE_APPROVAL" != "HOMECREW_FINAL_RELEASE_APPROVED" \]\]; then', release):
             problems.append("APPROVAL: HomeCrew final release authorization gate missing")
-    if REPOSITORY == "hebi10/TripCanvas":
+    if REPOSITORY in {"hebi10/TripCanvas", "hebi10/PetWorld"}:
         internal = read(".github/workflows/play-internal-release.yml") or ""
         if internal.count("scripts/ops04/internal.py guard") < 2:
             problems.append("PROVENANCE: OPS-04 requires guard in both verify and publish jobs")
