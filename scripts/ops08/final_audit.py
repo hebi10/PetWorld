@@ -51,6 +51,13 @@ def verified_head():
     supplied = os.getenv("GITHUB_SHA")
     if supplied and supplied != sha:
         raise RuntimeError("GitHub Actions source SHA differs from checkout")
+    audited_paths = ("AGENTS.md", ".github/workflows", "scripts/ops04",
+                     "scripts/ops05", "scripts/ops06", "scripts/ops07", "scripts/ops08")
+    status = subprocess.run(
+        ["git", "status", "--porcelain=v1", "--untracked-files=all", "--", *audited_paths],
+        cwd=ROOT, check=False, capture_output=True, text=True, timeout=20)
+    if status.returncode != 0 or status.stdout.strip():
+        raise RuntimeError("Audited release-policy files do not match the checked-out HEAD")
     return sha
 
 
