@@ -1,12 +1,6 @@
 name: PetWorld Korean Play listing images
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'assets/play-store/**'
-      - 'scripts/play/listing_images.py'
-      - '.github/workflows/play-listing-images.yml'
   pull_request:
     paths:
       - 'assets/play-store/**'
@@ -16,6 +10,11 @@ on:
       - 'docs/play-store/listing-images.md'
   workflow_dispatch:
     inputs:
+      ops01_release_approved:
+        description: 'Explicit Play mutation approval after final QA'
+        type: boolean
+        required: true
+        default: false
       mode:
         description: 'check = offline verification only; upload = Korean image-only Play edit'
         type: choice
@@ -61,6 +60,8 @@ jobs:
   upload:
     needs: validate
     if: >-
+      github.event_name == 'workflow_dispatch' && inputs.ops01_release_approved == true &&
+      (
       github.repository == 'hebi10/PetWorld' &&
       github.ref == 'refs/heads/main' &&
       ((github.event_name == 'workflow_dispatch' &&
@@ -69,6 +70,7 @@ jobs:
        (github.event_name == 'push' &&
         (contains(github.event.head_commit.message, '[petworld-store04-20261111]') ||
          contains(github.event.head_commit.message, '[petworld-ui10h-20261111]'))))
+      )
     concurrency:
       group: play-com-haebi-petworld
       cancel-in-progress: false
