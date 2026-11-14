@@ -21,6 +21,10 @@ concurrency:
 
 jobs:
   preflight:
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
     if: github.repository == 'hebi10/PetWorld' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -76,6 +80,7 @@ jobs:
               'Play exact-source verification',
               'Android Keyboard Save Accessibility QA',
               'Android Accessibility Responsive QA',
+              'Android Full UI Screenshot Capture',
           ]
           for workflow in required:
               candidates = [r for r in runs if r.get('head_sha') == sha and
@@ -116,6 +121,10 @@ jobs:
           project = original['project_info']
           if project['project_id'] != 'petworld-dev':
               raise SystemExit('Wrong Firebase project')
+          if project.get('storage_bucket') != 'petworld-dev.firebasestorage.app':
+              raise SystemExit('Wrong or missing Firebase development Storage bucket')
+          if not str(project.get('project_number', '')).isdigit():
+              raise SystemExit('Missing Firebase development project number')
           clients = [c for c in original['client'] if
                      c['client_info']['android_client_info']['package_name'] == 'com.haebi.petworld.dev']
           if len(clients) != 1:
@@ -124,13 +133,15 @@ jobs:
           oauth = [c for c in client.get('oauth_client', []) if
                    c.get('client_type') == 3 and isinstance(c.get('client_id'), str) and c['client_id']]
           keys = [k['current_key'] for k in client.get('api_key', []) if k.get('current_key')]
-          if not oauth or len(keys) != 1:
-              raise SystemExit('Required Android Firebase public client fields missing')
+          if len(oauth) != 1 or len(keys) != 1 or not client['client_info'].get('mobilesdk_app_id'):
+              raise SystemExit('Expected one unambiguous Firebase client and Google web OAuth ID')
+          if not oauth[0]['client_id'].endswith('.apps.googleusercontent.com'):
+              raise SystemExit('Invalid Google web OAuth client identifier')
           public = {
               'project_info': {
                   'project_number': project['project_number'],
                   'project_id': 'petworld-dev',
-                  'storage_bucket': project.get('storage_bucket', ''),
+                  'storage_bucket': 'petworld-dev.firebasestorage.app',
               },
               'client': [{
                   'client_info': {
@@ -190,6 +201,7 @@ jobs:
           from pathlib import Path
           value = json.loads(Path('public-config/google-services.json').read_text(encoding='utf-8'))
           assert value['project_info']['project_id'] == 'petworld-dev'
+          assert value['project_info']['storage_bucket'] == 'petworld-dev.firebasestorage.app'
           assert len(value['client']) == 1
           assert value['client'][0]['client_info']['android_client_info']['package_name'] == 'com.haebi.petworld.dev'
           assert len(value['client'][0]['oauth_client']) > 0
@@ -216,7 +228,7 @@ jobs:
           set -euo pipefail
           echo "497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7  gradle/wrapper/gradle-wrapper.jar" | sha256sum --check
           ./gradlew :app:assembleFirebaseDev --no-daemon
-      - name: Verify unsigned-stage provenance and package before protected signing
+      - name: Verify development APK provenance and package before protected signing
         shell: bash
         run: |
           set -euo pipefail
@@ -263,6 +275,7 @@ jobs:
     environment: petworld-dev-signing
     permissions:
       contents: read
+      pull-requests: read
     env:
       REVIEWED_SHA: ${{ needs.preflight.outputs.reviewed_sha }}
     steps:
@@ -327,6 +340,7 @@ jobs:
           grep -Fq 'petworld-dev' "$RUNNER_TEMP/resources.txt"
           grep -Fq 'string/default_web_client_id' "$RUNNER_TEMP/resources.txt"
           "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -p 4 qa-build/input.apk
+          test "$(find qa-build -maxdepth 1 -type f -name 'input.apk' | wc -l)" -eq 1
       - name: Restore existing protected signer only in trusted job
         env:
           KEYSTORE_B64: ${{ secrets.PETWORLD_DEV_KEYSTORE_BASE64 }}

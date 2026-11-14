@@ -34,4 +34,13 @@
 - APK/검증 JSON만 보관, 그 외 Secrets/토큰·사용자 기록 노출 없음.
 - 실기기 QA는 별도 수행하며 Google 로그인→암호화 백업 검증→최초 이전/취소→충돌→중단 재시도→사진 SHA-256을 독립 테스트 계정으로 확인한다.
 
+## FB-04-DEVICE-PR46-QA 리뷰 보완 (2026-11-14)
+
+- 정적 리뷰에서 발견한 차단 요인: 사전 검증 잡의 GITHUB_TOKEN에 GitHub Actions 이력 조회 actions:read 및 PR 조회 pull-requests:read가 없어 비공개 저장소에서는 실수동 실행 시 403 가능. 권한은 preflight의 contents/actions/pull-requests 읽기와 sign의 contents/pull-requests 읽기만 추가하며 모든 쓰기 권한은 금지.
+- 개발 설정의 project_id뿐 아니라 Storage bucket이 정확히 petworld-dev.firebasestorage.app인지 검사한다. 다른 버킷이나 누락된 프로젝트 번호, 2개 이상/형식 오류인 Web OAuth 클라이언트면 APK 생성 중단. 사용자 데이터/Rules는 변경하지 않는다.
+- 정확한 PR #37 최신 HEAD의 Android CI, Firebase Rules, Backup Emulator, 개발 계정 UI, API29/35/36 스코프, Play exact-source, 키보드 접근성, 반응형 접근성 및 실제 UI Screenshot Capture까지 **9개 CI 필수 성공** 게이트를 적용.
+- QA 서명 입력 APK는 Gradle이 임시 디버그 키로 서명할 수 있으므로 'unsigned'로 표현하지 않는다. 서명 단계는 입력 APK를 다시 검증하고 기존 보호된 개발 키로 재서명 후 인증서·APK SHA를 확인한다.
+- 별도 PR-only 정적 워크플로 fb04-device-apk-static-qa.yml과 Python 표준 라이브러리 회귀 검사 scripts/fb04/qa_workflow.py를 추가. YAML 파싱, 모든 내장 Bash/Python 구문, 자동 트리거·메타데이터 권한 누락·PR 소스 인증 누락·서명 잡 PR 체크아웃·빌드 잡 Secret 유입·오류 버킷의 **음성 테스트**를 수행. 이 PR CI에는 보호 환경·키·Firebase 실서버 호출이 없다.
+- 수동 빌드 워크플로는 여전히 PR Draft에서 실행 불가. 최신 PR SHA/CI 검토 뒤 별도 승인된 main 병합이 필요. APK 서명·Google 로그인·Firebase 서버 실테스트 성공은 현재 주장하지 않는다.
+
 현재 상태: 워크플로 설계 및 Draft PR 검증 단계. 사용자 승인 없는 main 병합과 APK 서명 실행·Google Play 배포는 금지.
