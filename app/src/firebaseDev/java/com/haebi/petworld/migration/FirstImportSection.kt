@@ -1,5 +1,10 @@
 package com.haebi.petworld.migration
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -7,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -17,6 +23,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import com.haebi.petworld.data.migration.FirstImportBackupEvidence
 import com.google.firebase.auth.FirebaseAuth
 import com.haebi.petworld.ui.components.PetPrimaryButton
 import com.haebi.petworld.ui.components.PetSurfaceCard
@@ -30,11 +38,20 @@ fun FirstImportSection(auth: FirebaseAuth) {
     val scope = rememberCoroutineScope()
     var preview by remember { mutableStateOf<FirstImportPreview?>(null) }
     var confirmOpen by remember { mutableStateOf(false) }
-    var backupConfirmed by remember { mutableStateOf(false) }
+    var verifiedBackup by remember { mutableStateOf<FirstImportBackupEvidence?>(null) }
+    var backupUri by remember { mutableStateOf<Uri?>(null) }
+    var backupPassword by remember { mutableStateOf("") }
+    var backupStatus by remember { mutableStateOf<String?>(null) }
     var permitOtherCloudData by remember { mutableStateOf(false) }
     var working by remember { mutableStateOf(false) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var progress by remember { mutableStateOf<String?>(null) }
+    val backupPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        backupUri = uri
+        backupPassword = ""
+        verifiedBackup = null
+        backupStatus = if (uri == null) "백업 파일 선택을 취소했습니다." else null
+    }
 
     PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
         Text("기기 기록 최초 보관", style = MaterialTheme.typography.titleMedium)
@@ -62,7 +79,10 @@ fun FirstImportSection(auth: FirebaseAuth) {
                         val found = service.preview()
                         preview = found
                         confirmOpen = found.canImport
-                        backupConfirmed = false
+                        verifiedBackup = null
+                        backupUri = null
+                        backupPassword = ""
+                        backupStatus = null
                         permitOtherCloudData = false
                         if (found.conflicts > 0) {
                             feedback = "서버에 같은 ID의 다른 기록이나 사진이 있습니다. 이전하지 않았습니다."
@@ -108,7 +128,10 @@ fun FirstImportSection(auth: FirebaseAuth) {
             onDismissRequest = { if (!working) confirmOpen = false },
             title = { Text("비회원 기록을 Firebase에 복사") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.medium)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(PetSpacing.medium),
+                ) {
                     Text("대상: 현재 로그인한 개발 Firebase 계정")
                     Text("프로필 ${candidate.petCount}개 · 기록 ${candidate.recordCount}개 · 사진 참조 ${candidate.photoCount}개")
                     Text(
@@ -116,19 +139,58 @@ fun FirstImportSection(auth: FirebaseAuth) {
                             "내용일 때만 건너뛰고, 다른 내용이면 중단합니다."
                     )
                     Text(
-                        "로그아웃한 상태에서 설정의 백업·복원 메뉴로 .petworld 암호화 백업을 " +
-                            "먼저 만든 뒤 다시 로그인해 주세요."
+                        "로그아웃 상태에서 데이터 관리의 '암호화 백업 생성'으로 .petworld 파일을 " +
+                            "안전한 위치에 저장하세요. 다시 로그인해 파일을 선택하면 암호·전체 " +
+                            "무결성·현재 비회원 기록과 사진 일치 여부를 읽기 전용으로 확인합니다."
                     )
-                    androidx.compose.foundation.layout.Row(
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                    ) {
-                        Checkbox(
-                            checked = backupConfirmed,
+                    PetPrimaryButton(
+                        label = "암호화 백업 파일 선택",
+                        enabled = !working,
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            backupPicker.launch(arrayOf("application/octet-stream", "*/*"))
+                        },
+                    )
+                    backupUri?.let { selectedUri ->
+                        OutlinedTextField(
+                            value = backupPassword,
+                            onValueChange = {
+                                backupPassword = it
+                                verifiedBackup = null
+                                backupStatus = null
+                            },
+                            visualTransformation = PasswordVisualTransformation(),
+                            label = { Text("백업 파일 암호") },
+                            singleLine = true,
                             enabled = !working,
-                            onCheckedChange = { backupConfirmed = it },
+                            modifier = Modifier.fillMaxWidth(),
                         )
-                        Text("암호화 .petworld 백업을 직접 만들고 안전하게 보관했습니다.")
+                        TextButton(
+                            enabled = !working && backupPassword.isNotEmpty(),
+                            onClick = {
+                                val secret = backupPassword.toCharArray()
+                                backupPassword = ""
+                                backupStatus = null
+                                verifiedBackup = null
+                                working = true
+                                scope.launch {
+                                    try {
+                                        verifiedBackup = service.verifyEncryptedBackup(
+                                            candidate, selectedUri, secret,
+                                        )
+                                        backupStatus = "백업 인증·파일 무결성·현재 기록·사진 일치 확인 완료"
+                                    } catch (_: Exception) {
+                                        verifiedBackup = null
+                                        backupStatus = "백업 검증에 실패했습니다. 암호와 현재 기록에 맞는 파일인지 확인해 주세요."
+                                    } finally {
+                                        secret.fill('\u0000')
+                                        working = false
+                                    }
+                                }
+                            },
+                        ) { Text("백업 무결성 확인") }
                     }
+                    backupStatus?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
                     if (candidate.extraCloudDocuments > 0) {
                         Text(
                             "클라우드에 이 기기에 없는 기록 ${candidate.extraCloudDocuments}개가 있습니다. " +
@@ -149,9 +211,10 @@ fun FirstImportSection(auth: FirebaseAuth) {
             },
             confirmButton = {
                 TextButton(
-                    enabled = !working && backupConfirmed &&
+                    enabled = !working && verifiedBackup != null &&
                         (candidate.extraCloudDocuments == 0 || permitOtherCloudData),
                     onClick = {
+                        val evidence = verifiedBackup ?: return@TextButton
                         working = true
                         progress = "복사 준비 중"
                         feedback = null
@@ -159,7 +222,7 @@ fun FirstImportSection(auth: FirebaseAuth) {
                             try {
                                 val result = service.commit(
                                     candidate,
-                                    encryptedBackupConfirmed = backupConfirmed,
+                                    backupEvidence = evidence,
                                     allowCloudExtras = permitOtherCloudData,
                                     onProgress = { progress = it },
                                 )
@@ -168,16 +231,19 @@ fun FirstImportSection(auth: FirebaseAuth) {
                                     "비회원 원본은 보존됐고 자동 동기화는 시작되지 않았습니다."
                                 confirmOpen = false
                                 preview = null
+                                verifiedBackup = null
                             } catch (_: FirstImportConflict) {
                                 feedback = "충돌로 중단했습니다. 이미 생성된 동일 항목은 재시도할 때 건너뜁니다. " +
                                     "기존 기기 기록은 삭제되지 않았습니다."
                                 confirmOpen = false
                                 preview = null
+                                verifiedBackup = null
                             } catch (_: Exception) {
                                 feedback = "중단됐습니다. 일부 항목은 이미 서버에 생성됐을 수 있습니다. " +
                                     "기기 원본은 유지되며, 다시 미리보기 후 이어서 복사할 수 있습니다."
                                 confirmOpen = false
                                 preview = null
+                                verifiedBackup = null
                             } finally {
                                 working = false
                                 progress = null

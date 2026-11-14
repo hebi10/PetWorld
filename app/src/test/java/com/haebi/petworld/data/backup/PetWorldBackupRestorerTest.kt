@@ -20,6 +20,8 @@ import org.robolectric.annotation.Config
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.security.MessageDigest
+import java.util.UUID
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -96,6 +98,56 @@ class PetWorldBackupRestorerTest {
             }
         } finally {
             database.close()
+        }
+    }
+
+    @Test fun inspectingEncryptedBackupDoesNotRestoreOrChangeGuestData() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val database = Room.inMemoryDatabaseBuilder(context, PetWorldDatabase::class.java)
+            .allowMainThreadQueries().build()
+        val prefs = ThemePreferences(context)
+        val photoName = "pet_" + UUID.randomUUID().toString() + ".jpg"
+        val photo = File(context.filesDir, "pet_photos/" + photoName)
+        photo.parentFile!!.mkdirs()
+        val password = "qa-backup-verify-only".toCharArray()
+        try {
+            photo.writeBytes(byteArrayOf(1, 5, 9, 3))
+            database.petDao().insert(pet("verify-cat", photoName))
+            database.careDao().insert(care("verify-water", "verify-cat"))
+            prefs.selectPet("verify-cat")
+            val encrypted = ByteArrayOutputStream()
+            PetWorldBackupExporter(context, database, prefs).exportToStream(encrypted, password)
+            val backup = encrypted.toByteArray()
+            val inspector = PetWorldBackupRestorer(context, database, prefs)
+            val summary = inspector.inspectStreamWithoutRestore(ByteArrayInputStream(backup), password)
+            assertEquals(listOf("verify-cat"), summary.pets.map { it.id })
+            assertEquals(listOf("verify-water"), summary.records.map { it.id })
+            assertEquals("verify-cat", summary.selectedPetId)
+            val expectedHash = MessageDigest.getInstance("SHA-256").digest(photo.readBytes())
+                .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            assertEquals(mapOf(photoName to expectedHash), summary.photoSha256)
+            assertEquals(listOf("verify-cat"), database.petDao().list().map { it.id })
+            assertEquals("verify-cat", prefs.selectedPetId.first())
+
+            val tampered = backup.copyOf().also {
+                it[it.lastIndex - 6] = (it[it.lastIndex - 6].toInt() xor 1).toByte()
+            }
+            for ((bytes, key) in listOf(
+                backup to "wrong-password".toCharArray(),
+                tampered to password,
+            )) {
+                try {
+                    inspector.inspectStreamWithoutRestore(ByteArrayInputStream(bytes), key)
+                    fail("검증 실패 파일이 승인됐습니다.")
+                } catch (_: Exception) {
+                    assertEquals(listOf("verify-cat"), database.petDao().list().map { it.id })
+                    assertEquals("verify-cat", prefs.selectedPetId.first())
+                }
+            }
+        } finally {
+            database.close()
+            photo.delete()
+            prefs.selectPet(null)
         }
     }
 

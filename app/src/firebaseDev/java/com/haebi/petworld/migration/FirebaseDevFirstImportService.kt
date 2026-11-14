@@ -13,9 +13,13 @@ import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageException
 import com.google.firebase.storage.StorageMetadata
 import com.haebi.petworld.data.ThemePreferences
+import com.haebi.petworld.data.backup.PetWorldBackupRestorer
+import com.haebi.petworld.data.migration.FirstImportBackupEvidence
+import com.haebi.petworld.data.migration.FirstImportBackupVerifier
 import com.haebi.petworld.data.account.LocalAccountScope
 import com.haebi.petworld.data.account.photoDirectoryName
 import com.haebi.petworld.data.backup.PetWorldMutationGate
+import com.haebi.petworld.data.migration.FirstImportGuards
 import com.haebi.petworld.data.migration.FirstImportPayloads
 import com.haebi.petworld.data.room.CareEntity
 import com.haebi.petworld.data.room.PetEntity
@@ -39,6 +43,7 @@ data class FirstImportPreview(
     val extraCloudDocuments: Int,
     val conflicts: Int,
     val sourceFingerprint: String,
+    val accountFingerprint: String,
 ) {
     val canImport: Boolean get() = petCount > 0 && conflicts == 0
 }
@@ -96,8 +101,13 @@ class FirebaseDevFirstImportService(private val context: Context) {
         check(!firebase.options.storageBucket.isNullOrBlank()) {
             "개발 Firebase Storage 설정이 필요합니다."
         }
-        return auth.currentUser?.uid?.takeIf { it.isNotBlank() }
+        val user = auth.currentUser
             ?: error("Google 계정으로 먼저 로그인해 주세요.")
+        check(!user.isAnonymous && user.providerData.any { it.providerId == "google.com" }) {
+            "Google 계정으로 로그인한 뒤에만 기록을 이전할 수 있습니다."
+        }
+        return user.uid.takeIf { it.isNotBlank() }
+            ?: error("Google 계정 인증을 다시 확인해 주세요.")
     }
 
     private fun assertSameUser(uid: String) {
@@ -250,18 +260,40 @@ class FirebaseDevFirstImportService(private val context: Context) {
             extraCloudDocuments = remote.extra,
             conflicts = remote.conflicts,
             sourceFingerprint = source.fingerprint,
+            accountFingerprint = FirstImportGuards.accountFingerprint(uid),
+        )
+    }
+
+    /** Inspect a user-selected .petworld file locally; no restore or remote writes. */
+    suspend fun verifyEncryptedBackup(
+        preview: FirstImportPreview,
+        sourceUri: Uri,
+        password: CharArray,
+    ): FirstImportBackupEvidence = gate.withLock {
+        require(preview.canImport)
+        val uid = checkedUid()
+        FirstImportGuards.requireSameAccount(preview.accountFingerprint, uid)
+        val source = PetWorldMutationGate.mutex.withLock { guestSnapshotLocked() }
+        FirstImportGuards.requireFreshSource(preview.sourceFingerprint, source.fingerprint)
+        val inspected = PetWorldBackupRestorer(context).inspectFromUri(sourceUri, password)
+        FirstImportGuards.requireSameAccount(preview.accountFingerprint, checkedUid())
+        FirstImportBackupVerifier.verify(
+            approvedSourceFingerprint = preview.sourceFingerprint,
+            approvedAccountFingerprint = preview.accountFingerprint,
+            latestSourceFingerprint = source.fingerprint,
+            backup = inspected,
         )
     }
 
     suspend fun commit(
         preview: FirstImportPreview,
-        encryptedBackupConfirmed: Boolean,
+        backupEvidence: FirstImportBackupEvidence,
         allowCloudExtras: Boolean,
         onProgress: (String) -> Unit,
     ): FirstImportResult = gate.withLock {
-        require(encryptedBackupConfirmed) {
-            "기기 기록의 암호화 백업을 먼저 만들고 확인해 주세요."
-        }
+        FirstImportBackupVerifier.requireApproved(
+            preview.sourceFingerprint, preview.accountFingerprint, backupEvidence,
+        )
         require(preview.canImport) {
             "이전할 기록이 없거나 충돌이 있어 진행할 수 없습니다."
         }
@@ -269,16 +301,27 @@ class FirebaseDevFirstImportService(private val context: Context) {
             "계정에 다른 데이터가 있습니다. 추가 방식의 이전을 선택해 주세요."
         }
         val uid = checkedUid()
+        FirstImportGuards.requireSameAccount(preview.accountFingerprint, uid)
+        val onlineUid = auth.currentUser?.also { user ->
+            user.getIdToken(true).awaitImport()
+        }?.uid
+        check(onlineUid == uid) {
+            "Firebase 인증이 변경됐습니다. 다시 로그인하고 미리보기를 확인해 주세요."
+        }
         PetWorldMutationGate.mutex.withLock {
             val source = guestSnapshotLocked()
-            require(source.fingerprint == preview.sourceFingerprint) {
-                "미리보기 이후 기기 기록이 변경됐습니다. 다시 확인해 주세요."
-            }
+            FirstImportGuards.requireFreshSource(preview.sourceFingerprint, source.fingerprint)
             val current = remoteReview(uid, source)
             if (current.conflicts > 0) throw FirstImportConflict()
-            if (current.extra > 0 && !allowCloudExtras) {
-                error("계정의 기존 클라우드 데이터를 다시 확인해 주세요.")
-            }
+            FirstImportGuards.requireFreshReview(
+                approvedMatching = preview.matchingCloudDocuments,
+                approvedExtra = preview.extraCloudDocuments,
+                approvedConflicts = preview.conflicts,
+                latestMatching = current.matching,
+                latestExtra = current.extra,
+                latestConflicts = current.conflicts,
+                allowCloudExtras = allowCloudExtras,
+            )
             val scope = LocalAccountScope.fromFirebaseUid(uid) as LocalAccountScope.SignedIn
             check(checkpoint.edit().putString(scope.key, source.fingerprint).commit()) {
                 "재시도 체크포인트를 저장하지 못했습니다."
@@ -294,7 +337,6 @@ class FirebaseDevFirstImportService(private val context: Context) {
                 if (!photoExists(target)) {
                     val metadata = StorageMetadata.Builder()
                         .setContentType("image/jpeg")
-                        .setCustomMetadata("sha256", photo.digest)
                         .build()
                     try {
                         target.putFile(Uri.fromFile(photo.file), metadata).awaitImport()
