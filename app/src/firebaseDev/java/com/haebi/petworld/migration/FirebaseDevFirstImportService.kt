@@ -13,6 +13,9 @@ import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageException
 import com.google.firebase.storage.StorageMetadata
 import com.haebi.petworld.data.ThemePreferences
+import com.haebi.petworld.data.backup.PetWorldBackupRestorer
+import com.haebi.petworld.data.migration.FirstImportBackupEvidence
+import com.haebi.petworld.data.migration.FirstImportBackupVerifier
 import com.haebi.petworld.data.account.LocalAccountScope
 import com.haebi.petworld.data.account.photoDirectoryName
 import com.haebi.petworld.data.backup.PetWorldMutationGate
@@ -261,15 +264,36 @@ class FirebaseDevFirstImportService(private val context: Context) {
         )
     }
 
+    /** Inspect a user-selected .petworld file locally; no restore or remote writes. */
+    suspend fun verifyEncryptedBackup(
+        preview: FirstImportPreview,
+        sourceUri: Uri,
+        password: CharArray,
+    ): FirstImportBackupEvidence = gate.withLock {
+        require(preview.canImport)
+        val uid = checkedUid()
+        FirstImportGuards.requireSameAccount(preview.accountFingerprint, uid)
+        val source = PetWorldMutationGate.mutex.withLock { guestSnapshotLocked() }
+        FirstImportGuards.requireFreshSource(preview.sourceFingerprint, source.fingerprint)
+        val inspected = PetWorldBackupRestorer(context).inspectFromUri(sourceUri, password)
+        FirstImportGuards.requireSameAccount(preview.accountFingerprint, checkedUid())
+        FirstImportBackupVerifier.verify(
+            approvedSourceFingerprint = preview.sourceFingerprint,
+            approvedAccountFingerprint = preview.accountFingerprint,
+            latestSourceFingerprint = source.fingerprint,
+            backup = inspected,
+        )
+    }
+
     suspend fun commit(
         preview: FirstImportPreview,
-        encryptedBackupConfirmed: Boolean,
+        backupEvidence: FirstImportBackupEvidence,
         allowCloudExtras: Boolean,
         onProgress: (String) -> Unit,
     ): FirstImportResult = gate.withLock {
-        require(encryptedBackupConfirmed) {
-            "기기 기록의 암호화 백업을 먼저 만들고 확인해 주세요."
-        }
+        FirstImportBackupVerifier.requireApproved(
+            preview.sourceFingerprint, preview.accountFingerprint, backupEvidence,
+        )
         require(preview.canImport) {
             "이전할 기록이 없거나 충돌이 있어 진행할 수 없습니다."
         }

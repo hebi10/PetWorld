@@ -130,7 +130,8 @@ class PetWorldAccountActivity : ComponentActivity() {
                 Text(
                     "비회원과 Google 계정은 이 기기에서 서로 다른 데이터 저장소를 사용합니다. " +
                         "로그인하거나 로그아웃해도 기존 비회원 기록은 보존되며 자동 복사되지 않습니다. " +
-                        "클라우드 업로드·기기 간 동기화는 아직 제공하지 않습니다.",
+                        "개발 환경에서는 암호화 백업 확인과 직접 승인 후 기존 비회원 기록을 " +
+                        "최초 1회 클라우드에 보관할 수 있습니다. 자동 동기화는 아직 제공하지 않습니다.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -226,7 +227,8 @@ class PetWorldAccountActivity : ComponentActivity() {
             )
             Text(
                 "계정 삭제와 서버 기록 삭제는 이 화면에서 제공하지 않습니다. " +
-                    "현재 앱은 서버로 반려동물 기록을 업로드하지 않습니다.",
+                    "개발 환경의 사용자 승인형 최초 보관 외에는 자동 업로드가 없습니다. " +
+                        "계정 삭제와 클라우드 자동 동기화는 아직 지원하지 않습니다.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
