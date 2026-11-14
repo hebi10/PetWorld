@@ -1,0 +1,414 @@
+name: FB-04 QA-only signed development APK
+run-name: FB-04 device QA APK - ${{ inputs.pr_sha }}
+on:
+  workflow_dispatch:
+    inputs:
+      pr_sha:
+        description: 'Exact reviewed 40-character head SHA of PetWorld PR #37'
+        required: true
+        type: string
+      confirmation:
+        description: 'Type FB04-DEVICE-APK-ONLY; no Firebase writes or Play publishing'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: petworld-fb04-device-apk
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: github.repository == 'hebi10/PetWorld' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      reviewed_sha: ${{ steps.gate.outputs.reviewed_sha }}
+    steps:
+      - name: Confirm exact PR source, successful CI, and unchanged trusted main
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVIEWED_SHA: ${{ inputs.pr_sha }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+
+          repo = 'hebi10/PetWorld'
+          sha = os.environ.get('REVIEWED_SHA', '')
+          def refuse(reason):
+              raise SystemExit('FB-04 DEVICE APK DENIED: ' + reason)
+          def github(path):
+              call = subprocess.run(['gh', 'api', path], capture_output=True, text=True)
+              if call.returncode:
+                  refuse('GitHub metadata could not be verified')
+              return json.loads(call.stdout)
+
+          if os.environ.get('GITHUB_REPOSITORY') != repo or os.environ.get('GITHUB_REF') != 'refs/heads/main':
+              refuse('Trusted main workflow required')
+          if os.environ.get('CONFIRMATION') != 'FB04-DEVICE-APK-ONLY':
+              refuse('Explicit manual QA-only confirmation required')
+          if not re.fullmatch(r'[0-9a-f]{40}', sha):
+              refuse('Exact 40-character commit SHA required')
+          current_main = github('repos/' + repo + '/git/ref/heads/main')['object']['sha']
+          if current_main != os.environ.get('GITHUB_SHA'):
+              refuse('Trusted main changed after dispatch')
+          pr = github('repos/' + repo + '/pulls/37')
+          if not (pr.get('state') == 'open' and pr.get('draft') and
+                  pr['head']['repo']['full_name'] == repo and pr['head']['sha'] == sha):
+              refuse('Requested SHA is not the current Draft PR #37 head')
+          runs = github('repos/' + repo + '/actions/runs?head_sha=' + sha +
+                        '&event=pull_request&per_page=100')['workflow_runs']
+          required = [
+              'Android CI',
+              'Firebase Rules CI',
+              'Android Backup Restore Emulator QA',
+              'PetWorld Firebase account UI smoke QA',
+              'PetWorld FB-03 scoped data isolation QA',
+              'Play exact-source verification',
+              'Android Keyboard Save Accessibility QA',
+              'Android Accessibility Responsive QA',
+          ]
+          for workflow in required:
+              candidates = [r for r in runs if r.get('head_sha') == sha and
+                            r.get('name') == workflow and r.get('event') == 'pull_request']
+              if not candidates:
+                  refuse('Missing PR SHA verification: ' + workflow)
+              latest = max(candidates, key=lambda r: (r.get('run_number', 0), r.get('run_attempt', 0)))
+              if latest.get('status') != 'completed' or latest.get('conclusion') != 'success':
+                  refuse('Required CI not successful: ' + workflow)
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
+              out.write('reviewed_sha=' + sha + '\n')
+          print('Reviewed PR SHA and required CI successful: ' + sha)
+          print('No Play publishing or Firebase server modification will occur.')
+          PY
+
+  public-config:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: petworld-dev-signing
+    steps:
+      - name: Extract only public Firebase Android client fields from protected configuration
+        env:
+          FIREBASE_CONFIG_B64: ${{ secrets.PETWORLD_DEV_GOOGLE_SERVICES_JSON_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64
+          import json
+          import os
+          from pathlib import Path
+
+          encoded = os.environ.get('FIREBASE_CONFIG_B64', '')
+          if not encoded:
+              raise SystemExit('Protected real development Firebase config is missing')
+          original = json.loads(base64.b64decode(encoded, validate=True))
+          project = original['project_info']
+          if project['project_id'] != 'petworld-dev':
+              raise SystemExit('Wrong Firebase project')
+          clients = [c for c in original['client'] if
+                     c['client_info']['android_client_info']['package_name'] == 'com.haebi.petworld.dev']
+          if len(clients) != 1:
+              raise SystemExit('Wrong Firebase Android client')
+          client = clients[0]
+          oauth = [c for c in client.get('oauth_client', []) if
+                   c.get('client_type') == 3 and isinstance(c.get('client_id'), str) and c['client_id']]
+          keys = [k['current_key'] for k in client.get('api_key', []) if k.get('current_key')]
+          if not oauth or len(keys) != 1:
+              raise SystemExit('Required Android Firebase public client fields missing')
+          public = {
+              'project_info': {
+                  'project_number': project['project_number'],
+                  'project_id': 'petworld-dev',
+                  'storage_bucket': project.get('storage_bucket', ''),
+              },
+              'client': [{
+                  'client_info': {
+                      'mobilesdk_app_id': client['client_info']['mobilesdk_app_id'],
+                      'android_client_info': {'package_name': 'com.haebi.petworld.dev'},
+                  },
+                  'oauth_client': [{'client_id': x['client_id'], 'client_type': 3} for x in oauth],
+                  'api_key': [{'current_key': keys[0]}],
+              }],
+              'configuration_version': '1',
+          }
+          path = Path('public-config/google-services.json')
+          path.parent.mkdir(exist_ok=True)
+          path.write_text(json.dumps(public, separators=(',', ':')), encoding='utf-8')
+          path.chmod(0o600)
+          print('Sanitized Android client configuration prepared; no values printed')
+          PY
+      - name: Transfer public-only Android client config to unprivileged builder
+        uses: actions/upload-artifact@v4
+        with:
+          name: petworld-fb04-public-config-${{ github.run_id }}-${{ github.run_attempt }}
+          path: public-config/google-services.json
+          retention-days: 1
+          if-no-files-found: error
+
+  build:
+    needs: [preflight, public-config]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      REVIEWED_SHA: ${{ needs.preflight.outputs.reviewed_sha }}
+    steps:
+      - name: Checkout only the exactly reviewed PR commit without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.reviewed_sha }}
+          persist-credentials: false
+      - name: Confirm exact Git source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$REVIEWED_SHA"
+          echo "PR code executes only in this unprivileged build job."
+      - name: Download sanitized public Firebase Android config
+        uses: actions/download-artifact@v4
+        with:
+          name: petworld-fb04-public-config-${{ github.run_id }}-${{ github.run_attempt }}
+          path: public-config
+      - name: Validate public-only config and install it in development variant
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          value = json.loads(Path('public-config/google-services.json').read_text(encoding='utf-8'))
+          assert value['project_info']['project_id'] == 'petworld-dev'
+          assert len(value['client']) == 1
+          assert value['client'][0]['client_info']['android_client_info']['package_name'] == 'com.haebi.petworld.dev'
+          assert len(value['client'][0]['oauth_client']) > 0
+          destination = Path('app/src/firebaseDev/google-services.json')
+          destination.parent.mkdir(parents=True, exist_ok=True)
+          destination.write_text(json.dumps(value), encoding='utf-8')
+          PY
+          rm -rf public-config
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - name: Install fixed Android build platform
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-37.0" "build-tools;36.0.0"
+      - name: Verify Gradle wrapper and build unprivileged development APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7  gradle/wrapper/gradle-wrapper.jar" | sha256sum --check
+          ./gradlew :app:assembleFirebaseDev --no-daemon
+      - name: Verify unsigned-stage provenance and package before protected signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t apks < <(find app/build/outputs/apk -iname '*firebasedev*.apk' -type f)
+          test "${#apks[@]}" -eq 1
+          mkdir -p qa-build
+          cp "${apks[0]}" qa-build/input.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging qa-build/input.apk > "$RUNNER_TEMP/badging.txt"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump resources qa-build/input.apk > "$RUNNER_TEMP/resources.txt"
+          grep -Fq "package: name='com.haebi.petworld.dev'" "$RUNNER_TEMP/badging.txt"
+          grep -Fq 'petworld-dev' "$RUNNER_TEMP/resources.txt"
+          grep -Fq 'string/default_web_client_id' "$RUNNER_TEMP/resources.txt"
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          apk = Path('qa-build/input.apk')
+          info = {
+              'schema': 'petworld-fb04-device-apk-build-v1',
+              'repository': os.environ['GITHUB_REPOSITORY'],
+              'source_sha': os.environ['REVIEWED_SHA'],
+              'run_id': os.environ['GITHUB_RUN_ID'],
+              'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+              'package': 'com.haebi.petworld.dev',
+              'firebase_project': 'petworld-dev',
+              'input_apk_sha256': hashlib.sha256(apk.read_bytes()).hexdigest(),
+          }
+          Path('qa-build/provenance.json').write_text(json.dumps(info, indent=2), encoding='utf-8')
+          print('Development APK build verified at source: ' + info['source_sha'])
+          PY
+      - name: Hand immutable APK bytes to trusted signer, not signing keys to PR
+        uses: actions/upload-artifact@v4
+        with:
+          name: petworld-fb04-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: qa-build/
+          retention-days: 3
+          if-no-files-found: error
+
+  sign:
+    needs: [preflight, public-config, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: petworld-dev-signing
+    permissions:
+      contents: read
+    env:
+      REVIEWED_SHA: ${{ needs.preflight.outputs.reviewed_sha }}
+    steps:
+      - name: Download built APK only; never checkout or execute PR code in signer
+        uses: actions/download-artifact@v4
+        with:
+          name: petworld-fb04-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: qa-build
+      - name: Verify immutable build evidence, current PR and current trusted main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          info = json.loads(Path('qa-build/provenance.json').read_text(encoding='utf-8'))
+          apk = Path('qa-build/input.apk')
+          expected = {
+              'schema': 'petworld-fb04-device-apk-build-v1',
+              'repository': 'hebi10/PetWorld',
+              'source_sha': os.environ['REVIEWED_SHA'],
+              'run_id': os.environ['GITHUB_RUN_ID'],
+              'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+              'package': 'com.haebi.petworld.dev',
+              'firebase_project': 'petworld-dev',
+          }
+          if any(info.get(k) != v for k, v in expected.items()):
+              raise SystemExit('Build provenance does not match this reviewed source and run')
+          if hashlib.sha256(apk.read_bytes()).hexdigest() != info.get('input_apk_sha256'):
+              raise SystemExit('APK digest does not match unprivileged build provenance')
+          def github(path):
+              r = subprocess.run(['gh', 'api', path], capture_output=True, text=True)
+              if r.returncode:
+                  raise SystemExit('Cannot verify GitHub source metadata')
+              return json.loads(r.stdout)
+          pr = github('repos/hebi10/PetWorld/pulls/37')
+          main = github('repos/hebi10/PetWorld/git/ref/heads/main')
+          if not (pr.get('state') == 'open' and pr.get('draft') and
+                  pr['head']['sha'] == os.environ['REVIEWED_SHA'] and
+                  main['object']['sha'] == os.environ['GITHUB_SHA']):
+              raise SystemExit('PR changed or trusted main moved; signing denied')
+          print('APK SHA-256 and immutable reviewed source verified')
+          PY
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install trusted SDK signing and APK inspection utilities
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "build-tools;36.0.0"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging qa-build/input.apk > "$RUNNER_TEMP/badging.txt"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump resources qa-build/input.apk > "$RUNNER_TEMP/resources.txt"
+          grep -Fq "package: name='com.haebi.petworld.dev'" "$RUNNER_TEMP/badging.txt"
+          grep -Fq 'petworld-dev' "$RUNNER_TEMP/resources.txt"
+          grep -Fq 'string/default_web_client_id' "$RUNNER_TEMP/resources.txt"
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -p 4 qa-build/input.apk
+      - name: Restore existing protected signer only in trusted job
+        env:
+          KEYSTORE_B64: ${{ secrets.PETWORLD_DEV_KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+          encoded = os.environ.get('KEYSTORE_B64', '')
+          if not encoded:
+              raise SystemExit('Existing protected Firebase development signer is unavailable')
+          key = Path(os.environ['RUNNER_TEMP']) / 'petworld-fb04-dev.jks'
+          key.write_bytes(base64.b64decode(encoded, validate=True))
+          key.chmod(0o600)
+          PY
+      - name: Sign existing APK bytes without invoking Gradle, PR code or Play APIs
+        env:
+          PETWORLD_DEV_STORE_PASSWORD: ${{ secrets.PETWORLD_DEV_STORE_PASSWORD }}
+          PETWORLD_DEV_KEY_ALIAS: ${{ secrets.PETWORLD_DEV_KEY_ALIAS }}
+          PETWORLD_DEV_KEY_PASSWORD: ${{ secrets.PETWORLD_DEV_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qa-signed
+          APK_SIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          "$APK_SIGNER" sign --min-sdk-version 26 \
+            --ks "$RUNNER_TEMP/petworld-fb04-dev.jks" \
+            --ks-key-alias "$PETWORLD_DEV_KEY_ALIAS" \
+            --ks-pass env:PETWORLD_DEV_STORE_PASSWORD \
+            --key-pass env:PETWORLD_DEV_KEY_PASSWORD \
+            --out qa-signed/PetWorld-fb04-device-qa.apk qa-build/input.apk
+          "$APK_SIGNER" verify --min-sdk-version 26 --print-certs \
+            qa-signed/PetWorld-fb04-device-qa.apk > "$RUNNER_TEMP/apk-cert.txt"
+          keytool -exportcert -keystore "$RUNNER_TEMP/petworld-fb04-dev.jks" \
+            -alias "$PETWORLD_DEV_KEY_ALIAS" \
+            -storepass:env PETWORLD_DEV_STORE_PASSWORD \
+            > "$RUNNER_TEMP/key-cert.der"
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import re
+          from pathlib import Path
+          cert = Path(os.environ['RUNNER_TEMP'] + '/key-cert.der').read_bytes()
+          expected = hashlib.sha256(cert).hexdigest()
+          raw = Path(os.environ['RUNNER_TEMP'] + '/apk-cert.txt').read_text(encoding='utf-8')
+          match = re.search(r'Signer #1 certificate SHA-256 digest:\s*([0-9a-fA-F]+)', raw)
+          if not match or match.group(1).lower() != expected:
+              raise SystemExit('Installed APK signer fingerprint does not match protected keystore')
+          apk = Path('qa-signed/PetWorld-fb04-device-qa.apk')
+          digest = hashlib.sha256(apk.read_bytes()).hexdigest()
+          info = {
+              'schema': 'petworld-fb04-signed-apk-v1',
+              'repository': 'hebi10/PetWorld',
+              'source_sha': os.environ['REVIEWED_SHA'],
+              'run_id': os.environ['GITHUB_RUN_ID'],
+              'apk_sha256': digest,
+              'certificate_sha256': expected,
+              'package': 'com.haebi.petworld.dev',
+              'firebase_project': 'petworld-dev',
+              'google_play_uploaded': False,
+              'firebase_data_written': False,
+              'live_google_login_verified': False,
+          }
+          Path('qa-signed/verification.json').write_text(json.dumps(info, indent=2), encoding='utf-8')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
+              summary.write('## FB-04 signed QA-only APK\n\n')
+              summary.write('Reviewed source SHA: ' + info['source_sha'] + '\n\n')
+              summary.write('APK SHA-256: ' + digest + '\n\n')
+              summary.write('Certificate SHA-256: ' + expected + '\n\n')
+              summary.write('No Play upload, Firebase write, or live Google login was performed.\n')
+          PY
+      - name: Remove private signer and inspection data on every outcome
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/petworld-fb04-dev.jks" "$RUNNER_TEMP/key-cert.der" "$RUNNER_TEMP/apk-cert.txt"
+      - name: Publish installable QA APK and sanitized provenance only
+        uses: actions/upload-artifact@v4
+        with:
+          name: petworld-fb04-signed-device-qa-${{ github.run_id }}-${{ github.run_attempt }}
+          path: qa-signed/
+          retention-days: 7
+          if-no-files-found: error
