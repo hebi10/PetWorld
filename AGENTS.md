@@ -28,3 +28,10 @@
 
 ### 앱별 보존 지침
 - 반려동물 프로필·기록·Room 데이터·암호화 백업과 복원 절차를 유지한다. `.github/workflows/android-ci.yml`, `play-internal.yml`, `play-promote.yml` 및 실제 Play 버전·서명 검증을 우선한다.
+
+## CI-DEDUP-20261119-P2 — 실제 Android QA 최종 배치 통합
+- PR/main에서는 `android-ci.yml`의 단위 테스트·Lint·Android 디버그 빌드를 유지한다.
+- 일반 화면·접근성·키보드 QA의 반복 PR 전수 계측을 제거하고 `final-device-qa.yml` 수동 1회 실행에서 API 29·35·36, 실제 화면, 접근성, 160% 글꼴, 입력·기록·설정·백업·복원 검증을 모두 호출한다.
+- `android-backup-qa.yml`은 데이터 백업 변경 PR의 사전 기기 검증을 유지한다. `android-ui10g-integration-qa.yml` 및 개별 빠른 기록·목록·설정 검사는 해당 기능 변경의 선별 PR 테스트를 보존한다.
+- 최종 `main` SHA가 일치하지 않거나 기기 계측 일부가 실패·건너뛰기·누락되면 전체 QA를 완료로 판정하지 않는다.
+- `release-build.yml`은 동일 SHA의 자동 `Android CI`와 수동 `PetWorld final Android QA` 모두 성공한 경우에만 서명 빌드를 허용한다. Firebase 인증·Room·암호화 사진 백업의 기존 안전 절차를 유지한다.
