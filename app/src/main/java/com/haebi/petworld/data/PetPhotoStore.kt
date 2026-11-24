@@ -1,6 +1,8 @@
 package com.haebi.petworld.data
 
 import android.content.Context
+import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.account.photoDirectoryName
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
@@ -75,8 +77,11 @@ internal fun photoOrientationMatrix(orientation: Int): Matrix = Matrix().apply {
     }
 }
 
-class PetPhotoStore(private val context: Context) {
-    private val directory get() = File(context.filesDir, "pet_photos").apply {
+class PetPhotoStore(
+    private val context: Context,
+    private val scope: LocalAccountScope = LocalAccountScope.Guest,
+) {
+    private val directory get() = File(context.filesDir, scope.photoDirectoryName).apply {
         check(isDirectory || mkdirs()) { "사진 저장 폴더를 준비하지 못했습니다." }
     }
 

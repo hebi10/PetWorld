@@ -27,6 +27,13 @@ import java.util.zip.ZipInputStream
  * The 1-E-D UI must block concurrent writes while restore is running and refresh its repositories
  * after success. Process-death recovery across Room and DataStore is still an integration task.
  */
+data class PetWorldBackupInspection(
+    val pets: List<PetEntity>,
+    val records: List<CareEntity>,
+    val selectedPetId: String?,
+    val photoSha256: Map<String, String>,
+)
+
 class PetWorldBackupRestorer(
     private val context: Context,
     private val database: PetWorldDatabase = PetWorldDatabase.get(context),
@@ -34,6 +41,39 @@ class PetWorldBackupRestorer(
     private val codec: EncryptedBackupCodec = EncryptedBackupCodec(),
 ) {
     private val photoPattern = Regex("pet_[a-z0-9-]+\\.jpg")
+
+    /** Authenticate and validate a backup without changing Room, photos or DataStore. */
+    suspend fun inspectFromUri(source: Uri, password: CharArray): PetWorldBackupInspection =
+        withContext(Dispatchers.IO) {
+            val input = context.contentResolver.openInputStream(source)
+                ?: throw IOException("백업 파일을 열 수 없습니다.")
+            input.use { inspectStreamWithoutRestore(it, password) }
+        }
+
+    suspend fun inspectStreamWithoutRestore(source: InputStream, password: CharArray):
+        PetWorldBackupInspection = withContext(Dispatchers.IO) {
+        val workspace = File(context.cacheDir, "petworld-verify-${java.util.UUID.randomUUID()}")
+        check(workspace.mkdirs()) { "백업 검증 폴더를 만들지 못했습니다." }
+        try {
+            val authenticated = codec.decryptToVerifiedFile(source, workspace, password)
+            val archive = readAndValidateArchive(authenticated, workspace)
+            val hashes = archive.photos.mapValues { (_, file) ->
+                val digest = MessageDigest.getInstance("SHA-256")
+                file.inputStream().buffered().use { input ->
+                    val buffer = ByteArray(32 * 1024)
+                    while (true) {
+                        val length = input.read(buffer)
+                        if (length < 0) break
+                        if (length > 0) digest.update(buffer, 0, length)
+                    }
+                }
+                digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            }
+            PetWorldBackupInspection(archive.pets, archive.entries, archive.selectedPet, hashes)
+        } finally {
+            workspace.deleteRecursively()
+        }
+    }
 
     suspend fun restoreFromUri(source: Uri, password: CharArray) = withContext(Dispatchers.IO) {
         context.contentResolver.openInputStream(source)?.use { restoreFromStream(it, password) }

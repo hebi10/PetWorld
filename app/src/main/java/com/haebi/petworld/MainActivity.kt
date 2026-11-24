@@ -1,5 +1,6 @@
 package com.haebi.petworld
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -18,7 +19,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.account.LocalAccountScopeResolver
+import com.haebi.petworld.data.account.isGuest
 import com.haebi.petworld.data.ThemePreferences
+import com.haebi.petworld.data.backup.PetWorldMutationGate
+import kotlinx.coroutines.sync.withLock
 import com.haebi.petworld.data.room.PetWorldDatabase
 import com.haebi.petworld.data.backup.PetWorldRecoveryJournal
 import kotlinx.coroutines.Dispatchers
@@ -29,6 +35,66 @@ import com.haebi.petworld.ui.PetWorldApp
 import com.haebi.petworld.ui.theme.PetWorldTheme
 
 class MainActivity : ComponentActivity() {
+    private var activeScope: LocalAccountScope = LocalAccountScope.Guest
+    private var accountReady = false
+
+    override fun onResume() {
+        super.onResume()
+        if (!accountReady) return
+        val resolved = runCatching { LocalAccountScopeResolver.resolve(applicationContext) }
+        if (resolved.isFailure) {
+            accountReady = false
+            showAccountScopeFailure()
+            return
+        }
+        if (resolved.getOrThrow() != activeScope) {
+            restartForAccountSwitch()
+        }
+    }
+
+    private fun restartForAccountSwitch() {
+        accountReady = false
+        val previousScope = activeScope
+        setContent {
+            PetWorldTheme {
+                PetWorldSystemBarContrast(ThemeMode.SYSTEM)
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            }
+        }
+        viewModelStore.clear()
+        lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    PetWorldMutationGate.mutex.withLock {
+                        PetWorldDatabase.closeScope(previousScope)
+                    }
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                showAccountScopeFailure()
+                return@launch
+            }
+            startActivity(Intent(this@MainActivity, MainActivity::class.java))
+            finish()
+        }
+    }
+
+    private fun showAccountScopeFailure() {
+        setContent {
+            PetWorldTheme {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        "계정별 저장소를 확인할 수 없습니다. 앱을 종료한 후 다시 실행해 주세요.",
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -65,10 +131,24 @@ class MainActivity : ComponentActivity() {
                 }
                 return@launch
             }
+            val resolvedScope = runCatching {
+                LocalAccountScopeResolver.resolve(applicationContext)
+            }.getOrElse {
+                showAccountScopeFailure()
+                return@launch
+            }
+            activeScope = resolvedScope
+            accountReady = true
             val viewModel = ViewModelProvider(
                 this@MainActivity,
-                MainViewModel.factory(applicationContext),
+                MainViewModel.factory(applicationContext, resolvedScope),
             )[MainViewModel::class.java]
+            // A retained Activity ViewModel must never serve a different account.
+            if (viewModel.localAccountScope != resolvedScope) {
+                activeScope = viewModel.localAccountScope
+                restartForAccountSwitch()
+                return@launch
+            }
 
             setContent {
                 val themeMode = viewModel.themeMode.collectAsStateWithLifecycle().value
@@ -91,6 +171,7 @@ class MainActivity : ComponentActivity() {
                     } else {
                         PetWorldApp(
                             themeMode = themeMode,
+                            guestScope = resolvedScope.isGuest,
                             petState = state,
                             careFeed = care,
                             photoStore = viewModel.photoStore,

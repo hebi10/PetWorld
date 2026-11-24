@@ -58,7 +58,9 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun PetWelcomeScreen(
     archivedCount: Int,
+    allowGuestBackup: Boolean = true,
     onStart: () -> Unit,
+    onOpenAccount: (() -> Unit)? = null,
     onManageArchived: () -> Unit,
     restoring: Boolean,
     onRestore: suspend (Uri, CharArray) -> Result<Unit>,
@@ -81,16 +83,38 @@ fun PetWelcomeScreen(
                 style = MaterialTheme.typography.bodyMedium,
             )
             Text(
-                "프로필은 이 기기에 보관됩니다. 별도 계정이나 로그인은 필요하지 않습니다.",
+                if (allowGuestBackup) {
+                    "프로필은 이 기기에 보관됩니다. 별도 계정이나 로그인은 필요하지 않습니다."
+                } else {
+                    "이 Google 계정의 로컬 프로필은 별도로 보관됩니다. 기존 비회원 기록은 자동 복사되지 않습니다."
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        PetPrimaryButton(
-            label = "반려동물 등록",
-            onClick = onStart,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        if (onOpenAccount != null) {
+            PetPrimaryButton(
+                label = "Google 계정으로 시작",
+                onClick = onOpenAccount,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            PetSecondaryButton(
+                label = "로그인 없이 사용",
+                onClick = onStart,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                "Google 로그인을 하더라도 기존 기록은 이 기기에만 저장됩니다.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            PetPrimaryButton(
+                label = "반려동물 등록",
+                onClick = onStart,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         if (archivedCount > 0) {
             PetSecondaryButton(
                 label = "보관한 프로필 보기 (${archivedCount})",
@@ -98,7 +122,16 @@ fun PetWelcomeScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        PetBackupSection(restoring = restoring, onRestore = onRestore)
+        if (allowGuestBackup) {
+            PetBackupSection(restoring = restoring, onRestore = onRestore)
+        } else {
+            Text(
+                "로그인 계정의 프로필은 별도 저장소에 보관됩니다. " +
+                    "비회원 기록은 로그아웃해도 삭제되지 않습니다.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 

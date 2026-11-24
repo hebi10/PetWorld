@@ -1,0 +1,149 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function owner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function textBetween(value, maximum) {
+      return value is string && value.size() > 0 && value.size() <= maximum;
+    }
+
+    function optionalText(data, key, maximum) {
+      return data.get(key, null) == null ||
+        (data.get(key, null) is string && data.get(key, null).size() <= maximum);
+    }
+
+    function optionalNumber(data, key, minimum, maximum) {
+      return data.get(key, null) == null ||
+        (data.get(key, null) is int &&
+          data.get(key, null) >= minimum &&
+          data.get(key, null) <= maximum);
+    }
+
+    function validUser(data) {
+      return data.keys().hasOnly([
+          'schemaVersion', 'createdAtMs', 'migrationState', 'revision'
+        ]) &&
+        data.keys().hasAll([
+          'schemaVersion', 'createdAtMs', 'migrationState', 'revision'
+        ]) &&
+        data.schemaVersion == 1 &&
+        data.createdAtMs is int && data.createdAtMs > 0 &&
+        data.revision is int && data.revision >= 0 &&
+        data.migrationState in ['pending', 'ready', 'paused'];
+    }
+
+    function validPet(petId, data) {
+      return data.keys().hasAll([
+          'id', 'schemaVersion', 'revision', 'name', 'species',
+          'isArchived', 'createdAtMs', 'updatedAtMs'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'schemaVersion', 'revision', 'name', 'species',
+          'isArchived', 'createdAtMs', 'updatedAtMs',
+          'breed', 'birthday', 'estimatedAgeYears', 'sex',
+          'neuterStatus', 'notes', 'photoFile', 'deletedAtMs'
+        ]) &&
+        data.id == petId && textBetween(data.id, 100) &&
+        data.schemaVersion == 1 &&
+        data.revision is int && data.revision >= 0 &&
+        textBetween(data.name, 40) &&
+        data.species in ['CAT', 'DOG', 'OTHER'] &&
+        data.isArchived is bool &&
+        data.createdAtMs is int && data.createdAtMs > 0 &&
+        data.updatedAtMs is int && data.updatedAtMs >= data.createdAtMs &&
+        optionalText(data, 'breed', 100) &&
+        optionalText(data, 'birthday', 16) &&
+        optionalNumber(data, 'estimatedAgeYears', 0, 100) &&
+        optionalText(data, 'sex', 40) &&
+        optionalText(data, 'neuterStatus', 40) &&
+        optionalText(data, 'notes', 2000) &&
+        optionalText(data, 'photoFile', 100) &&
+        optionalNumber(data, 'deletedAtMs', 1, 9999999999999);
+    }
+
+    function validCare(petId, recordId, data) {
+      return data.keys().hasAll([
+          'id', 'petId', 'schemaVersion', 'revision', 'type', 'occurredAtMs',
+          'timezoneId', 'note', 'createdAtMs', 'updatedAtMs'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'petId', 'schemaVersion', 'revision', 'type', 'occurredAtMs',
+          'timezoneId', 'note', 'createdAtMs', 'updatedAtMs',
+          'foodKind', 'foodProductName', 'foodServedMilli', 'foodConsumedMilli',
+          'foodUnit', 'waterMl', 'eliminationKind', 'eliminationCount',
+          'activityKind', 'activityMinutes', 'weightGrams', 'weightInputUnit',
+          'photoFile', 'deletedAtMs'
+        ]) &&
+        data.id == recordId && textBetween(data.id, 100) &&
+        data.petId == petId &&
+        data.schemaVersion == 1 &&
+        data.revision is int && data.revision >= 0 &&
+        data.type in ['FOOD', 'WATER', 'ELIMINATION', 'ACTIVITY', 'WEIGHT'] &&
+        data.occurredAtMs is int && data.occurredAtMs > 0 &&
+        textBetween(data.timezoneId, 64) &&
+        data.note is string && data.note.size() <= 2000 &&
+        data.createdAtMs is int && data.createdAtMs > 0 &&
+        data.updatedAtMs is int && data.updatedAtMs >= data.createdAtMs &&
+        optionalText(data, 'foodKind', 40) &&
+        optionalText(data, 'foodProductName', 200) &&
+        optionalNumber(data, 'foodServedMilli', 0, 9999999999999) &&
+        optionalNumber(data, 'foodConsumedMilli', 0, 9999999999999) &&
+        optionalText(data, 'foodUnit', 8) &&
+        optionalNumber(data, 'waterMl', 0, 1000000000) &&
+        optionalText(data, 'eliminationKind', 40) &&
+        optionalNumber(data, 'eliminationCount', 0, 100) &&
+        optionalText(data, 'activityKind', 40) &&
+        optionalNumber(data, 'activityMinutes', 0, 1440) &&
+        optionalNumber(data, 'weightGrams', 0, 9999999999999) &&
+        optionalText(data, 'weightInputUnit', 8) &&
+        optionalText(data, 'photoFile', 100) &&
+        optionalNumber(data, 'deletedAtMs', 1, 9999999999999);
+    }
+
+    match /users/{uid} {
+      allow get: if owner(uid);
+      allow list: if false;
+      allow create: if owner(uid) && validUser(request.resource.data) &&
+        request.resource.data.revision == 0;
+      allow update: if owner(uid) &&
+        validUser(request.resource.data) &&
+        request.resource.data.createdAtMs == resource.data.createdAtMs &&
+        request.resource.data.revision == resource.data.revision + 1;
+      allow delete: if false;
+
+      match /pets/{petId} {
+        allow get, list: if owner(uid);
+        allow create: if owner(uid) &&
+          validPet(petId, request.resource.data) &&
+          request.resource.data.revision == 0;
+        allow update: if owner(uid) &&
+          validPet(petId, request.resource.data) &&
+          request.resource.data.id == resource.data.id &&
+          request.resource.data.createdAtMs == resource.data.createdAtMs &&
+          request.resource.data.revision == resource.data.revision + 1;
+        allow delete: if false;
+
+        match /records/{recordId} {
+          allow get, list: if owner(uid);
+          allow create: if owner(uid) &&
+            exists(/databases/$(database)/documents/users/$(uid)/pets/$(petId)) &&
+            validCare(petId, recordId, request.resource.data) &&
+            request.resource.data.revision == 0;
+          allow update: if owner(uid) &&
+            validCare(petId, recordId, request.resource.data) &&
+            request.resource.data.id == resource.data.id &&
+            request.resource.data.petId == resource.data.petId &&
+            request.resource.data.createdAtMs == resource.data.createdAtMs &&
+            request.resource.data.revision == resource.data.revision + 1;
+          allow delete: if false;
+        }
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
