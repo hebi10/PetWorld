@@ -27,6 +27,12 @@ class CareRepository(
 
     fun observePet(petId: String): Flow<List<CareEntity>> = dao.observePet(petId)
 
+    fun observeRecord(petId: String, id: String): Flow<CareEntity?> =
+        dao.observeRecord(petId, id)
+
+    fun observeHistory(request: CareHistoryRequest): Flow<CareHistoryPage> =
+        CareHistoryReader(database).observe(request)
+
     fun observeRecordCounts(): Flow<Map<String, Int>> =
         dao.observeRecordCounts().map { counts -> counts.associate { it.petId to it.recordCount } }
 

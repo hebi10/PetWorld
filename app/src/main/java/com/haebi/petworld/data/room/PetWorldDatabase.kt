@@ -106,6 +106,12 @@ data class CarePetCount(
     @ColumnInfo(name = "record_count") val recordCount: Int,
 )
 
+data class CareHistoryIndex(
+    val id: String,
+    @ColumnInfo(name = "occurred_at") val occurredAt: Long,
+    @ColumnInfo(name = "timezone_id") val timezoneId: String,
+)
+
 @Dao
 interface CareDao {
     @Query("SELECT * FROM care_entries ORDER BY occurred_at DESC, created_at DESC")
@@ -117,11 +123,43 @@ interface CareDao {
     @Query("SELECT pet_id, COUNT(*) AS record_count FROM care_entries GROUP BY pet_id")
     fun observeRecordCounts(): Flow<List<CarePetCount>>
 
+    @Query("SELECT * FROM care_entries WHERE id = :id AND pet_id = :petId LIMIT 1")
+    fun observeRecord(petId: String, id: String): Flow<CareEntity?>
+
+    @Query("""
+        SELECT COUNT(*) FROM care_entries
+        WHERE pet_id = :petId AND (:recordType IS NULL OR type = :recordType)
+    """)
+    suspend fun countHistory(petId: String, recordType: String?): Int
+
+    @Query("""
+        SELECT * FROM care_entries
+        WHERE pet_id = :petId AND (:recordType IS NULL OR type = :recordType)
+        ORDER BY occurred_at DESC, created_at DESC, id DESC LIMIT :limit
+    """)
+    suspend fun historyFirst(petId: String, recordType: String?, limit: Int): List<CareEntity>
+
+    @Query("""
+        SELECT id, occurred_at, timezone_id FROM care_entries
+        WHERE pet_id = :petId AND (:recordType IS NULL OR type = :recordType)
+          AND occurred_at >= :fromMillis AND occurred_at < :untilMillis
+        ORDER BY occurred_at DESC, created_at DESC, id DESC
+    """)
+    suspend fun historyIndex(
+        petId: String, recordType: String?, fromMillis: Long, untilMillis: Long,
+    ): List<CareHistoryIndex>
+
+    @Query("SELECT * FROM care_entries WHERE pet_id = :petId AND id IN (:ids)")
+    suspend fun historyByIds(petId: String, ids: List<String>): List<CareEntity>
+
     @Query("SELECT * FROM care_entries WHERE id = :id LIMIT 1")
     suspend fun find(id: String): CareEntity?
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(entity: CareEntity)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertAll(entries: List<CareEntity>)
 
     @Update
     suspend fun update(entity: CareEntity): Int

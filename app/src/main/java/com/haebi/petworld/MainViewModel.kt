@@ -8,6 +8,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.haebi.petworld.data.CareDraft
+import com.haebi.petworld.data.CareHistoryPage
+import com.haebi.petworld.data.CareHistoryRequest
 import com.haebi.petworld.data.CareRepository
 import com.haebi.petworld.data.PetDraft
 import com.haebi.petworld.data.PetLoadStatus
@@ -45,12 +47,18 @@ data class PetUiState(
     val activeProfiles: List<PetProfile> get() = profiles.filterNot { it.isArchived }
 }
 
+sealed interface CareReadScope {
+    data object All : CareReadScope
+    data class Timeline(val detailId: String?) : CareReadScope
+}
+
 sealed interface CareFeedState {
     data object Loading : CareFeedState
     data class Ready(
         val entries: List<CareEntity>,
         val petId: String?,
         val recordCounts: Map<String, Int>,
+        val scope: CareReadScope = CareReadScope.All,
     ) : CareFeedState
     data class Failed(val message: String) : CareFeedState
 }
@@ -85,6 +93,12 @@ class MainViewModel(
 ) : ViewModel() {
     val photoStore: PetPhotoStore = pets.photoStore
     private val reloadCare = MutableStateFlow(0L)
+    private val readScope = MutableStateFlow<CareReadScope>(CareReadScope.All)
+
+    fun setCareReadScope(scope: CareReadScope) { readScope.value = scope }
+
+    fun observeCareHistory(request: CareHistoryRequest): Flow<CareHistoryPage> =
+        care.observeHistory(request)
     val restoring = MutableStateFlow(false)
     val recoveryBlocked = MutableStateFlow(false)
 
@@ -142,11 +156,19 @@ class MainViewModel(
 
     private val activePetId = petUiState.map { it.activePet?.id }.distinctUntilChanged()
     val careFeed = observeRetryableCare(
-        combine(reloadCare, activePetId) { generation, petId -> generation to petId },
-    ) { (_, petId) ->
-        val entries = petId?.let(care::observePet) ?: flowOf(emptyList<CareEntity>())
+        combine(reloadCare, activePetId, readScope) { generation, petId, scope ->
+            Triple(generation, petId, scope)
+        },
+    ) { (_, petId, scope) ->
+        val entries = when {
+            petId == null -> flowOf(emptyList<CareEntity>())
+            scope is CareReadScope.Timeline -> scope.detailId?.let { id ->
+                care.observeRecord(petId, id).map { listOfNotNull(it) }
+            } ?: flowOf(emptyList<CareEntity>())
+            else -> care.observePet(petId)
+        }
         combine(entries, care.observeRecordCounts()) { records, counts ->
-            CareFeedState.Ready(records, petId, counts)
+            CareFeedState.Ready(records, petId, counts, scope)
         }
     }.stateIn(
         scope = viewModelScope,
