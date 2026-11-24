@@ -37,17 +37,33 @@ def validate_safety(text: str) -> None:
     require("github.event_name == 'workflow_dispatch'" in preflight,
             "Manual confirmation gate missing")
     require("FB04-DEVICE-APK-ONLY" in preflight, "Manual confirmation string missing")
-    require("repos/' + repo + '/pulls/37" in preflight,
-            "Exact PR #37 source verification missing")
+    require("repos/' + repo + '/pulls/55" in preflight,
+            "Exact PR #55 source verification missing")
     require("'head_sha') == sha" in preflight,
             "Exact-source workflow run filter missing")
     for item in (
         "Android CI", "Firebase Rules CI", "Android Backup Restore Emulator QA",
         "PetWorld Firebase account UI smoke QA", "PetWorld FB-03 scoped data isolation QA",
-        "Play exact-source verification", "Android Keyboard Save Accessibility QA",
-        "Android Accessibility Responsive QA", "Android Full UI Screenshot Capture",
+        "Play exact-source verification", "PetWorld firebaseDev signing fingerprints",
+        "Android Quick Record Sheet UI QA", "Android Settings and Profile Manager UI QA",
+        "OPS-07 integrated offline Play release policy QA",
+        "OPS-09 offline single-approval internal release safety",
     ):
         require("'" + item + "'" in preflight, "Required QA missing: " + item)
+
+    require("pr['base']['ref'] == 'main'" in preflight and
+            "pr['base']['sha'] == current_main" in preflight and
+            "feature/fb04-integrate-pw-fixes-20261124" in preflight,
+            "Integrated candidate must target exact main")
+    require("allowed_main_only" in preflight and "comparison['files']" in preflight and
+            "Trusted main contains untested application or policy changes" in preflight,
+            "Untested main changes must fail closed")
+    require("for api in (29, 35, 36)" in preflight and
+            "Missing successful account isolation matrix" in preflight,
+            "All three account isolation jobs must pass")
+    require("OPS-08 final main source and release policy verification" in preflight and
+            "Latest main CI not successful" in preflight,
+            "Exact main Android and release-policy CI required")
 
     public = job(text, "public-config")
     require("environment: petworld-dev-signing" in public,
@@ -87,7 +103,9 @@ def validate_safety(text: str) -> None:
         require(forbidden not in sign,
                 "Signer must not execute PR code: " + forbidden)
     require("GITHUB_SHA" in sign and "REVIEWED_SHA" in sign and
-            "input_apk_sha256" in sign and "pulls/37" in sign,
+            "input_apk_sha256" in sign and "pulls/55" in sign and
+            "pr['base']['sha'] == os.environ['GITHUB_SHA']" in sign and
+            "pr['base']['ref'] == 'main'" in sign,
             "Signer must recheck source and input APK")
     require("secrets.PETWORLD_DEV_KEYSTORE_BASE64" in sign and
             "secrets.PETWORLD_DEV_STORE_PASSWORD" in sign,
@@ -170,10 +188,22 @@ class WorkflowSecurityRegression(unittest.TestCase):
                 "petworld-dev.firebasestorage.app",
                 "petworld-prod-3b5c5.firebasestorage.app"))
 
+    def test_untested_main_application_changes_are_rejected(self):
+        with self.assertRaises(ValueError):
+            validate_safety(self.workflow.replace("allowed_main_only", "allowed_everything"))
+
+    def test_missing_account_matrix_is_rejected(self):
+        with self.assertRaises(ValueError):
+            validate_safety(self.workflow.replace("for api in (29, 35, 36)", "for api in (35,)"))
+
+    def test_missing_main_ci_gate_is_rejected(self):
+        with self.assertRaises(ValueError):
+            validate_safety(self.workflow.replace("Latest main CI not successful", "Ignoring main CI"))
+
     def test_unreviewed_source_is_rejected(self):
         with self.assertRaises(ValueError):
             validate_safety(self.workflow.replace(
-                "repos/' + repo + '/pulls/37", "repos/' + repo + '/pulls/1", 1))
+                "repos/' + repo + '/pulls/55", "repos/' + repo + '/pulls/1", 1))
 
 
 if __name__ == "__main__":

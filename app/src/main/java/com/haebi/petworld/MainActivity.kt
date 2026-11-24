@@ -103,6 +103,8 @@ class MainActivity : ComponentActivity() {
                             onSaveCare = viewModel::saveCare,
                             onDeleteCare = viewModel::deleteCare,
                             onRetryCare = viewModel::retryCare,
+                            onCareReadScopeChange = viewModel::setCareReadScope,
+                            observeCareHistory = viewModel::observeCareHistory,
                             restoring = restoring,
                             onRestoreBackup = viewModel::restoreBackup,
                         )

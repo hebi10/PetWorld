@@ -8,8 +8,17 @@ on:
       - 'app/src/main/java/com/haebi/petworld/ui/screens/PetBackupSection.kt'
       - 'app/src/androidTest/java/com/haebi/petworld/PetWorldSettingsCaptureTest.kt'
       - '.github/scripts/capture-petworld-settings.sh'
-      - '.github/workflows/android-settings-qa.yml'
   workflow_dispatch:
+    inputs:
+      expected_main_sha:
+        description: 'Exact frozen main SHA for final device QA'
+        type: string
+        required: true
+  workflow_call:
+    inputs:
+      expected_main_sha:
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -19,6 +28,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
+      - name: Verify frozen main for final device QA
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "::error::Final QA requires main"; exit 1; }
+          [[ "$EXPECTED_MAIN_SHA" =~ ^[0-9a-f]{40}$ && "$EXPECTED_MAIN_SHA" == "$GITHUB_SHA" ]] || { echo "::error::Frozen main SHA mismatch"; exit 1; }
+          [[ "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)" == "$GITHUB_SHA" ]] || { echo "::error::main changed"; exit 1; }
       - name: Checkout
         uses: actions/checkout@v4
         with:

@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       pr_sha:
-        description: 'Exact reviewed 40-character head SHA of PetWorld PR #37'
+        description: 'Exact reviewed 40-character head SHA of PetWorld PR #55'
         required: true
         type: string
       confirmation:
-        description: 'Type FB04-DEVICE-APK-ONLY; no Firebase writes or Play publishing'
+        description: 'Type FB04-DEVICE-APK-ONLY after reviewing development client artifact access and Firebase API restrictions; no Firebase writes or Play publishing'
         required: true
         type: string
 
@@ -65,10 +65,24 @@ jobs:
           current_main = github('repos/' + repo + '/git/ref/heads/main')['object']['sha']
           if current_main != os.environ.get('GITHUB_SHA'):
               refuse('Trusted main changed after dispatch')
-          pr = github('repos/' + repo + '/pulls/37')
+          pr = github('repos/' + repo + '/pulls/55')
           if not (pr.get('state') == 'open' and pr.get('draft') and
-                  pr['head']['repo']['full_name'] == repo and pr['head']['sha'] == sha):
-              refuse('Requested SHA is not the current Draft PR #37 head')
+                  pr['head']['repo']['full_name'] == repo and pr['head']['sha'] == sha and
+                  pr['head']['ref'] == 'feature/fb04-integrate-pw-fixes-20261124' and
+                  pr['base']['ref'] == 'main' and pr['base']['sha'] == current_main):
+              refuse('Requested SHA is not the current Draft PR #55 head')
+          comparison = github('repos/' + repo + '/compare/' + sha + '...' + current_main)
+          allowed_main_only = {
+              '.github/workflows/fb04-device-apk.yml',
+              '.github/workflows/fb04-device-apk-static-qa.yml',
+              'scripts/fb04/qa_workflow.py',
+              'docs/firebase/FB-04-REAL-QA-DEVICE_signed_APK_workflow.md',
+          }
+          if 'files' not in comparison or len(comparison['files']) >= 300:
+              refuse('Main-only changes could not be completely verified')
+          if any(f.get('filename') not in allowed_main_only or
+                 f.get('status') not in ('added', 'modified') for f in comparison['files']):
+              refuse('Trusted main contains untested application or policy changes')
           runs = github('repos/' + repo + '/actions/runs?head_sha=' + sha +
                         '&event=pull_request&per_page=100')['workflow_runs']
           required = [
@@ -78,9 +92,11 @@ jobs:
               'PetWorld Firebase account UI smoke QA',
               'PetWorld FB-03 scoped data isolation QA',
               'Play exact-source verification',
-              'Android Keyboard Save Accessibility QA',
-              'Android Accessibility Responsive QA',
-              'Android Full UI Screenshot Capture',
+              'PetWorld firebaseDev signing fingerprints',
+              'Android Quick Record Sheet UI QA',
+              'Android Settings and Profile Manager UI QA',
+              'OPS-07 integrated offline Play release policy QA',
+              'OPS-09 offline single-approval internal release safety',
           ]
           for workflow in required:
               candidates = [r for r in runs if r.get('head_sha') == sha and
@@ -90,6 +106,24 @@ jobs:
               latest = max(candidates, key=lambda r: (r.get('run_number', 0), r.get('run_attempt', 0)))
               if latest.get('status') != 'completed' or latest.get('conclusion') != 'success':
                   refuse('Required CI not successful: ' + workflow)
+              if workflow == 'PetWorld FB-03 scoped data isolation QA':
+                  jobs = github('repos/' + repo + '/actions/runs/' + str(latest['id']) +
+                                '/attempts/' + str(latest['run_attempt']) + '/jobs?per_page=100')['jobs']
+                  for api in (29, 35, 36):
+                      name = 'Room guest/A/B isolated - API ' + str(api)
+                      if not any(j.get('name') == name and j.get('conclusion') == 'success'
+                                 for j in jobs):
+                          refuse('Missing successful account isolation matrix: ' + name)
+          main_runs = github('repos/' + repo + '/actions/runs?head_sha=' + current_main +
+                             '&event=push&per_page=100')['workflow_runs']
+          for workflow in ('Android CI', 'OPS-08 final main source and release policy verification'):
+              candidates = [r for r in main_runs if r.get('head_sha') == current_main and
+                            r.get('name') == workflow and r.get('event') == 'push']
+              if not candidates:
+                  refuse('Missing latest main verification: ' + workflow)
+              latest = max(candidates, key=lambda r: (r.get('run_number', 0), r.get('run_attempt', 0)))
+              if latest.get('status') != 'completed' or latest.get('conclusion') != 'success':
+                  refuse('Latest main CI not successful: ' + workflow)
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
               out.write('reviewed_sha=' + sha + '\n')
           print('Reviewed PR SHA and required CI successful: ' + sha)
@@ -317,9 +351,13 @@ jobs:
               if r.returncode:
                   raise SystemExit('Cannot verify GitHub source metadata')
               return json.loads(r.stdout)
-          pr = github('repos/hebi10/PetWorld/pulls/37')
+          pr = github('repos/hebi10/PetWorld/pulls/55')
           main = github('repos/hebi10/PetWorld/git/ref/heads/main')
           if not (pr.get('state') == 'open' and pr.get('draft') and
+                  pr['head']['repo']['full_name'] == 'hebi10/PetWorld' and
+                  pr['head']['ref'] == 'feature/fb04-integrate-pw-fixes-20261124' and
+                  pr['base']['ref'] == 'main' and
+                  pr['base']['sha'] == os.environ['GITHUB_SHA'] and
                   pr['head']['sha'] == os.environ['REVIEWED_SHA'] and
                   main['object']['sha'] == os.environ['GITHUB_SHA']):
               raise SystemExit('PR changed or trusted main moved; signing denied')

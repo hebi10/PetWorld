@@ -42,6 +42,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -60,8 +62,12 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.haebi.petworld.PetUiState
 import com.haebi.petworld.CareFeedState
+import com.haebi.petworld.CareReadScope
 import com.haebi.petworld.R
 import com.haebi.petworld.data.CareDraft
+import com.haebi.petworld.data.CareHistoryPage
+import com.haebi.petworld.data.CareHistoryRequest
+import kotlinx.coroutines.flow.Flow
 import com.haebi.petworld.data.CareType
 import com.haebi.petworld.data.PetDraft
 import com.haebi.petworld.data.room.CareEntity
@@ -118,6 +124,8 @@ fun PetWorldApp(
     onSaveCare: suspend (CareDraft) -> Result<CareEntity>,
     onDeleteCare: suspend (String, String) -> Result<Unit>,
     onRetryCare: () -> Unit,
+    onCareReadScopeChange: (CareReadScope) -> Unit,
+    observeCareHistory: (CareHistoryRequest) -> Flow<CareHistoryPage>,
     restoring: Boolean,
     onRestoreBackup: suspend (Uri, CharArray) -> Result<Unit>,
 ) {
@@ -138,11 +146,18 @@ fun PetWorldApp(
     var selectedTypeFilter by rememberSaveable { mutableStateOf<CareType?>(null) }
     var selectedRange by rememberSaveable { mutableStateOf(CareRange.SEVEN) }
     var statisticsRange by rememberSaveable { mutableStateOf(CareRange.THIRTY) }
-    val currentEntries = if (careFeed is CareFeedState.Ready) careFeed.entries else emptyList()
     val ready = petState.loadStatus == PetLoadStatus.Ready
     val current = petState.activePet
-    val records = currentEntries.filter { it.petId == current?.id }
-    val recordCounts = currentEntries.groupingBy { it.petId }.eachCount()
+    val readScope = if (tab == PrimaryTab.RECORDS) {
+        CareReadScope.Timeline(careEditId ?: careDetailId)
+    } else CareReadScope.All
+    LaunchedEffect(readScope) { onCareReadScopeChange(readScope) }
+    val petFeed = (careFeed as? CareFeedState.Ready)?.takeIf { it.petId == current?.id }
+    val scopedFeed = petFeed?.takeIf { it.scope == readScope }
+    val records = scopedFeed?.entries.orEmpty()
+    val recordCounts = petFeed?.recordCounts.orEmpty()
+    val timelineVisible = tab == PrimaryTab.RECORDS && careEditorType == null &&
+        (careDetailId == null || expandedUi)
     fun startCare(type: CareType, existingId: String? = null) {
         careEditorType = type
         careEditId = existingId
@@ -288,7 +303,7 @@ fun PetWorldApp(
                         onArchivedChange = onArchivedChange,
                         onDelete = onDeletePet,
                         recordCounts = recordCounts,
-                        recordsLoaded = careFeed is CareFeedState.Ready,
+                        recordsLoaded = petFeed != null,
                         onBack = { showManager = false },
                     )
                     current == null -> PetWelcomeScreen(
@@ -306,7 +321,7 @@ fun PetWorldApp(
                         Text(careFeed.message, style = MaterialTheme.typography.bodyMedium)
                         PetPrimaryButton(label = "다시 시도", onClick = onRetryCare)
                     }
-                    careFeed == CareFeedState.Loading -> Column(
+                    scopedFeed == null && !timelineVisible -> Column(
                         modifier = Modifier.fillMaxSize(),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
@@ -370,19 +385,18 @@ fun PetWorldApp(
                             modifier = Modifier.fillMaxSize().padding(PetSpacing.large),
                             horizontalArrangement = Arrangement.spacedBy(PetSpacing.large),
                         ) {
-                            Column(
-                                modifier = Modifier.weight(1f).fillMaxHeight()
-                                    .verticalScroll(rememberScrollState()),
-                            ) {
+                            key(current.id) {
                                 CareRecordList(
                                     petName = current.name,
-                                    records = records,
+                                    petId = current.id,
+                                    observeHistory = observeCareHistory,
                                     selectedType = selectedTypeFilter,
                                     selectedRange = selectedRange,
                                     onTypeChange = { selectedTypeFilter = it },
                                     onRangeChange = { selectedRange = it },
                                     onAdd = { choosingCareType = true },
                                     onView = { careDetailId = it },
+                                    modifier = Modifier.weight(1f).fillMaxHeight(),
                                 )
                             }
                             Column(
@@ -391,7 +405,13 @@ fun PetWorldApp(
                                 verticalArrangement = Arrangement.spacedBy(PetSpacing.medium),
                             ) {
                                 val record = records.firstOrNull { it.id == careDetailId }
-                                if (record == null) {
+                                if (careDetailId != null && scopedFeed == null) {
+                                    CircularProgressIndicator()
+                                    Text("기록 확인 중")
+                                } else if (careDetailId != null && record == null) {
+                                    Text("기록을 찾을 수 없습니다.")
+                                    PetSecondaryButton(label = "목록으로", onClick = { careDetailId = null })
+                                } else if (record == null) {
                                     PetEmptyState(
                                         title = "기록을 선택해 주세요",
                                         detail = "왼쪽 목록에서 기록을 선택하면 상세 내용을 볼 수 있습니다.",
@@ -407,6 +427,21 @@ fun PetWorldApp(
                                     )
                                 }
                             }
+                        }
+                    } else if (tab == PrimaryTab.RECORDS) {
+                        key(current.id) {
+                            CareRecordList(
+                                petName = current.name,
+                                petId = current.id,
+                                observeHistory = observeCareHistory,
+                                selectedType = selectedTypeFilter,
+                                selectedRange = selectedRange,
+                                onTypeChange = { selectedTypeFilter = it },
+                                onRangeChange = { selectedRange = it },
+                                onAdd = { choosingCareType = true },
+                                onView = { careDetailId = it },
+                                modifier = Modifier.fillMaxSize().padding(PetSpacing.large),
+                            )
                         }
                     } else Column(
                         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
@@ -428,16 +463,7 @@ fun PetWorldApp(
                                 onViewType = ::openFilteredRecords,
                                 expandedLayout = expandedUi,
                             )
-                            PrimaryTab.RECORDS -> CareRecordList(
-                                petName = current.name,
-                                records = records,
-                                selectedType = selectedTypeFilter,
-                                selectedRange = selectedRange,
-                                onTypeChange = { selectedTypeFilter = it },
-                                onRangeChange = { selectedRange = it },
-                                onAdd = { choosingCareType = true },
-                                onView = { careDetailId = it },
-                            )
+                            PrimaryTab.RECORDS -> Unit
                             PrimaryTab.HEALTH -> PetHealthScreen(
                                 petName = current.name,
                                 records = records,
@@ -467,7 +493,7 @@ fun PetWorldApp(
         }
     }
 
-    if (choosingCareType && current != null && careFeed is CareFeedState.Ready) {
+    if (choosingCareType && current != null && (scopedFeed != null || timelineVisible)) {
         ModalBottomSheet(onDismissRequest = { choosingCareType = false }) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(

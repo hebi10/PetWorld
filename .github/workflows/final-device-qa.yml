@@ -1,0 +1,81 @@
+name: PetWorld final Android QA
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_main_sha:
+        description: 'Frozen main SHA after all feature PRs and high-risk premerge checks'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: petworld-final-device-qa-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-source:
+    name: Require exact final main SHA
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Reject a non-main or stale QA request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "::error::Final QA is main-only"; exit 1; }
+          [[ "$EXPECTED_MAIN_SHA" =~ ^[0-9a-f]{40}$ && "$EXPECTED_MAIN_SHA" == "$GITHUB_SHA" ]] || { echo "::error::Final source SHA mismatch"; exit 1; }
+          [[ "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)" == "$GITHUB_SHA" ]] || { echo "::error::main changed"; exit 1; }
+
+  api29-35-36:
+    needs: validate-source
+    uses: ./.github/workflows/android-ui10g-integration-qa.yml
+    with:
+      expected_main_sha: ${{ inputs.expected_main_sha }}
+
+  screenshots:
+    needs: validate-source
+    uses: ./.github/workflows/android-ui-screenshots.yml
+    with:
+      expected_main_sha: ${{ inputs.expected_main_sha }}
+
+  accessibility:
+    needs: validate-source
+    uses: ./.github/workflows/android-accessibility-responsive-qa.yml
+    with:
+      expected_main_sha: ${{ inputs.expected_main_sha }}
+
+  keyboard-save:
+    needs: validate-source
+    uses: ./.github/workflows/android-keyboard-save-qa.yml
+    with:
+      expected_main_sha: ${{ inputs.expected_main_sha }}
+
+  backup-restore:
+    needs: validate-source
+    uses: ./.github/workflows/android-backup-qa.yml
+    with:
+      expected_main_sha: ${{ inputs.expected_main_sha }}
+
+  quick-record:
+    needs: validate-source
+    uses: ./.github/workflows/android-quick-record-qa.yml
+    with:
+      expected_main_sha: ${{ inputs.expected_main_sha }}
+
+  record-list:
+    needs: validate-source
+    uses: ./.github/workflows/android-record-list-qa.yml
+    with:
+      expected_main_sha: ${{ inputs.expected_main_sha }}
+
+  settings:
+    needs: validate-source
+    uses: ./.github/workflows/android-settings-qa.yml
+    with:
+      expected_main_sha: ${{ inputs.expected_main_sha }}

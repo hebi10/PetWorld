@@ -44,3 +44,11 @@
 - 수동 빌드 워크플로는 여전히 PR Draft에서 실행 불가. 최신 PR SHA/CI 검토 뒤 별도 승인된 main 병합이 필요. APK 서명·Google 로그인·Firebase 서버 실테스트 성공은 현재 주장하지 않는다.
 
 현재 상태: 워크플로 설계 및 Draft PR 검증 단계. 사용자 승인 없는 main 병합과 APK 서명 실행·Google Play 배포는 금지.
+
+## FB-04-INTEGRATE 후속 게이트 (2026-11-24)
+
+- 이전 PR #37을 직접 빌드하지 않고, PW-FIX #51~54를 포함한 통합 Draft PR #55의 정확한 HEAD만 허용한다. #55는 현재 main을 대상으로 해야 한다.
+- 현재 CI 정책에 맞춰 Android CI, Firebase Rules, Backup Emulator, 계정 UI 및 API29/35/36 각각의 격리 성공, 개발 서명 사전 검증, 빠른 기록, 설정 QA, Play exact-source, OPS-07/09를 요구한다. 일반 키보드·반응형·전체 화면 전수 계측은 기존 final-device-qa 정책대로 최종 단계에서 수행한다.
+- 통합 후보와 main을 비교하여 서명 전용 워크플로·정적 테스트·설명 문서 4개 이외의 미검증 main 변경이 있으면 중단한다. 최신 main Android CI와 OPS-08도 정확한 SHA로 성공해야 한다.
+- 실제 Firebase 공개 클라이언트 API 제한·사용량 경보·공개 저장소의 Actions 아티팩트 접근 범위를 먼저 검토한다. 서명 APK 준비와 Firebase/Play 운영 변경은 별개이며, 정식 출시용 서명키는 사용하지 않는다.
+- 현재 PR #46 수정 및 새 CI 검증 단계. 실제 APK 서명 및 실서버 QA는 아직 수행하지 않았다.

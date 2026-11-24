@@ -8,6 +8,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.haebi.petworld.data.CareDraft
+import com.haebi.petworld.data.CareHistoryPage
+import com.haebi.petworld.data.CareHistoryRequest
 import com.haebi.petworld.data.CareRepository
 import com.haebi.petworld.data.PetDraft
 import com.haebi.petworld.data.PetLoadStatus
@@ -19,12 +21,19 @@ import com.haebi.petworld.data.chooseActivePet
 import com.haebi.petworld.data.room.CareEntity
 import com.haebi.petworld.data.room.PetWorldDatabase
 import com.haebi.petworld.ui.theme.ThemeMode
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
@@ -38,11 +47,43 @@ data class PetUiState(
     val activeProfiles: List<PetProfile> get() = profiles.filterNot { it.isArchived }
 }
 
+sealed interface CareReadScope {
+    data object All : CareReadScope
+    data class Timeline(val detailId: String?) : CareReadScope
+}
+
 sealed interface CareFeedState {
     data object Loading : CareFeedState
-    data class Ready(val entries: List<CareEntity>) : CareFeedState
+    data class Ready(
+        val entries: List<CareEntity>,
+        val petId: String?,
+        val recordCounts: Map<String, Int>,
+        val scope: CareReadScope = CareReadScope.All,
+    ) : CareFeedState
     data class Failed(val message: String) : CareFeedState
 }
+
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+internal fun <T> observeRetryableCare(
+    reload: Flow<T>,
+    observe: (T) -> Flow<CareFeedState.Ready>,
+): Flow<CareFeedState> = reload.flatMapLatest { request ->
+    flow<CareFeedState> { emitAll(observe(request)) }
+        .onStart { emit(CareFeedState.Loading) }
+        .catch { error ->
+            if (error is CancellationException) throw error
+            emit(CareFeedState.Failed(error.message ?: "기록을 불러오지 못했습니다."))
+        }
+}
+
+internal inline fun <T> resultUnlessCancelled(block: () -> T): Result<T> =
+    try {
+        Result.success(block())
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (error: Exception) {
+        Result.failure(error)
+    }
 
 class MainViewModel(
     private val appContext: Context,
@@ -52,18 +93,14 @@ class MainViewModel(
 ) : ViewModel() {
     val photoStore: PetPhotoStore = pets.photoStore
     private val reloadCare = MutableStateFlow(0L)
+    private val readScope = MutableStateFlow<CareReadScope>(CareReadScope.All)
+
+    fun setCareReadScope(scope: CareReadScope) { readScope.value = scope }
+
+    fun observeCareHistory(request: CareHistoryRequest): Flow<CareHistoryPage> =
+        care.observeHistory(request)
     val restoring = MutableStateFlow(false)
     val recoveryBlocked = MutableStateFlow(false)
-
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val careFeed = reloadCare.flatMapLatest { care.observeAll() }
-        .map<List<CareEntity>, CareFeedState> { CareFeedState.Ready(it) }
-        .catch { emit(CareFeedState.Failed(it.message ?: "기록을 불러오지 못했습니다.")) }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
-            initialValue = CareFeedState.Loading,
-        )
 
     fun retryCare() { reloadCare.value += 1L }
 
@@ -93,11 +130,11 @@ class MainViewModel(
         }.await()
     }
 
-    suspend fun saveCare(draft: CareDraft): Result<CareEntity> = runCatching {
+    suspend fun saveCare(draft: CareDraft): Result<CareEntity> = resultUnlessCancelled {
         care.save(draft)
     }
 
-    suspend fun deleteCare(id: String, petId: String): Result<Unit> = runCatching {
+    suspend fun deleteCare(id: String, petId: String): Result<Unit> = resultUnlessCancelled {
         care.delete(id, petId)
     }
 
@@ -117,6 +154,28 @@ class MainViewModel(
         initialValue = PetUiState(),
     )
 
+    private val activePetId = petUiState.map { it.activePet?.id }.distinctUntilChanged()
+    val careFeed = observeRetryableCare(
+        combine(reloadCare, activePetId, readScope) { generation, petId, scope ->
+            Triple(generation, petId, scope)
+        },
+    ) { (_, petId, scope) ->
+        val entries = when {
+            petId == null -> flowOf(emptyList<CareEntity>())
+            scope is CareReadScope.Timeline -> scope.detailId?.let { id ->
+                care.observeRecord(petId, id).map { listOfNotNull(it) }
+            } ?: flowOf(emptyList<CareEntity>())
+            else -> care.observePet(petId)
+        }
+        combine(entries, care.observeRecordCounts()) { records, counts ->
+            CareFeedState.Ready(records, petId, counts, scope)
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
+        initialValue = CareFeedState.Loading,
+    )
+
     init {
         refreshPets()
     }
@@ -134,13 +193,13 @@ class MainViewModel(
         viewModelScope.launch { preferences.selectPet(id) }
     }
 
-    suspend fun savePet(draft: PetDraft): Result<PetProfile> = runCatching {
+    suspend fun savePet(draft: PetDraft): Result<PetProfile> = resultUnlessCancelled {
         val saved = pets.save(draft)
         preferences.selectPet(saved.id)
         saved
     }
 
-    suspend fun setArchived(id: String, archived: Boolean): Result<Unit> = runCatching {
+    suspend fun setArchived(id: String, archived: Boolean): Result<Unit> = resultUnlessCancelled {
         val selectedBefore = preferences.selectedPetId.first()
         pets.setArchived(id, archived)
         if (archived && selectedBefore == id) {
@@ -149,7 +208,7 @@ class MainViewModel(
         if (!archived) preferences.selectPet(id)
     }
 
-    suspend fun deletePet(id: String): Result<Unit> = runCatching {
+    suspend fun deletePet(id: String): Result<Unit> = resultUnlessCancelled {
         val selectedBefore = preferences.selectedPetId.first()
         pets.deleteForever(id)
         if (selectedBefore == id) {

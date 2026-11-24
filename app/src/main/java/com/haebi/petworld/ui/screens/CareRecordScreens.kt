@@ -11,7 +11,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -32,6 +40,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import com.haebi.petworld.data.CARE_HISTORY_PAGE_SIZE
+import com.haebi.petworld.data.CareHistoryPage
+import com.haebi.petworld.data.CareHistoryRequest
 import com.haebi.petworld.data.CareType
 import com.haebi.petworld.data.displayValue
 import com.haebi.petworld.data.localDate
@@ -47,6 +58,10 @@ import com.haebi.petworld.ui.components.PetSurfaceCard
 import com.haebi.petworld.ui.icons.PetIcons
 import com.haebi.petworld.ui.theme.PetSpacing
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -86,62 +101,133 @@ fun CareEntity.displayDateTime(): String = displayRecordTime(occurredAt)
 
 internal fun CareEntity.hasBeenEdited(): Boolean = updatedAt > createdAt
 
+private sealed interface HistoryLoadState {
+    data object Loading : HistoryLoadState
+    data class Ready(val request: CareHistoryRequest, val page: CareHistoryPage) : HistoryLoadState
+    data class Failed(val request: CareHistoryRequest, val message: String) : HistoryLoadState
+}
+
 @Composable
 fun CareRecordList(
     petName: String,
-    records: List<CareEntity>,
+    petId: String,
+    observeHistory: (CareHistoryRequest) -> Flow<CareHistoryPage>,
     selectedType: CareType?,
     selectedRange: CareRange,
     onTypeChange: (CareType?) -> Unit,
     onRangeChange: (CareRange) -> Unit,
     onAdd: () -> Unit,
     onView: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var showRangePicker by remember { mutableStateOf(false) }
     var showTypePicker by remember { mutableStateOf(false) }
-    val filtered = filterCareRecords(records, selectedType, selectedRange)
+    val today = LocalDate.now()
+    var limit by rememberSaveable(petId, selectedType?.name, selectedRange.name, today.toEpochDay()) {
+        mutableStateOf(CARE_HISTORY_PAGE_SIZE)
+    }
+    var retry by remember { mutableStateOf(0) }
+    val firstDay = when (selectedRange) {
+        CareRange.TODAY -> today
+        CareRange.SEVEN -> today.minusDays(6)
+        CareRange.THIRTY -> today.minusDays(29)
+        CareRange.ALL -> null
+    }
+    val request = CareHistoryRequest(petId, selectedType, firstDay, firstDay?.let { today }, limit)
+    val historyFlow = remember(request, retry) {
+        observeHistory(request).map<CareHistoryPage, HistoryLoadState> {
+            HistoryLoadState.Ready(request, it)
+        }.catch { error ->
+            emit(HistoryLoadState.Failed(request, error.message ?: "기록을 불러오지 못했습니다."))
+        }
+    }
+    val loadState by historyFlow.collectAsStateWithLifecycle(initialValue = HistoryLoadState.Loading)
+    val loaded = (loadState as? HistoryLoadState.Ready)?.takeIf { it.request.sameFilter(request) }
+    val failure = (loadState as? HistoryLoadState.Failed)?.takeIf { it.request == request }
+    val page = loaded?.page
+    val listState = rememberLazyListState()
+    LaunchedEffect(petId, selectedType, selectedRange) {
+        listState.scrollToItem(0)
+    }
+    LaunchedEffect(loaded, request) {
+        if (loaded?.request == request && page != null && page.entries.size < page.totalCount) {
+            val threshold = (page.entries.size + 3 - 5).coerceAtLeast(0)
+            snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+                .first { it >= threshold }
+            limit = minOf(page.totalCount.toLong(), limit.toLong() + CARE_HISTORY_PAGE_SIZE).toInt()
+        }
+    }
 
-    Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
-        ) {
-            Text(
-                "${petName}의 생활 기록",
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f),
-            )
-            PetPrimaryButton(label = "기록 추가", onClick = onAdd)
+    LazyColumn(
+        modifier = modifier,
+        state = listState,
+        verticalArrangement = Arrangement.spacedBy(PetSpacing.small),
+    ) {
+        item(key = "record-title") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+            ) {
+                Text(
+                    "${petName}의 생활 기록",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.weight(1f),
+                )
+                PetPrimaryButton(label = "기록 추가", onClick = onAdd)
+            }
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
-        ) {
-            PetSecondaryButton(
-                label = "기간: ${selectedRange.label}",
-                onClick = { showRangePicker = true },
-                modifier = Modifier.weight(1f),
-            )
-            PetSecondaryButton(
-                label = "유형: ${selectedType?.label ?: "전체"}",
-                onClick = { showTypePicker = true },
-                modifier = Modifier.weight(1f),
-            )
+        item(key = "record-filters") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+            ) {
+                PetSecondaryButton(
+                    label = "기간: ${selectedRange.label}",
+                    onClick = { showRangePicker = true },
+                    modifier = Modifier.weight(1f),
+                )
+                PetSecondaryButton(
+                    label = "유형: ${selectedType?.label ?: "전체"}",
+                    onClick = { showTypePicker = true },
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
-        Text(
-            "기록 ${filtered.size}건",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (filtered.isEmpty()) {
-            PetEmptyState(
-                title = "해당 기간에 기록이 없습니다",
-                detail = "기간 또는 종류를 변경하거나 새로운 기록을 추가해 주세요.",
-            )
+        if (failure != null) {
+            item(key = "record-error") {
+                Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
+                    Text("기록을 불러오지 못했습니다.")
+                    Text(failure.message, style = MaterialTheme.typography.bodyMedium)
+                    PetSecondaryButton(label = "다시 시도", onClick = { retry++ })
+                }
+            }
+        } else if (page == null) {
+            item(key = "record-loading") {
+                CircularProgressIndicator()
+            }
         } else {
-            filtered.forEach { record ->
-                CareRecordCompactRow(record = record, onClick = { onView(record.id) })
+            item(key = "record-count") {
+                Text(
+                    "기록 ${page.totalCount}건",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (page.entries.isEmpty()) {
+                item(key = "record-empty") {
+                    PetEmptyState(
+                        title = "해당 기간에 기록이 없습니다",
+                        detail = "기간 또는 종류를 변경하거나 새로운 기록을 추가해 주세요.",
+                    )
+                }
+            } else {
+                items(page.entries, key = { "care-${it.id}" }) { record ->
+                    CareRecordCompactRow(record = record, onClick = { onView(record.id) })
+                }
+                if (loaded?.request != request) {
+                    item(key = "record-loading-more") { CircularProgressIndicator() }
+                }
             }
         }
     }
