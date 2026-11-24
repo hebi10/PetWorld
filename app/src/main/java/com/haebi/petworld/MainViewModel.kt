@@ -19,12 +19,17 @@ import com.haebi.petworld.data.chooseActivePet
 import com.haebi.petworld.data.room.CareEntity
 import com.haebi.petworld.data.room.PetWorldDatabase
 import com.haebi.petworld.ui.theme.ThemeMode
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
@@ -44,6 +49,29 @@ sealed interface CareFeedState {
     data class Failed(val message: String) : CareFeedState
 }
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+internal fun observeRetryableCare(
+    reload: Flow<Long>,
+    observe: () -> Flow<List<CareEntity>>,
+): Flow<CareFeedState> = reload.flatMapLatest {
+    flow { emitAll(observe()) }
+        .map<List<CareEntity>, CareFeedState> { CareFeedState.Ready(it) }
+        .onStart { emit(CareFeedState.Loading) }
+        .catch { error ->
+            if (error is CancellationException) throw error
+            emit(CareFeedState.Failed(error.message ?: "기록을 불러오지 못했습니다."))
+        }
+}
+
+internal inline fun <T> resultUnlessCancelled(block: () -> T): Result<T> =
+    try {
+        Result.success(block())
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (error: Exception) {
+        Result.failure(error)
+    }
+
 class MainViewModel(
     private val appContext: Context,
     private val preferences: ThemePreferences,
@@ -55,10 +83,7 @@ class MainViewModel(
     val restoring = MutableStateFlow(false)
     val recoveryBlocked = MutableStateFlow(false)
 
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val careFeed = reloadCare.flatMapLatest { care.observeAll() }
-        .map<List<CareEntity>, CareFeedState> { CareFeedState.Ready(it) }
-        .catch { emit(CareFeedState.Failed(it.message ?: "기록을 불러오지 못했습니다.")) }
+    val careFeed = observeRetryableCare(reloadCare, care::observeAll)
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
@@ -93,11 +118,11 @@ class MainViewModel(
         }.await()
     }
 
-    suspend fun saveCare(draft: CareDraft): Result<CareEntity> = runCatching {
+    suspend fun saveCare(draft: CareDraft): Result<CareEntity> = resultUnlessCancelled {
         care.save(draft)
     }
 
-    suspend fun deleteCare(id: String, petId: String): Result<Unit> = runCatching {
+    suspend fun deleteCare(id: String, petId: String): Result<Unit> = resultUnlessCancelled {
         care.delete(id, petId)
     }
 
@@ -134,13 +159,13 @@ class MainViewModel(
         viewModelScope.launch { preferences.selectPet(id) }
     }
 
-    suspend fun savePet(draft: PetDraft): Result<PetProfile> = runCatching {
+    suspend fun savePet(draft: PetDraft): Result<PetProfile> = resultUnlessCancelled {
         val saved = pets.save(draft)
         preferences.selectPet(saved.id)
         saved
     }
 
-    suspend fun setArchived(id: String, archived: Boolean): Result<Unit> = runCatching {
+    suspend fun setArchived(id: String, archived: Boolean): Result<Unit> = resultUnlessCancelled {
         val selectedBefore = preferences.selectedPetId.first()
         pets.setArchived(id, archived)
         if (archived && selectedBefore == id) {
@@ -149,7 +174,7 @@ class MainViewModel(
         if (!archived) preferences.selectPet(id)
     }
 
-    suspend fun deletePet(id: String): Result<Unit> = runCatching {
+    suspend fun deletePet(id: String): Result<Unit> = resultUnlessCancelled {
         val selectedBefore = preferences.selectedPetId.first()
         pets.deleteForever(id)
         if (selectedBefore == id) {

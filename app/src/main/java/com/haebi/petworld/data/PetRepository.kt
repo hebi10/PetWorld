@@ -8,6 +8,11 @@ import com.haebi.petworld.data.room.toDomain
 import com.haebi.petworld.data.room.toEntity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 
@@ -39,6 +44,8 @@ class PetRepository(
         try {
             _profiles.value = dao.list().map { it.toDomain() }
             _loadStatus.value = PetLoadStatus.Ready
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (error: Exception) {
             _loadStatus.value = PetLoadStatus.Failed(
                 error.message ?: "프로필을 불러오지 못했습니다."
@@ -47,68 +54,77 @@ class PetRepository(
     }
 
     suspend fun save(draft: PetDraft): PetProfile = mutex.withLock {
-        PetValidation.error(draft)?.let { throw IllegalArgumentException(it) }
-        val previous = draft.id?.let { dao.find(it)?.toDomain() }
-        require(draft.id == null || previous != null) { "수정할 프로필을 찾을 수 없습니다." }
+        currentCoroutineContext().ensureActive()
+        withContext(NonCancellable) {
+            PetValidation.error(draft)?.let { throw IllegalArgumentException(it) }
+            val previous = draft.id?.let { dao.find(it)?.toDomain() }
+            require(draft.id == null || previous != null) { "수정할 프로필을 찾을 수 없습니다." }
 
-        val freshPhoto = draft.newPhotoUri?.let { photos.importPhoto(it) }
-        val photo = freshPhoto ?: if (draft.removePhoto) null else previous?.photoFile
-        val now = System.currentTimeMillis()
-        val value = PetProfile(
-            id = previous?.id ?: UUID.randomUUID().toString(),
-            name = draft.name.trim(),
-            species = draft.species,
-            breed = draft.breed.trim(),
-            birthday = draft.birthday.takeIf { draft.birthMode == BirthMode.EXACT },
-            estimatedAgeYears = if (draft.birthMode == BirthMode.ESTIMATED) {
-                draft.estimatedAgeYears.toInt()
-            } else null,
-            sex = draft.sex,
-            neuterStatus = draft.neuterStatus,
-            notes = draft.notes.trim(),
-            photoFile = photo,
-            isArchived = previous?.isArchived ?: false,
-            createdAt = previous?.createdAt ?: now,
-            updatedAt = now,
-        )
-        val snapshot = try {
-            database.withTransaction {
-                if (previous == null) dao.insert(value.toEntity())
-                else check(dao.update(value.toEntity()) == 1) { "수정할 프로필을 찾을 수 없습니다." }
-                dao.list().map { it.toDomain() }
+            val freshPhoto = draft.newPhotoUri?.let { photos.importPhoto(it) }
+            val photo = freshPhoto ?: if (draft.removePhoto) null else previous?.photoFile
+            val now = System.currentTimeMillis()
+            val value = PetProfile(
+                id = previous?.id ?: UUID.randomUUID().toString(),
+                name = draft.name.trim(),
+                species = draft.species,
+                breed = draft.breed.trim(),
+                birthday = draft.birthday.takeIf { draft.birthMode == BirthMode.EXACT },
+                estimatedAgeYears = if (draft.birthMode == BirthMode.ESTIMATED) {
+                    draft.estimatedAgeYears.toInt()
+                } else null,
+                sex = draft.sex,
+                neuterStatus = draft.neuterStatus,
+                notes = draft.notes.trim(),
+                photoFile = photo,
+                isArchived = previous?.isArchived ?: false,
+                createdAt = previous?.createdAt ?: now,
+                updatedAt = now,
+            )
+            val snapshot = try {
+                database.withTransaction {
+                    if (previous == null) dao.insert(value.toEntity())
+                    else check(dao.update(value.toEntity()) == 1) { "수정할 프로필을 찾을 수 없습니다." }
+                    dao.list().map { it.toDomain() }
+                }
+            } catch (error: Exception) {
+                if (freshPhoto != null) photos.delete(freshPhoto)
+                throw error
             }
-        } catch (error: Exception) {
-            if (freshPhoto != null) photos.delete(freshPhoto)
-            throw error
+            _profiles.value = snapshot
+            _loadStatus.value = PetLoadStatus.Ready
+            if (previous?.photoFile != photo) photos.delete(previous?.photoFile)
+            value
         }
-        _profiles.value = snapshot
-        _loadStatus.value = PetLoadStatus.Ready
-        if (previous?.photoFile != photo) photos.delete(previous?.photoFile)
-        value
     }
 
     suspend fun setArchived(id: String, archived: Boolean) = mutex.withLock {
-        val snapshot = database.withTransaction {
-            val previous = dao.find(id) ?: error("프로필을 찾을 수 없습니다.")
-            check(dao.update(previous.copy(
-                isArchived = archived,
-                updatedAt = System.currentTimeMillis(),
-            )) == 1)
-            dao.list().map { it.toDomain() }
+        currentCoroutineContext().ensureActive()
+        withContext(NonCancellable) {
+            val snapshot = database.withTransaction {
+                val previous = dao.find(id) ?: error("프로필을 찾을 수 없습니다.")
+                check(dao.update(previous.copy(
+                    isArchived = archived,
+                    updatedAt = System.currentTimeMillis(),
+                )) == 1)
+                dao.list().map { it.toDomain() }
+            }
+            _profiles.value = snapshot
         }
-        _profiles.value = snapshot
     }
 
     /** Care entries are deleted only through the user's two-stage delete confirmation. */
     suspend fun deleteForever(id: String) = mutex.withLock {
-        val target = dao.find(id) ?: error("프로필을 찾을 수 없습니다.")
-        val (snapshot, attachments) = database.withTransaction {
-            val files = database.careDao().listForPet(id).mapNotNull { it.photoFile }
-            check(dao.delete(id) == 1)
-            dao.list().map { it.toDomain() } to files
+        currentCoroutineContext().ensureActive()
+        withContext(NonCancellable) {
+            val target = dao.find(id) ?: error("프로필을 찾을 수 없습니다.")
+            val (snapshot, attachments) = database.withTransaction {
+                val files = database.careDao().listForPet(id).mapNotNull { it.photoFile }
+                check(dao.delete(id) == 1)
+                dao.list().map { it.toDomain() } to files
+            }
+            _profiles.value = snapshot
+            photos.delete(target.photoFile)
+            attachments.forEach { photos.delete(it) }
         }
-        _profiles.value = snapshot
-        photos.delete(target.photoFile)
-        attachments.forEach { photos.delete(it) }
     }
 }
