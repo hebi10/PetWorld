@@ -51,6 +51,35 @@ interface SyncOutboxDao {
 
     @Query("SELECT COUNT(*) FROM sync_outbox WHERE account_key = :accountKey")
     fun observeCount(accountKey: String): Flow<Int>
+
+    @Query("SELECT * FROM sync_outbox WHERE account_key = :accountKey AND status != 'ACKNOWLEDGED' ORDER BY sequence ASC LIMIT 1")
+    suspend fun firstOutstanding(accountKey: String): SyncOutboxEntry?
+
+    // Only a reviewed remote baseline may call this. -1 means verified absent, not unknown.
+    @Query("""
+        UPDATE sync_outbox SET expected_revision = :revision, status = 'READY'
+        WHERE account_key = :accountKey AND op_id = :opId
+          AND status = 'WAITING_BASELINE' AND expected_revision IS NULL
+          AND ((operation = 'CREATE' AND :revision = -1)
+            OR (operation IN ('UPDATE', 'DELETE') AND :revision >= 0))
+    """)
+    suspend fun readyAfterVerifiedBaseline(accountKey: String, opId: String, revision: Long): Int
+
+    @Query("""
+        UPDATE sync_outbox SET status = 'IN_FLIGHT', attempt = attempt + 1
+        WHERE account_key = :accountKey AND op_id = :opId AND status = :oldStatus
+          AND attempt = :oldAttempt AND expected_revision IS NOT NULL
+          AND status IN ('READY', 'RETRY', 'IN_FLIGHT') AND attempt < 100
+    """)
+    suspend fun beginAttempt(accountKey: String, opId: String, oldStatus: String, oldAttempt: Int): Int
+
+    @Query("""
+        UPDATE sync_outbox SET status = :status
+        WHERE account_key = :accountKey AND op_id = :opId
+          AND status = 'IN_FLIGHT' AND attempt = :attempt
+          AND :status IN ('ACKNOWLEDGED', 'RETRY', 'CONFLICT', 'BLOCKED')
+    """)
+    suspend fun finishAttempt(accountKey: String, opId: String, attempt: Int, status: String): Int
 }
 
 /**
