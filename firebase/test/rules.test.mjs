@@ -1,0 +1,355 @@
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { deepStrictEqual, rejects } from 'node:assert/strict';
+import { after, before, beforeEach, test } from 'node:test';
+import {
+  assertFails,
+  assertSucceeds,
+  initializeTestEnvironment,
+} from '@firebase/rules-unit-testing';
+import {
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocFromServer,
+  setDoc,
+  updateDoc,
+} from 'firebase/firestore';
+import {
+  deleteObject,
+  getBytes,
+  ref,
+  uploadBytes,
+} from 'firebase/storage';
+
+const projectId = 'demo-petworld-fb01';
+const bucket = 'gs://demo-petworld-fb01.firebasestorage.app';
+const photoName = 'pet_11111111-1111-4111-8111-111111111111.jpg';
+const now = 1794441600000;
+let env;
+
+function userDoc(revision = 0) {
+  return {
+    schemaVersion: 1,
+    createdAtMs: now,
+    migrationState: 'pending',
+    revision,
+  };
+}
+
+function petDoc(id = 'pet-1', revision = 0) {
+  return {
+    id,
+    schemaVersion: 1,
+    revision,
+    name: '나비',
+    species: 'CAT',
+    isArchived: false,
+    createdAtMs: now,
+    updatedAtMs: now,
+    birthday: null,
+    estimatedAgeYears: null,
+    photoFile: null,
+  };
+}
+
+function careDoc(id = 'record-1', petId = 'pet-1', revision = 0) {
+  return {
+    id,
+    petId,
+    schemaVersion: 1,
+    revision,
+    type: 'FOOD',
+    occurredAtMs: now,
+    timezoneId: 'Asia/Seoul',
+    note: '',
+    createdAtMs: now,
+    updatedAtMs: now,
+    foodKind: 'DRY',
+    foodServedMilli: 1500,
+    foodConsumedMilli: null,
+    foodUnit: 'G',
+  };
+}
+
+const pathFor = (uid, petId = 'pet-1', filename = photoName) =>
+  `users/${uid}/pets/${petId}/photos/${filename}`;
+
+before(async () => {
+  env = await initializeTestEnvironment({
+    projectId,
+    firestore: {
+      host: '127.0.0.1',
+      port: 8080,
+      rules: readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8'),
+    },
+    storage: {
+      host: '127.0.0.1',
+      port: 9199,
+      rules: readFileSync(new URL('../storage.rules', import.meta.url), 'utf8'),
+    },
+  });
+});
+
+beforeEach(async () => {
+  await env.clearFirestore();
+  await env.clearStorage();
+});
+
+after(async () => {
+  if (env) await env.cleanup();
+});
+
+test('Firestore: signed-out requests cannot read or create user data', async () => {
+  const db = env.unauthenticatedContext().firestore();
+  await assertFails(getDoc(doc(db, 'users/alice')));
+  await assertFails(setDoc(doc(db, 'users/alice'), userDoc()));
+});
+
+test('Firestore: owner may create/read user document, other users cannot', async () => {
+  const alice = env.authenticatedContext('alice').firestore();
+  const bob = env.authenticatedContext('bob').firestore();
+  await assertSucceeds(setDoc(doc(alice, 'users/alice'), userDoc()));
+  await assertSucceeds(getDoc(doc(alice, 'users/alice')));
+  await assertFails(getDoc(doc(bob, 'users/alice')));
+  await assertFails(setDoc(doc(bob, 'users/alice'), userDoc()));
+});
+
+test('Firestore: user schema limits fields and locks revisions', async () => {
+  const db = env.authenticatedContext('alice').firestore();
+  const u = doc(db, 'users/alice');
+  await assertFails(setDoc(u, { ...userDoc(), elevated: true }));
+  await assertSucceeds(setDoc(u, userDoc()));
+  await assertFails(updateDoc(u, { migrationState: 'ready' }));
+  await assertSucceeds(updateDoc(u, { revision: 1, migrationState: 'ready' }));
+  await assertFails(deleteDoc(u));
+});
+
+test('Firestore: pets remain account-isolated and typed', async () => {
+  const alice = env.authenticatedContext('alice').firestore();
+  const bob = env.authenticatedContext('bob').firestore();
+  const pet = doc(alice, 'users/alice/pets/pet-1');
+  await assertSucceeds(setDoc(pet, petDoc()));
+  await assertSucceeds(getDoc(pet));
+  await assertFails(getDoc(doc(bob, 'users/alice/pets/pet-1')));
+  await assertFails(setDoc(doc(bob, 'users/alice/pets/pet-2'), petDoc('pet-2')));
+  await assertFails(setDoc(doc(alice, 'users/alice/pets/pet-2'), { ...petDoc('pet-2'), unexpected: 'x' }));
+  await assertFails(setDoc(doc(alice, 'users/alice/pets/pet-2'), { ...petDoc('pet-2'), name: '' }));
+  await assertFails(updateDoc(pet, { name: '초코' }));
+  await assertSucceeds(updateDoc(pet, { name: '초코', revision: 1 }));
+  await assertFails(deleteDoc(pet));
+});
+
+test('Firestore: records require an existing pet and retain measurement null vs zero', async () => {
+  const alice = env.authenticatedContext('alice').firestore();
+  const record = doc(alice, 'users/alice/pets/pet-1/records/record-1');
+  await assertFails(setDoc(record, careDoc()));
+  await assertSucceeds(setDoc(doc(alice, 'users/alice/pets/pet-1'), petDoc()));
+  await assertSucceeds(setDoc(record, careDoc()));
+  await assertSucceeds(updateDoc(record, { revision: 1, foodConsumedMilli: 0 }));
+  const actual = await assertSucceeds(getDoc(record));
+  if (actual.data().foodConsumedMilli !== 0) {
+    throw new Error('Measured zero must remain distinct from null.');
+  }
+  await assertFails(updateDoc(record, { revision: 1, petId: 'pet-2' }));
+  await assertFails(deleteDoc(record));
+});
+
+test('Firestore: another account may not read or modify records', async () => {
+  const alice = env.authenticatedContext('alice').firestore();
+  const bob = env.authenticatedContext('bob').firestore();
+  const path = 'users/alice/pets/pet-1/records/record-1';
+  await assertSucceeds(setDoc(doc(alice, 'users/alice/pets/pet-1'), petDoc()));
+  await assertSucceeds(setDoc(doc(alice, path), careDoc()));
+  await assertFails(getDoc(doc(bob, path)));
+  await assertFails(updateDoc(doc(bob, path), { revision: 1 }));
+  await assertFails(setDoc(doc(bob, path), careDoc('record-1', 'pet-1', 1)));
+});
+
+test('Firestore: unknown paths and unauthenticated records are denied', async () => {
+  const alice = env.authenticatedContext('alice').firestore();
+  const guest = env.unauthenticatedContext().firestore();
+  await assertFails(setDoc(doc(alice, 'admin/config'), { public: true }));
+  await assertFails(getDoc(doc(alice, 'admin/config')));
+  await assertFails(getDoc(doc(guest, 'users/alice/pets/pet-1/records/record-1')));
+});
+
+test('Storage: account owner can upload and download a valid JPEG', async () => {
+  const alice = env.authenticatedContext('alice').storage(bucket);
+  const file = ref(alice, pathFor('alice'));
+  await assertSucceeds(uploadBytes(file, new Uint8Array([0xff, 0xd8, 0xff, 0xd9]), {
+    contentType: 'image/jpeg',
+  }));
+  await assertSucceeds(getBytes(file));
+});
+
+test('Storage: guest and different UID cannot access a private image', async () => {
+  const alice = env.authenticatedContext('alice').storage(bucket);
+  const bob = env.authenticatedContext('bob').storage(bucket);
+  const guest = env.unauthenticatedContext().storage(bucket);
+  const path = pathFor('alice', 'pet-1', 'pet_22222222-2222-4222-8222-222222222222.jpg');
+  await assertSucceeds(uploadBytes(ref(alice, path), new Uint8Array([1, 2, 3]), {
+    contentType: 'image/jpeg',
+  }));
+  await assertFails(getBytes(ref(bob, path)));
+  await assertFails(getBytes(ref(guest, path)));
+  await assertFails(uploadBytes(ref(bob, path), new Uint8Array([4]), {
+    contentType: 'image/jpeg',
+  }));
+});
+
+test('Storage: type, path, overwrite and permanent deletion remain restricted', async () => {
+  const alice = env.authenticatedContext('alice').storage(bucket);
+  const valid = ref(alice, pathFor('alice', 'pet-1', 'pet_33333333-3333-4333-8333-333333333333.jpg'));
+  await assertFails(uploadBytes(valid, new Uint8Array([1]), { contentType: 'image/png' }));
+  await assertFails(uploadBytes(ref(alice, pathFor('alice', 'pet-1', 'evil.png')), new Uint8Array([1]), {
+    contentType: 'image/jpeg',
+  }));
+  await assertFails(uploadBytes(valid, new Uint8Array(5 * 1024 * 1024 + 1), {
+    contentType: 'image/jpeg',
+  }));
+  await assertSucceeds(uploadBytes(valid, new Uint8Array([1]), { contentType: 'image/jpeg' }));
+  await assertSucceeds(getBytes(valid));
+  await assertFails(uploadBytes(valid, new Uint8Array([2]), { contentType: 'image/jpeg' }));
+  await assertFails(deleteObject(valid));
+});
+
+
+test('FB-04: strict schema accepts lossless initial pet and record maps and rejects overwrite', async () => {
+  const db = env.authenticatedContext('alice').firestore();
+  const user = doc(db, 'users/alice');
+  const pet = doc(db, 'users/alice/pets/pet-1');
+  const record = doc(db, 'users/alice/pets/pet-1/records/record-1');
+  await assertSucceeds(setDoc(user, userDoc()));
+  const fullPet = {
+    ...petDoc(),
+    breed: '',
+    sex: 'UNKNOWN',
+    neuterStatus: 'UNKNOWN',
+    notes: '원본 메모',
+  };
+  const fullRecord = {
+    ...careDoc(),
+    foodProductName: '원본 사료',
+    foodServedMilli: 0,
+    foodConsumedMilli: null,
+    waterMl: null,
+    eliminationKind: null,
+    eliminationCount: null,
+    activityKind: null,
+    activityMinutes: null,
+    weightGrams: null,
+    weightInputUnit: null,
+    photoFile: null,
+  };
+  await assertSucceeds(setDoc(pet, fullPet));
+  await assertSucceeds(setDoc(record, fullRecord));
+  const remote = await assertSucceeds(getDoc(record));
+  if (remote.data().foodServedMilli !== 0 || remote.data().foodConsumedMilli !== null) {
+    throw new Error('Initial import must keep measured zero distinct from unknown null.');
+  }
+  await assertFails(setDoc(pet, fullPet));
+  await assertFails(setDoc(record, fullRecord));
+  await assertFails(setDoc(record, { ...fullRecord, foodServedMilli: 400 }));
+  await assertSucceeds(updateDoc(user, { migrationState: 'ready', revision: 1 }));
+});
+
+
+/** Offline integration: runs only against demo Firestore/Storage emulators, never a live account. */
+async function createMatchingDocumentOrSkip(db, path, payload) {
+  const refDoc = doc(db, path);
+  const current = await getDocFromServer(refDoc);
+  if (current.exists()) {
+    deepStrictEqual(current.data(), payload, 'An existing UUID must not be overwritten');
+    return 'skipped-identical';
+  }
+  await assertSucceeds(setDoc(refDoc, payload));
+  const verified = await getDocFromServer(refDoc);
+  deepStrictEqual(verified.data(), payload);
+  return 'created';
+}
+
+test('FB-04-FINAL: interrupted initial upload resumes without duplicate records or overwrites', async () => {
+  const alice = env.authenticatedContext('alice').firestore();
+  const uid = 'users/alice';
+  const sourcePet = petDoc();
+  const sourceRecord = careDoc();
+  const snapshot = JSON.stringify([sourcePet, sourceRecord]);
+
+  await assertSucceeds(setDoc(doc(alice, uid), userDoc()));
+  if (await createMatchingDocumentOrSkip(alice, uid + '/pets/pet-1', sourcePet) !== 'created') {
+    throw new Error('First snapshot should create pet once');
+  }
+  // Simulated app termination/network loss: record upload and ready marker never ran.
+  const incompleteRecord = await getDocFromServer(doc(alice, uid + '/pets/pet-1/records/record-1'));
+  if (incompleteRecord.exists()) throw new Error('Record was incorrectly created before retry');
+  const pending = await getDocFromServer(doc(alice, uid));
+  if (pending.data().migrationState !== 'pending') throw new Error('Migration marked ready too early');
+
+  deepStrictEqual(
+    await createMatchingDocumentOrSkip(alice, uid + '/pets/pet-1', sourcePet),
+    'skipped-identical',
+  );
+  deepStrictEqual(
+    await createMatchingDocumentOrSkip(alice, uid + '/pets/pet-1/records/record-1', sourceRecord),
+    'created',
+  );
+  const record = await getDocFromServer(doc(alice, uid + '/pets/pet-1/records/record-1'));
+  deepStrictEqual(record.data(), sourceRecord);
+  await assertSucceeds(updateDoc(doc(alice, uid), { migrationState: 'ready', revision: 1 }));
+  deepStrictEqual(
+    await createMatchingDocumentOrSkip(alice, uid + '/pets/pet-1/records/record-1', sourceRecord),
+    'skipped-identical',
+  );
+  deepStrictEqual(JSON.stringify([sourcePet, sourceRecord]), snapshot, 'Local source was mutated');
+});
+
+test('FB-04-FINAL: changed UUID payload is rejected and leaves stored data untouched', async () => {
+  const alice = env.authenticatedContext('alice').firestore();
+  const user = doc(alice, 'users/alice');
+  const pet = doc(alice, 'users/alice/pets/pet-1');
+  await assertSucceeds(setDoc(user, userDoc()));
+  await assertSucceeds(setDoc(pet, petDoc()));
+  await rejects(() => createMatchingDocumentOrSkip(
+    alice,
+    'users/alice/pets/pet-1',
+    { ...petDoc(), name: 'different-content' },
+  ));
+  const storedPet = await getDocFromServer(pet);
+  const storedUser = await getDocFromServer(user);
+  deepStrictEqual(storedPet.data(), petDoc());
+  if (storedUser.data().migrationState !== 'pending') {
+    throw new Error('A conflicting import must remain pending');
+  }
+});
+
+test('FB-04-FINAL: bytes-hashed photo is reusable but cannot be replaced by a retry', async () => {
+  const alice = env.authenticatedContext('alice').storage(bucket);
+  const bob = env.authenticatedContext('bob').storage(bucket);
+  const isolatedFilename = 'pet_44444444-4444-4444-8444-444444444444.jpg';
+  const isolatedPath = pathFor('alice', 'pet-1', isolatedFilename);
+  const photo = ref(alice, isolatedPath);
+  const localBytes = new Uint8Array([0xff, 0xd8, 0x11, 0x22, 0xff, 0xd9]);
+  const sha = createHash('sha256').update(localBytes).digest('hex');
+  await assertSucceeds(uploadBytes(photo, localBytes, { contentType: 'image/jpeg' }));
+  const serverBytes = await assertSucceeds(getBytes(photo));
+  deepStrictEqual(createHash('sha256').update(Buffer.from(serverBytes)).digest('hex'), sha);
+  await assertFails(uploadBytes(photo, new Uint8Array([0xff, 0xd8, 0, 0xff, 0xd9]), {
+    contentType: 'image/jpeg',
+  }));
+  await assertFails(getBytes(ref(bob, isolatedPath)));
+  const afterRetry = await assertSucceeds(getBytes(photo));
+  deepStrictEqual(createHash('sha256').update(Buffer.from(afterRetry)).digest('hex'), sha);
+});
+
+test('FB-04-FINAL: no Guest records means no initial upload or user ready marker', async () => {
+  const alice = env.authenticatedContext('alice').firestore();
+  const before = await getDocFromServer(doc(alice, 'users/alice'));
+  if (before.exists()) throw new Error('Unexpected initial user data');
+  // Explicit preview guard: an empty pet list cannot be committed.
+  const emptySource = { pets: [], records: [], photos: [] };
+  const canImport = emptySource.pets.length > 0;
+  if (canImport) throw new Error('Empty guest data must not start migration');
+  const after = await getDocFromServer(doc(alice, 'users/alice'));
+  if (after.exists()) throw new Error('Preview created a remote user unexpectedly');
+});

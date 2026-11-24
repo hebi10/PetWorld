@@ -1,6 +1,8 @@
 package com.haebi.petworld.data
 
 import android.content.Context
+import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.account.selectedPetPreferenceKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -11,9 +13,12 @@ import kotlinx.coroutines.flow.map
 
 private val Context.petWorldDataStore by preferencesDataStore(name = "petworld_settings")
 
-class ThemePreferences(private val context: Context) {
+class ThemePreferences(
+    private val context: Context,
+    private val scope: LocalAccountScope = LocalAccountScope.Guest,
+) {
     private val themeModeKey = stringPreferencesKey("theme_mode")
-    private val selectedPetKey = stringPreferencesKey("selected_pet_id")
+    private val selectedPetKey = stringPreferencesKey(scope.selectedPetPreferenceKey)
 
     val themeMode = context.petWorldDataStore.data.map { preferences ->
         ThemeMode.fromStoredValue(preferences[themeModeKey])
