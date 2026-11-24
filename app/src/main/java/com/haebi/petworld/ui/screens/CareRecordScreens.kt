@@ -225,7 +225,7 @@ fun CareRecordList(
                 items(page.entries, key = { "care-${it.id}" }) { record ->
                     CareRecordCompactRow(record = record, onClick = { onView(record.id) })
                 }
-                if (loaded.request != request) {
+                if (loaded?.request != request) {
                     item(key = "record-loading-more") { CircularProgressIndicator() }
                 }
             }
