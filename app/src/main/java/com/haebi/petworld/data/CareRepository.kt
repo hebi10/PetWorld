@@ -6,6 +6,7 @@ import com.haebi.petworld.data.backup.PetWorldMutationGate
 import com.haebi.petworld.data.room.CareEntity
 import com.haebi.petworld.data.room.PetWorldDatabase
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -23,6 +24,11 @@ class CareRepository(
     private val mutex = PetWorldMutationGate.mutex
 
     fun observeAll(): Flow<List<CareEntity>> = dao.observeAll()
+
+    fun observePet(petId: String): Flow<List<CareEntity>> = dao.observePet(petId)
+
+    fun observeRecordCounts(): Flow<Map<String, Int>> =
+        dao.observeRecordCounts().map { counts -> counts.associate { it.petId to it.recordCount } }
 
     suspend fun save(draft: CareDraft): CareEntity = mutex.withLock {
         currentCoroutineContext().ensureActive()
