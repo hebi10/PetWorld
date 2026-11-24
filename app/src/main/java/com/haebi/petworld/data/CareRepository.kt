@@ -2,6 +2,7 @@ package com.haebi.petworld.data
 
 import android.content.Context
 import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.sync.LocalSyncOutbox
 import androidx.room.withTransaction
 import com.haebi.petworld.data.backup.PetWorldMutationGate
 import com.haebi.petworld.data.room.CareEntity
@@ -24,6 +25,7 @@ class CareRepository(
     private val pets = database.petDao()
     private val photos = PetPhotoStore(context.applicationContext, scope)
     private val mutex = PetWorldMutationGate.mutex
+    private val outbox = LocalSyncOutbox(database, scope)
 
     fun observeAll(): Flow<List<CareEntity>> = dao.observeAll()
 
@@ -66,6 +68,7 @@ class CareRepository(
                     val entity = draft.toEntity(previous = old, photoFile = photoFile)
                     if (old == null) dao.insert(entity)
                     else check(dao.update(entity) == 1) { "기록이 변경되어 저장하지 못했습니다." }
+                    outbox.recordChanged(old, entity)
                     entity
                 }
             } catch (error: Exception) {
@@ -85,6 +88,7 @@ class CareRepository(
                 val found = dao.find(id) ?: error("삭제할 기록을 찾을 수 없습니다.")
                 require(found.petId == petId) { "다른 반려동물의 기록은 삭제할 수 없습니다." }
                 check(dao.delete(id, petId) == 1) { "삭제할 기록을 찾을 수 없습니다." }
+                outbox.recordChanged(found, null)
                 found
             }
             photos.delete(removed.photoFile)

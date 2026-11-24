@@ -2,6 +2,7 @@ package com.haebi.petworld.data
 
 import android.content.Context
 import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.sync.LocalSyncOutbox
 import androidx.room.withTransaction
 import com.haebi.petworld.data.backup.PetWorldMutationGate
 import com.haebi.petworld.data.room.PetWorldDatabase
@@ -24,7 +25,7 @@ sealed interface PetLoadStatus {
 }
 
 /**
- * Uses the original petworld_profiles.db (legacy v1) through Room v2.
+ * Uses the original petworld_profiles.db (legacy v1) through non-destructive Room migrations.
  * UUIDs and pet photos remain unchanged. Never use destructive migration.
  */
 class PetRepository(
@@ -36,6 +37,7 @@ class PetRepository(
     private val photos = PetPhotoStore(context.applicationContext, scope)
     val photoStore: PetPhotoStore get() = photos
     private val mutex = PetWorldMutationGate.mutex
+    private val outbox = LocalSyncOutbox(database, scope)
 
     private val _profiles = MutableStateFlow<List<PetProfile>>(emptyList())
     val profiles = _profiles.asStateFlow()
@@ -84,8 +86,11 @@ class PetRepository(
             )
             val snapshot = try {
                 database.withTransaction {
-                    if (previous == null) dao.insert(value.toEntity())
-                    else check(dao.update(value.toEntity()) == 1) { "수정할 프로필을 찾을 수 없습니다." }
+                    val next = value.toEntity()
+                    val before = previous?.toEntity()
+                    if (before == null) dao.insert(next)
+                    else check(dao.update(next) == 1) { "수정할 프로필을 찾을 수 없습니다." }
+                    outbox.petChanged(before, next)
                     dao.list().map { it.toDomain() }
                 }
             } catch (error: Exception) {
@@ -104,10 +109,12 @@ class PetRepository(
         withContext(NonCancellable) {
             val snapshot = database.withTransaction {
                 val previous = dao.find(id) ?: error("프로필을 찾을 수 없습니다.")
-                check(dao.update(previous.copy(
+                val next = previous.copy(
                     isArchived = archived,
                     updatedAt = System.currentTimeMillis(),
-                )) == 1)
+                )
+                check(dao.update(next) == 1)
+                outbox.petChanged(previous, next)
                 dao.list().map { it.toDomain() }
             }
             _profiles.value = snapshot
@@ -120,9 +127,12 @@ class PetRepository(
         withContext(NonCancellable) {
             val target = dao.find(id) ?: error("프로필을 찾을 수 없습니다.")
             val (snapshot, attachments) = database.withTransaction {
-                val files = database.careDao().listForPet(id).mapNotNull { it.photoFile }
+                val originalPet = dao.find(id) ?: error("프로필을 찾을 수 없습니다.")
+                val originalRecords = database.careDao().listForPet(id)
+                originalRecords.forEach { outbox.recordChanged(it, null) }
+                outbox.petChanged(originalPet, null)
                 check(dao.delete(id) == 1)
-                dao.list().map { it.toDomain() } to files
+                dao.list().map { it.toDomain() } to originalRecords.mapNotNull { it.photoFile }
             }
             _profiles.value = snapshot
             photos.delete(target.photoFile)

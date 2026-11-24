@@ -66,7 +66,7 @@ class LegacyRoomMigrationTest {
             legacy.version = 1
         }
         database = Room.databaseBuilder(context, PetWorldDatabase::class.java, name)
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .build()
     }
 
