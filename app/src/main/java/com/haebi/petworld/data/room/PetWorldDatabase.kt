@@ -3,6 +3,8 @@ package com.haebi.petworld.data.room
 import android.content.Context
 import com.haebi.petworld.data.account.LocalAccountScope
 import com.haebi.petworld.data.account.databaseFileName
+import com.haebi.petworld.data.sync.SyncOutboxDao
+import com.haebi.petworld.data.sync.SyncOutboxEntry
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
@@ -218,14 +220,39 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
     }
 }
 
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS `sync_outbox` (
+                `sequence` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `op_id` TEXT NOT NULL,
+                `account_key` TEXT NOT NULL,
+                `entity_kind` TEXT NOT NULL,
+                `pet_id` TEXT NOT NULL,
+                `entity_id` TEXT NOT NULL,
+                `operation` TEXT NOT NULL,
+                `before_json` TEXT,
+                `after_json` TEXT,
+                `expected_revision` INTEGER,
+                `created_at` INTEGER NOT NULL,
+                `status` TEXT NOT NULL,
+                `attempt` INTEGER NOT NULL
+            )""".trimIndent()
+        )
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_sync_outbox_op_id` ON `sync_outbox` (`op_id`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_sync_outbox_account_key_sequence` ON `sync_outbox` (`account_key`, `sequence`)")
+    }
+}
+
 @Database(
-    entities = [PetEntity::class, CareEntity::class],
-    version = 2,
+    entities = [PetEntity::class, CareEntity::class, SyncOutboxEntry::class],
+    version = 3,
     exportSchema = false,
 )
 abstract class PetWorldDatabase : RoomDatabase() {
     abstract fun petDao(): PetDao
     abstract fun careDao(): CareDao
+    abstract fun syncOutboxDao(): SyncOutboxDao
 
     companion object {
         private val instances = mutableMapOf<String, PetWorldDatabase>()
@@ -241,7 +268,7 @@ abstract class PetWorldDatabase : RoomDatabase() {
                     PetWorldDatabase::class.java,
                     name,
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
             }
         }
