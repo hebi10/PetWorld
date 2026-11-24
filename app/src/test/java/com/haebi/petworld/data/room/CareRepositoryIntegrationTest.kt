@@ -81,6 +81,18 @@ class CareRepositoryIntegrationTest {
         assertEquals("기록 없음", summarizeCare(CareType.WATER, care.observeAll().first().filter { it.petId == "cat-a" }))
     }
 
+    @Test fun scopedFeedAndAggregatedCountsPreserveAllPets() = runBlocking {
+        val a = care.save(water("cat-a"))
+        val b = care.save(water("dog-b"))
+        val newer = care.save(water("cat-a").copy(occurredAt = 1_700_000_001_000L))
+        assertEquals(listOf(newer.id, a.id), care.observePet("cat-a").first().map { it.id })
+        assertEquals(listOf(b.id), care.observePet("dog-b").first().map { it.id })
+        assertEquals(emptyList<String>(), care.observePet("missing").first().map { it.id })
+        assertEquals(mapOf("cat-a" to 2, "dog-b" to 1), care.observeRecordCounts().first())
+        care.delete(a.id, "cat-a")
+        assertEquals(mapOf("cat-a" to 1, "dog-b" to 1), care.observeRecordCounts().first())
+    }
+
     @Test fun deleteOnlyWithMatchingPetIdAndArchivedPetCannotRecord() = runBlocking {
         val entry = care.save(water("cat-a"))
         assertTrue(runCatching { care.delete(entry.id, "dog-b") }.isFailure)

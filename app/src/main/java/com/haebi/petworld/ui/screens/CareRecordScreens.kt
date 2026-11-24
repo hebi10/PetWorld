@@ -11,6 +11,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -96,12 +100,25 @@ fun CareRecordList(
     onRangeChange: (CareRange) -> Unit,
     onAdd: () -> Unit,
     onView: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var showRangePicker by remember { mutableStateOf(false) }
     var showTypePicker by remember { mutableStateOf(false) }
-    val filtered = filterCareRecords(records, selectedType, selectedRange)
+    val today = LocalDate.now()
+    val filtered = remember(records, selectedType, selectedRange, today) {
+        filterCareRecords(records, selectedType, selectedRange, today)
+    }
+    val listState = rememberLazyListState()
+    LaunchedEffect(selectedType, selectedRange) {
+        listState.scrollToItem(0)
+    }
 
-    Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
+    LazyColumn(
+        modifier = modifier,
+        state = listState,
+        verticalArrangement = Arrangement.spacedBy(PetSpacing.small),
+    ) {
+        item(key = "record-title") {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
@@ -114,6 +131,8 @@ fun CareRecordList(
             )
             PetPrimaryButton(label = "기록 추가", onClick = onAdd)
         }
+        }
+        item(key = "record-filters") {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
@@ -129,18 +148,23 @@ fun CareRecordList(
                 modifier = Modifier.weight(1f),
             )
         }
+        }
+        item(key = "record-count") {
         Text(
             "기록 ${filtered.size}건",
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        }
         if (filtered.isEmpty()) {
-            PetEmptyState(
-                title = "해당 기간에 기록이 없습니다",
-                detail = "기간 또는 종류를 변경하거나 새로운 기록을 추가해 주세요.",
-            )
+            item(key = "record-empty") {
+                PetEmptyState(
+                    title = "해당 기간에 기록이 없습니다",
+                    detail = "기간 또는 종류를 변경하거나 새로운 기록을 추가해 주세요.",
+                )
+            }
         } else {
-            filtered.forEach { record ->
+            items(filtered, key = { "care-${it.id}" }) { record ->
                 CareRecordCompactRow(record = record, onClick = { onView(record.id) })
             }
         }

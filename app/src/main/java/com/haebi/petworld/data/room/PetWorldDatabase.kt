@@ -101,6 +101,11 @@ interface PetDao {
     suspend fun delete(id: String): Int
 }
 
+data class CarePetCount(
+    @ColumnInfo(name = "pet_id") val petId: String,
+    @ColumnInfo(name = "record_count") val recordCount: Int,
+)
+
 @Dao
 interface CareDao {
     @Query("SELECT * FROM care_entries ORDER BY occurred_at DESC, created_at DESC")
@@ -108,6 +113,9 @@ interface CareDao {
 
     @Query("SELECT * FROM care_entries WHERE pet_id = :petId ORDER BY occurred_at DESC, created_at DESC")
     fun observePet(petId: String): Flow<List<CareEntity>>
+
+    @Query("SELECT pet_id, COUNT(*) AS record_count FROM care_entries GROUP BY pet_id")
+    fun observeRecordCounts(): Flow<List<CarePetCount>>
 
     @Query("SELECT * FROM care_entries WHERE id = :id LIMIT 1")
     suspend fun find(id: String): CareEntity?

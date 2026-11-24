@@ -30,6 +30,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
@@ -45,17 +47,20 @@ data class PetUiState(
 
 sealed interface CareFeedState {
     data object Loading : CareFeedState
-    data class Ready(val entries: List<CareEntity>) : CareFeedState
+    data class Ready(
+        val entries: List<CareEntity>,
+        val petId: String?,
+        val recordCounts: Map<String, Int>,
+    ) : CareFeedState
     data class Failed(val message: String) : CareFeedState
 }
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-internal fun observeRetryableCare(
-    reload: Flow<Long>,
-    observe: () -> Flow<List<CareEntity>>,
-): Flow<CareFeedState> = reload.flatMapLatest {
-    flow { emitAll(observe()) }
-        .map<List<CareEntity>, CareFeedState> { CareFeedState.Ready(it) }
+internal fun <T> observeRetryableCare(
+    reload: Flow<T>,
+    observe: (T) -> Flow<CareFeedState.Ready>,
+): Flow<CareFeedState> = reload.flatMapLatest { request ->
+    flow<CareFeedState> { emitAll(observe(request)) }
         .onStart { emit(CareFeedState.Loading) }
         .catch { error ->
             if (error is CancellationException) throw error
@@ -82,13 +87,6 @@ class MainViewModel(
     private val reloadCare = MutableStateFlow(0L)
     val restoring = MutableStateFlow(false)
     val recoveryBlocked = MutableStateFlow(false)
-
-    val careFeed = observeRetryableCare(reloadCare, care::observeAll)
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
-            initialValue = CareFeedState.Loading,
-        )
 
     fun retryCare() { reloadCare.value += 1L }
 
@@ -140,6 +138,20 @@ class MainViewModel(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
         initialValue = PetUiState(),
+    )
+
+    private val activePetId = petUiState.map { it.activePet?.id }.distinctUntilChanged()
+    val careFeed = observeRetryableCare(
+        combine(reloadCare, activePetId) { generation, petId -> generation to petId },
+    ) { (_, petId) ->
+        val entries = petId?.let(care::observePet) ?: flowOf(emptyList<CareEntity>())
+        combine(entries, care.observeRecordCounts()) { records, counts ->
+            CareFeedState.Ready(records, petId, counts)
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
+        initialValue = CareFeedState.Loading,
     )
 
     init {
