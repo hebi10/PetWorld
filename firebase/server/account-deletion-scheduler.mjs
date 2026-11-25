@@ -9,7 +9,7 @@ const maxWorkerMs = 10 * 60_000;
 const batchBudgetMs = 60_000;
 const batchLimit = 10;
 const cursorValid = value => value === null || (typeof value === 'string' && /^[a-f0-9]{64}$/.test(value));
-const tokenValid = value => typeof value === 'string' && /^[a-f0-9-]{36}$/.test(value);
+const tokenValid = value => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(value);
 const safeTime = value => Number.isSafeInteger(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER - schedulerLeaseMs;
 const validDeadline = value => Number.isSafeInteger(value) && value > batchBudgetMs && value <= maxWorkerMs;
 
