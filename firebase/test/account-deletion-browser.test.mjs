@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {randomBytes,generateKeyPairSync,sign} from 'node:crypto';
+import {generateKeyPairSync,sign} from 'node:crypto';
 import {readFileSync,mkdirSync,rmSync,mkdtempSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -159,8 +159,8 @@ async function setup({mobile=false}={}){
     }
     unexpected.push('unlisted-route');await route.abort();
   });
+  context.on('page',opened=>opened.on('pageerror',()=>pageErrors.push('page-error')));
   const page=await context.newPage();
-  page.on('pageerror',()=>pageErrors.push('page-error'));
   return {server,browser,context,page,events,identity:v=>{identity=v;},mode:v=>{mode=v;},
     lose:()=>{loseResponse=true;},
     async finish(){await browser.close();assert.deepEqual(unexpected,[]);assert.deepEqual(pageErrors,[]);}};
@@ -192,6 +192,7 @@ async function exportRecovery(env,file){
   await enabled(page,'restore-recovery');
 }
 async function restore(page,file,secret=password){
+  await enabled(page,'restore-recovery');
   await page.locator('#recovery-file').setInputFiles(file);
   await page.locator('#restore-password').fill(secret);
   await page.locator('#restore-recovery').click();
