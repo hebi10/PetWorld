@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {DeletionDenied} from './account-deletion.mjs';
 
-const routes = new Set(['request','status']);
+const routes = new Set(['request','status','web-auth']);
 const windowMs = 60_000;
 const appIdPattern = /^1:[0-9]+:android:[a-f0-9]+$/;
 const webIdPattern = /^1:[0-9]+:web:[a-f0-9]+$/;
@@ -36,9 +36,11 @@ export function createDeletionRateLimiter({db,appIds,webAppIds=[],requestLimit,s
   if (typeof db?.runTransaction !== 'function' || typeof db?.collection !== 'function' ||
       !validLimit(requestLimit) || !validLimit(statusLimit) || typeof now !== 'function')
     throw new DeletionDenied();
-  const limits = {request:requestLimit,status:statusLimit};
+  const limits = {request:requestLimit,status:statusLimit,'web-auth':requestLimit};
   return async ({appId,route} = {}) => {
-    if (!allowed.has(appId) || !routes.has(route)) throw new DeletionDenied();
+    if (!allowed.has(appId) || !routes.has(route) ||
+        (route==='web-auth' && !webAppIds.includes(appId)) ||
+        (route==='request' && webAppIds.includes(appId))) throw new DeletionDenied();
     const key = createHash('sha256').update(appId + ':' + route).digest('hex');
     const ref = db.collection('accountDeletionAdmission').doc(key);
     return db.runTransaction(async tx => {
@@ -77,6 +79,8 @@ export function createDevDeletionAdmission({appCheck,appIds,webAppIds=[],webOrig
     try {
       const verified = await appCheck.verifyToken(appCheckToken);
       if (!allowed.has(verified?.appId)) return 'DENY';
+      if ((route==='web-auth' && !webAllowed.has(verified.appId)) ||
+          (route==='request' && webAllowed.has(verified.appId))) return 'DENY';
       // Origin is an additional browser boundary, never a substitute for App Check or Auth.
       if (webAllowed.has(verified.appId) && ingress.origin !== webOrigin) return 'DENY';
       const admitted = await take({appId:verified.appId,route});

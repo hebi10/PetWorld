@@ -79,11 +79,10 @@ function originOf(value) {
   return url.origin;
 }
 
-/** Same-origin only, no redirects/cookies/browser persistence or secret-bearing error text. */
-export function createWebDeletionTransport({origin,currentOrigin,appCheck,fetcher=globalThis.fetch}={}) {
+/** Shared, bounded, same-origin JSON transport. No redirects/cookies or persisted credentials. */
+function jsonTransport({origin,currentOrigin,appCheck,fetcher=globalThis.fetch}={}) {
   if(originOf(origin)!==currentOrigin||typeof appCheck!=='function'||typeof fetcher!=='function')fail();
-  return async function exchange(route,bearer,body,expected,stillAuthorized=()=>true) {
-    if(!['request','status'].includes(route)||!headerValid(bearer)||!jobValid(expected))fail();
+  return async (path,bearer,body,status,stillAuthorized)=>{
     const controller=new AbortController();
     const timer=setTimeout(()=>controller.abort(),15000);
     try{
@@ -91,12 +90,16 @@ export function createWebDeletionTransport({origin,currentOrigin,appCheck,fetche
       if(!headerValid(appToken)||controller.signal.aborted||!stillAuthorized())fail();
       const raw=JSON.stringify(body);
       if(encoder.encode(raw).length>2048)fail();
-      const response=await fetcher(origin+'/account-deletion/'+route,{
+      const headers={'Content-Type':'application/json; charset=utf-8','X-Firebase-AppCheck':appToken};
+      if(bearer!==null){
+        if(!headerValid(bearer))fail();
+        headers.Authorization='Bearer '+bearer;
+      }
+      const response=await fetcher(origin+path,{
         method:'POST',redirect:'error',credentials:'omit',cache:'no-store',referrerPolicy:'no-referrer',
-        headers:{'Content-Type':'application/json; charset=utf-8','Authorization':'Bearer '+bearer,
-          'X-Firebase-AppCheck':appToken},body:raw,signal:controller.signal,
+        headers,body:raw,signal:controller.signal,
       });
-      if(response.status!==(route==='request'?202:200)||response.redirected||
+      if(response.status!==status||response.redirected||
           !/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(response.headers.get('content-type')||'')||
           !response.headers.get('cache-control')?.split(',').some(v=>v.trim().toLowerCase()==='no-store')||
           !response.body)fail();
@@ -110,7 +113,7 @@ export function createWebDeletionTransport({origin,currentOrigin,appCheck,fetche
           bytes.set(value,length);length+=value.length;
         }
         const value=JSON.parse(decoder.decode(bytes.subarray(0,length)));
-        receipt(value,expected,null);
+        if(!stillAuthorized())fail();
         return value;
       }finally{
         bytes.fill(0);
@@ -119,14 +122,53 @@ export function createWebDeletionTransport({origin,currentOrigin,appCheck,fetche
     }finally{clearTimeout(timer);}
   };
 }
+export function createWebDeletionTransport(config) {
+  const send=jsonTransport(config);
+  return async function exchange(route,bearer,body,expected,stillAuthorized=()=>true) {
+    if(!['request','status'].includes(route)||!headerValid(bearer)||!jobValid(expected))fail();
+    const value=await send('/account-deletion/'+route,bearer,body,route==='request'?202:200,stillAuthorized);
+    receipt(value,expected,null);
+    return value;
+  };
+}
+
+/** Dedicated existing-account identity path; no Firebase sign-up or token exchange. */
+export function createExistingGoogleWebTransport(config) {
+  const send=jsonTransport(config);
+  const path='/account-deletion/web-auth';
+  return Object.freeze({
+    async challenge(purpose,jobId,allowed=()=>true){
+      if(!(purpose==='identify'&&jobId===null||purpose==='submit'&&jobValid(jobId)))fail();
+      const value=await send(path,null,{action:'challenge',purpose,jobId},200,allowed);
+      if(!exact(value,['nonce']))fail();
+      validTicket(value.nonce);
+      return value.nonce;
+    },
+    async identify(idToken,allowed=()=>true){
+      if(!headerValid(idToken))fail();
+      const value=await send(path,idToken,{action:'identify'},200,allowed);
+      if(!exact(value,['jobId'])||!jobValid(value.jobId))fail();
+      return value.jobId;
+    },
+    async exchange(route,bearer,body,expected,allowed=()=>true){
+      if(!headerValid(bearer)||!jobValid(expected)||!['request','status'].includes(route))fail();
+      const value=route==='request'
+        ?await send(path,bearer,{action:'submit',jobId:expected,confirmation:body.confirmation,statusTicket:body.statusTicket},202,allowed)
+        :await send('/account-deletion/status',bearer,{jobId:expected},200,allowed);
+      receipt(value,expected,null);
+      return value;
+    },
+  });
+}
 
 /**
  * Trusted runtime only: existing Google account session, fresh reauth, same-origin
  * App Check transport. No automatic sign-in, account creation, localStorage or new
  * recovery ticket after an uncertain request. UI sees phase and encrypted file only.
  */
-export function createWebDeletionController({currentAccount,reauthenticate,exchange,now=Date.now}={}) {
-  if([currentAccount,reauthenticate,exchange,now].some(fn=>typeof fn!=='function'))fail();
+export function createWebDeletionController({currentAccount,reauthenticate,exchange,resolveJobId=jobId,
+  matchesAuth=(auth,identity)=>auth?.uid===identity,now=Date.now}={}) {
+  if([currentAccount,reauthenticate,exchange,resolveJobId,matchesAuth,now].some(fn=>typeof fn!=='function'))fail();
   let anchor=null,phase=null,busy=false,saved=false,attempted=false,version=0;
   const snapshot=()=>Object.freeze({hasRecovery:anchor!==null,phase,attempted,busy});
   const operation=async action=>{
@@ -144,7 +186,8 @@ export function createWebDeletionController({currentAccount,reauthenticate,excha
     prepare(password){return operation(async valid=>{
       if(anchor!==null)return {kind:'RECOVERY_REQUIRED'};
       const uid=currentAccount();
-      const id=await jobId(uid);
+      const id=await resolveJobId(uid);
+      if(!jobValid(id))fail();
       const bytes=crypto.getRandomValues(new Uint8Array(32));
       const next={jobId:id,ticket:encode(bytes)};
       bytes.fill(0);
@@ -165,10 +208,10 @@ export function createWebDeletionController({currentAccount,reauthenticate,excha
       if(!confirmed||!saved||anchor===null)return {kind:'NOT_READY'};
       if(phase!==null)return {kind:'STATUS_REQUIRED'};
       const target=anchor,uid=currentAccount();
-      if(await jobId(uid)!==target.jobId||!valid()||currentAccount()!==uid)return {kind:'NOT_READY'};
+      if(await resolveJobId(uid)!==target.jobId||!valid()||currentAccount()!==uid)return {kind:'NOT_READY'};
       const auth=await reauthenticate(uid);
       const seconds=Math.floor(now()/1000);
-      if(!valid()||currentAccount()!==uid||auth?.uid!==uid||!headerValid(auth.idToken)||
+      if(!valid()||currentAccount()!==uid||!matchesAuth(auth,uid)||!headerValid(auth?.idToken)||
         !Number.isSafeInteger(auth.authTimeSeconds)||auth.authTimeSeconds>seconds||
         seconds-auth.authTimeSeconds>300)return {kind:'NOT_READY'};
       attempted=true;

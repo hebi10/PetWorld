@@ -44,6 +44,7 @@ export function mountDeletionPage(root,runtime) {
     ui.refresh.disabled=!ready||!s.hasRecovery||!(ui.saved.checked||restored);
   }
   function show(result) {
+    if(disposed)return;
     ui.status.textContent=result.kind==='CONFIRMED'
       ? (phaseText[result.phase]||message.UNKNOWN)+
         (result.phase==='COMPLETE'?' · 기기 기록과 외부 백업은 별도입니다.':' · 아직 전체 완료가 아닙니다.')
@@ -67,12 +68,14 @@ export function mountDeletionPage(root,runtime) {
   ui.availability.textContent='삭제 요청 및 저장된 복구 파일 조회';
   listen(ui.connect,'click',()=>run(async()=>{
     connected=await runtime.connectExisting();
+    if(disposed)return;
     ui.status.textContent=connected?'기존 계정을 확인했습니다.':'기존 계정을 확인하지 못했습니다.';
   }));
   listen(ui.prepare,'click',()=>run(async()=>{
     const password=ui.password.value;
     ui.password.value='';
     const result=await c.prepare(password);
+    if(disposed)return;
     if(result.kind==='PREPARED'){
       download(result.file);encryptedReady=true;
       ui.status.textContent='암호화 복구 파일을 저장하고 아래 확인란을 선택해 주세요. 파일과 비밀번호가 모두 필요합니다.';
@@ -104,7 +107,7 @@ export function mountDeletionPage(root,runtime) {
     }
     connected=next!==null;sync();
   });
-  function dispose(){if(disposed)return;disposed=true;events.abort();unsubscribe?.();c.forget();
+  function dispose(){if(disposed)return;disposed=true;events.abort();unsubscribe?.();runtime.dispose?.();c.forget();
     ui.password.value='';ui.restorePassword.value='';ui.file.value='';ui.status.textContent='';
     sync();}
   globalThis.addEventListener?.('pagehide',dispose,{once:true,signal:events.signal});
