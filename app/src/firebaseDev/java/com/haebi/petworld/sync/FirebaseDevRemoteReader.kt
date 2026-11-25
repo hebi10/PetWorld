@@ -41,6 +41,36 @@ internal class FirebaseDevRemoteReader(
         return user.uid.takeIf { LocalAccountScope.fromFirebaseUid(it) == account }
     }
 
+    suspend fun readDocument(
+        account: LocalAccountScope.SignedIn,
+        kind: String,
+        petId: String,
+        entityId: String,
+    ): RemoteSyncDocument? {
+        require(kind in setOf("PET", "CARE") && validSyncPathId(petId) && validSyncPathId(entityId))
+        require(kind != "PET" || petId == entityId)
+        val expectedUid = uid(account) ?: throw SyncReceiveDenied()
+        suspend fun checkSession() {
+            if (uid(account) != expectedUid || !permission.permits(account)) throw SyncReceiveDenied()
+        }
+        checkSession()
+        val user = auth.currentUser?.takeIf { it.uid == expectedUid } ?: throw SyncReceiveDenied()
+        user.getIdToken(true).awaitReceive()
+        checkSession()
+        val owner = firestore.collection("users").document(expectedUid)
+        val state = owner.get(Source.SERVER).awaitReceive()
+        check(state.exists() && !state.metadata.isFromCache && !state.metadata.hasPendingWrites())
+        check(state.getString("migrationState") == "ready")
+        checkSession()
+        val pet = owner.collection("pets").document(petId)
+        val target = if (kind == "PET") pet else pet.collection("records").document(entityId)
+        val snapshot = target.get(Source.SERVER).awaitReceive()
+        checkSession()
+        check(!snapshot.metadata.isFromCache && !snapshot.metadata.hasPendingWrites())
+        if (!snapshot.exists()) return null
+        return RemoteSyncDocument(kind, petId, entityId, requireNotNull(snapshot.data).toMap())
+    }
+
     suspend fun readPage(
         account: LocalAccountScope.SignedIn,
         parentPetId: String? = null,

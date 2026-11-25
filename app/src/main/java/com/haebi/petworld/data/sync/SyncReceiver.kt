@@ -30,7 +30,7 @@ internal class SyncReceiver(
         if (!permission.permits(account)) throw SyncReceiveDenied()
     }
 
-    suspend fun applyPage(page: RemoteSyncPage): List<InboundResult> {
+    suspend fun applyPage(page: RemoteSyncPage, checkpoint: suspend () -> Unit = {}): List<InboundResult> {
         requirePermission()
         require(page.accountKey == key && page.documents.size <= 100)
         require(page.parentPetId == null || validSyncPathId(page.parentPetId))
@@ -50,6 +50,8 @@ internal class SyncReceiver(
                     requirePermission()
                     receive(it)
                 }
+                requirePermission()
+                checkpoint()
                 requirePermission()
                 results
             }

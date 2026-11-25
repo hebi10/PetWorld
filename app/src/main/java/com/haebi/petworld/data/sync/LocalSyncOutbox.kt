@@ -55,7 +55,7 @@ interface SyncOutboxDao {
     @Query("""
         SELECT EXISTS(SELECT 1 FROM sync_outbox
         WHERE account_key = :accountKey AND entity_kind = :kind AND pet_id = :petId
-          AND entity_id = :entityId AND status != 'ACKNOWLEDGED')
+          AND entity_id = :entityId AND status NOT IN ('ACKNOWLEDGED', 'SUPERSEDED'))
     """)
     suspend fun hasPending(accountKey: String, kind: String, petId: String, entityId: String): Boolean
 
@@ -66,8 +66,38 @@ interface SyncOutboxDao {
     """)
     suspend fun hasHistory(accountKey: String, kind: String, petId: String, entityId: String): Boolean
 
-    @Query("SELECT * FROM sync_outbox WHERE account_key = :accountKey AND status != 'ACKNOWLEDGED' ORDER BY sequence ASC LIMIT 1")
+    @Query("SELECT * FROM sync_outbox WHERE account_key = :accountKey AND status NOT IN ('ACKNOWLEDGED', 'SUPERSEDED') ORDER BY sequence ASC LIMIT 1")
     suspend fun firstOutstanding(accountKey: String): SyncOutboxEntry?
+
+    @Query("""
+        SELECT * FROM sync_outbox WHERE account_key = :accountKey AND entity_kind = :kind
+        AND pet_id = :petId AND entity_id = :entityId AND status = 'ACKNOWLEDGED'
+        ORDER BY sequence DESC LIMIT 1
+    """)
+    suspend fun lastAcknowledged(accountKey: String, kind: String, petId: String,
+        entityId: String): SyncOutboxEntry?
+
+    @Query("""
+        UPDATE sync_outbox SET status = 'CONFLICT'
+        WHERE account_key = :accountKey AND op_id = :opId AND status = 'WAITING_BASELINE'
+          AND expected_revision IS NULL AND attempt = 0
+    """)
+    suspend fun flagBaselineConflict(accountKey: String, opId: String): Int
+
+    @Query("""
+        SELECT EXISTS(SELECT 1 FROM sync_outbox WHERE account_key = :accountKey
+        AND entity_kind = :kind AND pet_id = :petId AND entity_id = :entityId
+        AND status NOT IN ('ACKNOWLEDGED', 'SUPERSEDED')
+        AND (attempt != 0 OR expected_revision IS NOT NULL OR status NOT IN ('WAITING_BASELINE', 'CONFLICT')))
+    """)
+    suspend fun hasUnsafeToSupersede(accountKey: String, kind: String, petId: String, entityId: String): Boolean
+
+    @Query("""
+        UPDATE sync_outbox SET status = 'SUPERSEDED' WHERE account_key = :accountKey
+        AND entity_kind = :kind AND pet_id = :petId AND entity_id = :entityId
+        AND attempt = 0 AND expected_revision IS NULL AND status IN ('WAITING_BASELINE', 'CONFLICT')
+    """)
+    suspend fun supersedeUnsent(accountKey: String, kind: String, petId: String, entityId: String): Int
 
     // Only a reviewed remote baseline may call this. -1 means verified absent, not unknown.
     @Query("""
