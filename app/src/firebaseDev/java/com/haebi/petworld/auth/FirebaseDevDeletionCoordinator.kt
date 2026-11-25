@@ -5,6 +5,7 @@ import com.haebi.petworld.data.account.AccountDeletionReadiness
 import com.haebi.petworld.data.account.DeletionRecoveryController
 import com.haebi.petworld.data.account.DeletionRecoveryResult
 import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.account.deletionJobId
 import com.haebi.petworld.sync.FirebaseDevSyncWork
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -26,7 +27,8 @@ internal class FirebaseDevDeletionCoordinator(
         gateway.currentAccount()?.uid?.let(LocalAccountScope::fromFirebaseUid)
 
     suspend fun submit(account: LocalAccountScope.SignedIn, acknowledged: Boolean): DeletionRecoveryResult = gate.withLock {
-        if (!readiness.canRequest(account, acknowledged, true) || currentScope() != account)
+        if (!FirebaseDevDeletionCachePolicy.permitsRequest() ||
+            !readiness.canRequest(account, acknowledged, true) || currentScope() != account)
             return@withLock DeletionRecoveryResult.NotReady
         val uid = gateway.currentAccount()?.uid ?: return@withLock DeletionRecoveryResult.NotReady
         if (LocalAccountScope.fromFirebaseUid(uid) != account) return@withLock DeletionRecoveryResult.NotReady
@@ -43,7 +45,11 @@ internal class FirebaseDevDeletionCoordinator(
     suspend fun refresh(account: LocalAccountScope.SignedIn): DeletionRecoveryResult = gate.withLock {
         if (!readiness.verifiedEndpoint || !readiness.secureStatusTicket || currentScope() != account)
             return@withLock DeletionRecoveryResult.NotReady
-        val result = recovery.refresh(account, verifiedEndpoint = true)
+        val uid = gateway.currentAccount()?.uid ?: return@withLock DeletionRecoveryResult.NotReady
+        if (LocalAccountScope.fromFirebaseUid(uid) != account) return@withLock DeletionRecoveryResult.NotReady
+        val result = recovery.refresh(account, verifiedEndpoint = true, expectedJobId = deletionJobId(uid)) {
+            gateway.currentAccount()?.uid == uid
+        }
         if (currentScope() != account) DeletionRecoveryResult.StateUnknown else result
     }
 }

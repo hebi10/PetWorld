@@ -78,6 +78,7 @@ internal sealed interface DeletionRecoveryResult {
 internal class DeletionRecoveryController(
     private val store: DeletionStateStore,
     private val transport: DeletionRequestTransport,
+    private val enrollment: DeletionRecoveryEnrollment = DeletionRecoveryEnrollment { false },
 ) {
     private val mutex = Mutex()
 
@@ -88,9 +89,17 @@ internal class DeletionRecoveryController(
         if (!readiness.canRequest(account, acknowledged, recentlyReauthenticated) ||
             currentAccount() != account || freshIdToken.isBlank()) return@withLock DeletionRecoveryResult.NotReady
         try {
-            val state = store.read(account) ?: DeletionRequestState.new(uid).also(store::write)
+            val existing = store.read(account)
+            val state = existing ?: DeletionRequestState.new(uid)
             if (state.account != account || state.jobId != deletionJobId(uid) ||
-                !store.blocksCloud(account) || currentAccount() != account)
+                currentAccount() != account || (existing != null && !store.blocksCloud(account)))
+                return@withLock DeletionRecoveryResult.StateUnknown
+            // Reserve the one device-authenticated recovery slot before transmission.
+            // Another account's slot cannot be replaced; no new journal is written on denial.
+            if (!enrollment.enroll(DeletionRecoveryAnchor(account, state.jobId)) ||
+                currentAccount() != account) return@withLock DeletionRecoveryResult.NotReady
+            if (existing == null) store.write(state)
+            if (!store.blocksCloud(account) || currentAccount() != account)
                 return@withLock DeletionRecoveryResult.StateUnknown
             // Never resubmit an acknowledged job. Recover status using the saved ticket.
             val next = if (state.receipt != null) transport.status(state.jobId, state.statusTicket)
@@ -106,15 +115,19 @@ internal class DeletionRecoveryController(
     /** Explicit recovery after Auth deletion. Caller must provide the selected local account,
      * not discover or enumerate another user's ticket. Never create new state here. */
     suspend fun refresh(account: LocalAccountScope.SignedIn,
-        verifiedEndpoint: Boolean): DeletionRecoveryResult = mutex.withLock {
-        if (!verifiedEndpoint) return@withLock DeletionRecoveryResult.NotReady
+        verifiedEndpoint: Boolean, expectedJobId: String? = null,
+        stillAuthorized: () -> Boolean = { false }): DeletionRecoveryResult = mutex.withLock {
+        if (!verifiedEndpoint || !stillAuthorized()) return@withLock DeletionRecoveryResult.NotReady
         try {
             val state = store.read(account) ?: return@withLock DeletionRecoveryResult.StateUnknown
-            if (state.account != account || !store.blocksCloud(account))
+            if (state.account != account || !store.blocksCloud(account) ||
+                (expectedJobId != null && expectedJobId != state.jobId) || !stillAuthorized())
                 return@withLock DeletionRecoveryResult.StateUnknown
             val next = transport.status(state.jobId, state.statusTicket)
             val accepted = state.accept(next) ?: return@withLock DeletionRecoveryResult.StateUnknown
+            if (!stillAuthorized()) return@withLock DeletionRecoveryResult.StateUnknown
             store.write(accepted)
+            if (!stillAuthorized()) return@withLock DeletionRecoveryResult.StateUnknown
             DeletionRecoveryResult.Confirmed(next)
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { DeletionRecoveryResult.StateUnknown }
