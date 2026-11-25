@@ -7,6 +7,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.FirebaseAuth
+import java.util.concurrent.atomic.AtomicLong
 import com.haebi.petworld.data.account.DeviceDeletionAnchorStore
 import com.haebi.petworld.data.account.DeviceDeletionRecoveryAccess
 import com.haebi.petworld.data.account.LocalAccountScopeResolver
@@ -23,6 +25,16 @@ import kotlinx.coroutines.withContext
 internal class FirebaseDevDeletionDeviceCredential(private val activity: ComponentActivity) {
     private val keyguard = requireNotNull(activity.getSystemService(KeyguardManager::class.java))
     private var pending: CompletableDeferred<Boolean>? = null
+    private val auth = FirebaseAuth.getInstance()
+    private val version = AtomicLong()
+    private var lastUid = auth.currentUser?.uid
+    private val authListener = FirebaseAuth.AuthStateListener { changed ->
+        val uid = changed.currentUser?.uid
+        if (uid != lastUid) {
+            lastUid = uid
+            version.incrementAndGet()
+        }
+    }
     private val launcher = activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val request = pending
         pending = null
@@ -31,8 +43,11 @@ internal class FirebaseDevDeletionDeviceCredential(private val activity: Compone
     }
 
     init {
+        auth.addAuthStateListener(authListener)
         activity.lifecycle.addObserver(LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_DESTROY) {
+                auth.removeAuthStateListener(authListener)
+                version.incrementAndGet()
                 pending?.complete(false)
                 pending = null
             }
@@ -65,6 +80,7 @@ internal class FirebaseDevDeletionDeviceCredential(private val activity: Compone
             anchors = DeviceDeletionAnchorStore(activity),
             confirmDeviceCredential = ::confirm,
             currentScope = { runCatching { LocalAccountScopeResolver.resolve(activity) }.getOrNull() },
+            sessionVersion = version::get,
             foreground = {
                 activity.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) &&
                     keyguard.isDeviceSecure && !keyguard.isDeviceLocked
