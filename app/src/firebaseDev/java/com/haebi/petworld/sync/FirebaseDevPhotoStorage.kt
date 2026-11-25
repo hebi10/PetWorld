@@ -30,7 +30,7 @@ internal class FirebaseDevPhotoStorage(
     private val permission: SyncPermission,
 ) : SyncPhotoStorage {
     private val journal = AccountDeletionJournal(context.applicationContext)
-    private val binding = FirebaseDevAccountSdkSessions.binding()
+    private val binding = FirebaseDevAccountSdkSessions.binding(context.applicationContext)
     private val app = binding.app
 
     init {
