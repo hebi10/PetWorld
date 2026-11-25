@@ -9,6 +9,7 @@
     "@firebase/rules-unit-testing": "6.0.0",
     "firebase": "13.2.0",
     "firebase-tools": "15.35.0",
-    "firebase-admin": "13.10.0"
+    "firebase-admin": "13.10.0",
+    "google-auth-library": "11.3.4"
   }
 }
