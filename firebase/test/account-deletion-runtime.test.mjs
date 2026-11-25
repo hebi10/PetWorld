@@ -34,11 +34,16 @@ test('FB07-C2B: invalid or reordered Admin jobs cannot trigger any deletion',asy
 });
 test('FB07-C2B: uncertain status and expired batch budget are not completion',async()=>{
   let time=0;
+  const retainedJobs=jobs.map(entry=>({...entry,phase:'AUTH_DELETED'}));
   const service={advanceTrusted:async entry=>{
+    assert.deepEqual(Object.keys(entry).sort(),['jobId','uid']);
     time+=1100;
-    return {jobId:entry.jobId,phase:entry.phase,pendingVerification:true};
+    const stored=retainedJobs.find(job=>job.jobId===entry.jobId && job.uid===entry.uid);
+    assert.ok(stored);
+    return {jobId:entry.jobId,phase:stored.phase,pendingVerification:true};
   }};
-  const run=createDeletionBatchRunner({service,readPage:source,now:()=>time});
+  const run=createDeletionBatchRunner({service,readPage:async({after,limit})=>
+    retainedJobs.filter(j=>after===null||j.jobId>after).slice(0,limit),now:()=>time});
   assert.deepEqual(await run({limit:3,budgetMs:1000}),{attempted:1,progressed:0,pending:1,retry:0,nextCursor:jobs[0].jobId});
 });
 
