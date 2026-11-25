@@ -1,0 +1,110 @@
+name: PetWorld design candidate actual captures
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/design-candidate-capture.yml'
+      - 'app/src/androidTestFirebaseDev/java/com/haebi/petworld/DesignAccountCaptureTest.kt'
+      - '.github/scripts/capture-design-account.sh'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: petworld-design-capture-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  capture:
+    if: github.repository == 'hebi10/PetWorld' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'qa/design-capture-20261125'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [debug, firebaseDev]
+    steps:
+      - name: Checkout exact design candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Record source (synthetic fixtures only)
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          mkdir -p qa/design-provenance
+          printf '%s\n' "$EXPECTED_SHA" > qa/design-provenance/source-sha.txt
+          printf '%s\n' "$VARIANT" > qa/design-provenance/variant.txt
+          printf '%s\n' 'Pixel 6 emulator API 35; synthetic local data; not release QA; no real Google login or Firebase server' > qa/design-provenance/scope.txt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - name: Install Android platform
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -path '*/bin/sdkmanager' -type f | head -n 1)"
+          test -n "$SDK_MANAGER"
+          "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install "platforms;android-37.0" "build-tools;36.0.0"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+      - name: Build local debug screenshots
+        if: matrix.variant == 'debug'
+        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+      - name: Prepare synthetic developer config and build
+        if: matrix.variant == 'firebaseDev'
+        run: |
+          python3 scripts/firebase/prepare_android_config.py firebaseDev
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('app/src/firebaseDev/google-services.json')
+          d = json.loads(p.read_text(encoding='utf-8'))
+          d['client'][0]['oauth_client'] = [{'client_type': 3, 'client_id': 'ci-only-web-client.example'}]
+          p.write_text(json.dumps(d), encoding='utf-8')
+          PY
+          test ! -e app/src/release/google-services.json
+          ./gradlew :app:assembleFirebaseDev :app:assembleFirebaseDevAndroidTest --no-daemon --stacktrace
+      - name: Enable KVM
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Capture real Android local screens
+        if: matrix.variant == 'debug'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: bash .github/scripts/capture-petworld-ui.sh
+      - name: Capture real developer guest account screen (no login)
+        if: matrix.variant == 'firebaseDev'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: bash .github/scripts/capture-design-account.sh
+      - name: Upload only screenshot evidence and provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: petworld-design-actual-${{ matrix.variant }}-${{ github.run_id }}
+          path: |
+            qa/captures/screenshots/**/*.png
+            qa/design-account/**/*.png
+            qa/design-provenance/
+          if-no-files-found: warn
+          retention-days: 90
