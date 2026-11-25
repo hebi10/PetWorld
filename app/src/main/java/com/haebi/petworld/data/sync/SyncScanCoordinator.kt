@@ -54,9 +54,10 @@ internal class SyncScanCoordinator(
     private val account: LocalAccountScope.SignedIn,
     private val source: SyncPageSource,
     private val permission: SyncPermission = SyncPermission { false },
+    photos: SyncPhotoTransfer? = null,
 ) {
     private val scan = db.syncScanDao()
-    private val receiver = SyncReceiver(db, account, permission)
+    private val receiver = SyncReceiver(db, account, permission, photos)
     private suspend fun checkPermission() {
         if (!permission.permits(account)) throw SyncReceiveDenied()
     }

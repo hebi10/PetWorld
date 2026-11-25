@@ -22,6 +22,7 @@ import com.haebi.petworld.data.sync.SyncPageSource
 import com.haebi.petworld.data.sync.SyncScanCoordinator
 import com.haebi.petworld.data.sync.ScanStep
 import com.haebi.petworld.data.sync.SyncPermission
+import com.haebi.petworld.data.sync.SyncPhotoTransfer
 import com.haebi.petworld.data.sync.SyncSender
 import com.haebi.petworld.data.sync.SyncSessionGate
 import com.haebi.petworld.data.sync.SyncWorkLease
@@ -108,10 +109,11 @@ class FirebaseDevSyncWorker(
         return try {
             val db = PetWorldDatabase.get(app, account)
             val reader = FirebaseDevRemoteReader(app, permission)
+            val photos = SyncPhotoTransfer(app, db, account, FirebaseDevPhotoStorage(app, account, permission), permission)
             val sender = SyncSender(db, FirebaseDevSyncTransport(app, permission), permission)
             val preparer = SyncBaselinePreparer(db, account,
                 SyncDocumentSource { scope, kind, pet, id -> reader.readDocument(scope, kind, pet, id) },
-                permission)
+                permission, photos)
             val outcome = drainSyncBatch(allowed = { allowed() }, next = { preparer.next(sender) })
             if (!allowed() || outcome == SyncBatchOutcome.PAUSED) return Result.success()
             if (outcome == SyncBatchOutcome.RETRY || outcome == SyncBatchOutcome.MORE_WORK) {
@@ -120,7 +122,7 @@ class FirebaseDevSyncWorker(
             // Receiving may continue while the FIFO sender is blocked; never skip a conflicted send.
             val scan = SyncScanCoordinator(db, account,
                 SyncPageSource { scope, parent, after, limit -> reader.readPage(scope, parent, after, limit) },
-                permission)
+                permission, photos)
             repeat(10) {
                 if (!allowed()) return Result.success()
                 if (scan.step() == ScanStep.COMPLETE) return Result.success()

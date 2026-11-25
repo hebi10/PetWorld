@@ -9,8 +9,10 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.haebi.petworld.data.PetPhotoStore
 import com.haebi.petworld.data.MAX_PHOTO_EDGE
+import com.haebi.petworld.data.copyPhotoWithinLimit
 import com.haebi.petworld.data.account.LocalAccountScope
 import com.haebi.petworld.data.room.PetWorldDatabase
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
@@ -51,19 +53,39 @@ interface SyncPhotoDao {
 
 internal data class PhotoEvidence(val sha256: String, val sizeBytes: Long, val width: Int, val height: Int)
 
-internal suspend fun inspectCloudJpeg(file: File): PhotoEvidence = withContext(Dispatchers.IO) {
-    require(file.isFile && file.length() in 1L..CLOUD_PHOTO_MAX_BYTES)
-    val bytes = file.readBytes()
-    require(bytes.size.toLong() in 1L..CLOUD_PHOTO_MAX_BYTES && bytes.size.toLong() == file.length())
+internal const val CLOUD_PHOTO_MIME = "image/jpeg"
+
+internal data class VerifiedPhoto(val bytes: ByteArray, val evidence: PhotoEvidence)
+
+internal suspend fun readCloudJpeg(file: File): VerifiedPhoto = withContext(Dispatchers.IO) {
+    val length = file.length()
+    require(file.isFile && length in 1L..CLOUD_PHOTO_MAX_BYTES)
+    val bytes = ByteArrayOutputStream(length.toInt()).use { output ->
+        file.inputStream().use { copyPhotoWithinLimit(it, output, CLOUD_PHOTO_MAX_BYTES) }
+        output.toByteArray()
+    }
+    require(bytes.size.toLong() == length)
+    VerifiedPhoto(bytes, cloudJpegEvidence(bytes))
+}
+
+internal suspend fun inspectCloudJpeg(file: File): PhotoEvidence = readCloudJpeg(file).evidence
+
+internal fun cloudJpegEvidence(bytes: ByteArray): PhotoEvidence {
+    require(bytes.size.toLong() in 1L..CLOUD_PHOTO_MAX_BYTES)
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-    require(bounds.outMimeType == "image/jpeg" &&
+    require(bounds.outMimeType == CLOUD_PHOTO_MIME &&
         bounds.outWidth in 1..MAX_PHOTO_EDGE && bounds.outHeight in 1..MAX_PHOTO_EDGE)
-    val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-        ?: error("Invalid JPEG data")
+    val decoded = requireNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size)) {
+        "Invalid JPEG data"
+    }
     decoded.recycle()
-    PhotoEvidence(photoSha256(bytes), bytes.size.toLong(), bounds.outWidth, bounds.outHeight)
+    return PhotoEvidence(photoSha256(bytes), bytes.size.toLong(), bounds.outWidth, bounds.outHeight)
 }
+
+internal fun SyncPhotoEntry.matches(evidence: PhotoEvidence): Boolean =
+    sha256 == evidence.sha256 && sizeBytes == evidence.sizeBytes &&
+        width == evidence.width && height == evidence.height
 
 /**
  * Record before and after photo identity in the same Room transaction as the domain

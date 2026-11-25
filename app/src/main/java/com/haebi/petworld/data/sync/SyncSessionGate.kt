@@ -60,7 +60,7 @@ internal suspend fun drainSyncBatch(
             SyncDispatch.Idle -> return SyncBatchOutcome.DRAINED
             SyncDispatch.Paused -> return SyncBatchOutcome.PAUSED
             SyncDispatch.WaitingBaseline -> return SyncBatchOutcome.WAITING_BASELINE
-            SyncDispatch.Blocked -> return SyncBatchOutcome.BLOCKED
+            SyncDispatch.Blocked, SyncDispatch.WaitingPhoto -> return SyncBatchOutcome.BLOCKED
             SyncDispatch.Conflict -> return SyncBatchOutcome.CONFLICT
             is SyncDispatch.Retry -> return SyncBatchOutcome.RETRY
             SyncDispatch.Acknowledged -> Unit

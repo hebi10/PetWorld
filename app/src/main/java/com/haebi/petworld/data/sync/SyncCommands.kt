@@ -22,6 +22,8 @@ internal data class SyncCommand(
     val requestDigest: String,
 ) {
     val resultingRevision: Long get() = expectedRevision + 1
+    val changesPhoto: Boolean get() =
+        previous?.get("photoFile") != next["photoFile"].takeUnless { operation == "DELETE" }
     fun receipt(): Map<String, Any?> = mapOf(
         "opId" to opId, "entityKind" to entityKind, "petId" to petId,
         "entityId" to entityId, "operation" to operation,
@@ -67,7 +69,11 @@ internal fun decideSyncCommit(
 internal object SyncCommands {
     private val opIdPattern = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
-    fun from(entry: SyncOutboxEntry): SyncCommand {
+    fun from(entry: SyncOutboxEntry): SyncCommand = forBaseline(entry).also {
+        if (it.changesPhoto) throw SyncPhotoPending()
+    }
+
+    fun forBaseline(entry: SyncOutboxEntry): SyncCommand {
         require(entry.accountKey.matches(Regex("[0-9a-f]{64}")) && opIdPattern.matches(entry.opId))
         require(validId(entry.petId) && validId(entry.entityId))
         require(entry.entityKind in setOf("PET", "CARE"))
@@ -87,8 +93,6 @@ internal object SyncCommands {
             require(before["createdAtMs"] == after["createdAtMs"])
             require(before["type"] == after["type"])
         }
-        // File bytes and their retention are not yet synchronized (FB-06).
-        if (before?.get("photoFile") != after?.get("photoFile")) throw SyncPhotoPending()
         val previous = before?.plus("revision" to revision)
         val next = (after ?: requireNotNull(before)).toMutableMap().apply {
             put("revision", revision + 1)

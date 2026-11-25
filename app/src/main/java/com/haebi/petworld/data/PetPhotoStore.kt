@@ -9,6 +9,9 @@ import android.graphics.Matrix
 import android.media.ExifInterface
 import android.net.Uri
 import android.provider.OpenableColumns
+import com.haebi.petworld.data.sync.cloudJpegEvidence
+import com.haebi.petworld.data.sync.readCloudJpeg
+import com.haebi.petworld.data.sync.validCloudPhotoName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -171,20 +174,16 @@ class PetPhotoStore(
     internal suspend fun installVerifiedJpeg(name: String, bytes: ByteArray, expectedSha256: String): Boolean =
         withContext(Dispatchers.IO) {
             require(scope is LocalAccountScope.SignedIn) { "Cloud photo installation requires account storage" }
-            require(com.haebi.petworld.data.sync.validCloudPhotoName(name))
-            require(bytes.size.toLong() in 1L..com.haebi.petworld.data.sync.CLOUD_PHOTO_MAX_BYTES)
-            require(com.haebi.petworld.data.sync.photoSha256(bytes) == expectedSha256)
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-            require(bounds.outMimeType == "image/jpeg" &&
-                bounds.outWidth in 1..MAX_PHOTO_EDGE && bounds.outHeight in 1..MAX_PHOTO_EDGE)
-            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                ?: error("Cloud JPEG is not decodable")
-            bitmap.recycle()
+            require(validCloudPhotoName(name))
+            val evidence = cloudJpegEvidence(bytes)
+            require(evidence.sha256 == expectedSha256)
             val target = requireNotNull(fileFor(name))
             if (target.exists()) {
-                return@withContext target.isFile && target.length() == bytes.size.toLong() &&
-                    com.haebi.petworld.data.sync.photoSha256(target.readBytes()) == expectedSha256
+                return@withContext try {
+                    readCloudJpeg(target).evidence == evidence
+                } catch (_: IllegalArgumentException) {
+                    false
+                }
             }
             val pending = File.createTempFile(".pet-download-", ".tmp", directory)
             try {
