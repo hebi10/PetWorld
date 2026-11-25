@@ -1,0 +1,77 @@
+name: PetWorld focused responsive design review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/primary-tabs-responsive-design-qa.yml'
+      - '.github/scripts/capture-primary-tabs-responsive.sh'
+      - 'app/src/androidTest/java/com/haebi/petworld/PetWorldPrimaryResponsiveDesignTest.kt'
+
+permissions:
+  contents: read
+concurrency:
+  group: pw-responsive-design-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  responsive:
+    if: github.repository == 'hebi10/PetWorld' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'qa/pw-mono2-responsive-20261125'
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mode: compact
+            profile: pixel_6
+          - mode: foldable
+            profile: pixel_fold
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - name: Install Android platform
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -path '*/bin/sdkmanager' -type f | head -n 1)"
+          test -n "$SDK_MANAGER"
+          "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install "platforms;android-37.0" "build-tools;36.0.0"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+      - name: Build debug and focused instrumentation
+        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+      - name: Enable KVM
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Capture actual Android responsive states
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: ${{ matrix.profile }}
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: bash .github/scripts/capture-primary-tabs-responsive.sh ${{ matrix.mode }}
+      - name: Upload screen and configuration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pw-mono2-responsive-${{ matrix.mode }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            qa/primary-responsive/screenshots/**/*.png
+            qa/primary-responsive/screenshots/**/*.txt
+            qa/primary-responsive/provenance/
+          if-no-files-found: warn
+          retention-days: 90
