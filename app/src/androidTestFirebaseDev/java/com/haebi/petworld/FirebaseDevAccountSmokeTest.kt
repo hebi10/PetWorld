@@ -10,6 +10,7 @@ import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.Until
 import com.haebi.petworld.auth.PetWorldAccountActivity
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -33,6 +34,9 @@ class FirebaseDevAccountSmokeTest {
             }
             assertVisibleByScrolling("이 기기의 기록")
             assertVisibleByScrolling("Google 계정으로 시작")
+            assertVisibleByScrolling("로그인 없이 사용")
+            assertFalse("비회원에게 계정 삭제 진입 버튼이 표시되면 안 됩니다",
+                device.hasObject(By.text("계정 삭제")))
         }
     }
 }
