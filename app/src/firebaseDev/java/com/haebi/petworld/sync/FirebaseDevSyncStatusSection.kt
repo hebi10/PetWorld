@@ -22,6 +22,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.account.CloudWorkKind
+import com.haebi.petworld.auth.FirebaseDevCloudWork
 import com.haebi.petworld.data.room.PetWorldDatabase
 import com.haebi.petworld.data.sync.SyncConflictReview
 import com.haebi.petworld.data.sync.SyncDocumentSource
@@ -170,7 +172,13 @@ internal fun FirebaseDevSyncStatusSection(account: LocalAccountScope.SignedIn) {
                     if (!FirebaseDevSyncWork.allowed(app, current, account)) return@PetPrimaryButton
                     applying = true
                     scope.launch {
+                        val permit = FirebaseDevCloudWork.tracker.tryBegin(account, CloudWorkKind.SYNC_REVIEW)
+                        if (permit == null) {
+                            applying = false
+                            return@launch
+                        }
                         try {
+                            if (!FirebaseDevSyncWork.allowed(app, current, account)) return@launch
                             val permission = SyncPermission { candidate ->
                                 candidate == account && FirebaseDevSyncWork.allowed(app, current, account)
                             }
@@ -189,6 +197,7 @@ internal fun FirebaseDevSyncStatusSection(account: LocalAccountScope.SignedIn) {
                             feedback = "서버 기록 적용 결과를 확인하지 못했습니다. 상태를 새로고침해 주세요."
                             selected = null
                         } finally {
+                            permit.close()
                             applying = false
                         }
                     }
