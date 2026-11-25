@@ -88,6 +88,7 @@ class PetWorldPrimaryTabsDesignTest {
                     capture(folder, "D04-statistics-more")
 
                     tap("더보기")
+                    assertMoreHeadingAtTop()
                     see("프로필 관리")
                     see("화면 설정")
                     capture(folder, "D05-more")
@@ -156,6 +157,18 @@ class PetWorldPrimaryTabsDesignTest {
             if (device.wait(Until.hasObject(By.textContains(value)), 2000)) return
         }
         error("Visible screen text missing: $value")
+    }
+    private fun assertMoreHeadingAtTop() {
+        repeat(8) {
+            recover()
+            device.waitForIdle()
+            if (device.findObjects(By.text("더보기")).any { node ->
+                val bounds = node.visibleBounds
+                bounds.height() > 0 && bounds.top < device.displayHeight / 3
+            }) return
+            Thread.sleep(300)
+        }
+        error("More heading is not visible at the top after switching tabs")
     }
     private fun ensure(value: String) {
         for (down in listOf(true,false)) repeat(8) {

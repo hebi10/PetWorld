@@ -514,7 +514,9 @@ fun PetWorldApp(
                             )
                         }
                     } else Column(
-                        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                        modifier = Modifier.fillMaxSize().verticalScroll(
+                            key(tab, current.id) { rememberScrollState() }
+                        )
                             .padding(horizontal = PetSpacing.large,
                                 vertical = if (tab == PrimaryTab.HOME && fontScale < 1.3f) PetSpacing.small else PetSpacing.large),
                         verticalArrangement = Arrangement.spacedBy(
