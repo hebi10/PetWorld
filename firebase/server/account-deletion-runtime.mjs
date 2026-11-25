@@ -49,14 +49,13 @@ export function createDeletionBatchRunner({service, readPage, now = Date.now} = 
   };
 }
 
-/** No listener, schedule registration or environment-variable activation.
- * A later separately approved trusted bootstrap must provide admission, retention
- * auditing, bounded worker runtime (< lease), durable scheduling/cursor storage.
- */
-export async function prepareDeletionRuntime({app,readiness,retentionAudit,admit,now=Date.now} = {}) {
+/** Shared server-only gate; never derive readiness from a request or event. */
+function requireRuntimeReadiness(readiness) {
   if (readiness?.httpAdmissionVerified !== true || readiness?.schedulerVerified !== true ||
-      readiness?.sdkCachePolicyVerified !== true || typeof admit !== 'function') throw new DeletionDenied();
-  const service=await createFirebaseDeletionService({app,readiness,retentionAudit,now});
+      readiness?.sdkCachePolicyVerified !== true) throw new DeletionDenied();
+}
+
+async function prepareTrustedBatch({app,service,now}) {
   const {getFirestore,FieldPath}=await import('firebase-admin/firestore');
   const db=getFirestore(app);
   const readPage=async ({after,limit})=>{
@@ -70,8 +69,23 @@ export async function prepareDeletionRuntime({app,readiness,retentionAudit,admit
       return {uid:row.uid,jobId:row.jobId,phase:row.phase};
     });
   };
+  return createDeletionBatchRunner({service,readPage,now});
+}
+
+/** No listener, schedule registration or environment-variable activation. */
+export async function prepareDeletionRuntime({app,readiness,retentionAudit,admit,now=Date.now} = {}) {
+  requireRuntimeReadiness(readiness);
+  if (typeof admit !== 'function') throw new DeletionDenied();
+  const service=await createFirebaseDeletionService({app,readiness,retentionAudit,now});
   return Object.freeze({
     handleHttp:createAccountDeletionHttpHandler({service,admit}),
-    runTrustedBatch:createDeletionBatchRunner({service,readPage,now}),
+    runTrustedBatch:await prepareTrustedBatch({app,service,now}),
   });
+}
+
+/** Separate private worker initialization: no HTTP server, TLS key or public route. */
+export async function prepareDeletionWorkerRuntime({app,readiness,retentionAudit,now=Date.now} = {}) {
+  requireRuntimeReadiness(readiness);
+  const service=await createFirebaseDeletionService({app,readiness,retentionAudit,now});
+  return prepareTrustedBatch({app,service,now});
 }
