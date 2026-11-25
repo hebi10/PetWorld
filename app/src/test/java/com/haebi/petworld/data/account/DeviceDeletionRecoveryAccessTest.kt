@@ -155,6 +155,59 @@ class DeviceDeletionRecoveryAccessTest {
         assertEquals(AccountDeletionPhase.COMPLETE,env.journal.read(account)?.receipt?.phase)
     }
 
+    @Test fun savedRecoveryIsCredentialProtectedAndDoesNotUseTransport() = runBlocking {
+        val env = Env()
+        assertTrue(env.submit() is DeletionRecoveryResult.Confirmed)
+        env.guest()
+        assertEquals(AccountDeletionStatusView.Saved(AccountDeletionPhase.LOCKED),
+            env.access.readSaved(env.journal))
+        assertEquals(1,env.requests)
+        assertEquals(0,env.statuses)
+        val reads = env.anchors.reads
+        env.allowCredential = false
+        assertEquals(AccountDeletionStatusView.Unknown,env.access.readSaved(env.journal))
+        assertEquals(reads,env.anchors.reads)
+        env.allowCredential = true
+        env.scope = other
+        env.version++
+        assertEquals(AccountDeletionStatusView.Unknown,env.access.readSaved(env.journal))
+        assertEquals(reads,env.anchors.reads)
+    }
+
+    @Test fun savedRecoveryRejectsMismatchedJobMissingReceiptAndCorruptAnchor() = runBlocking {
+        val env = Env()
+        env.guest()
+        env.anchors.row = DeletionRecoveryAnchor(account,deletionJobId(uid))
+        assertEquals(AccountDeletionStatusView.Unknown,env.access.readSaved(env.journal))
+        env.journal.write(DeletionRequestState.new(uid))
+        assertEquals(AccountDeletionStatusView.Unknown,env.access.readSaved(env.journal))
+        val state = requireNotNull(env.journal.read(account))
+        env.journal.write(requireNotNull(state.accept(
+            requireNotNull(AccountDeletionReceipt.fromServer(state.jobId,"COMPLETE")))))
+        env.anchors.row = DeletionRecoveryAnchor(account,"b".repeat(64))
+        assertEquals(AccountDeletionStatusView.Unknown,env.access.readSaved(env.journal))
+        env.anchors.row = DeletionRecoveryAnchor(account,state.jobId)
+        env.anchors.broken = true
+        assertEquals(AccountDeletionStatusView.Unknown,env.access.readSaved(env.journal))
+        assertEquals(0,env.requests)
+        assertEquals(0,env.statuses)
+    }
+
+    @Test fun savedRecoveryRejectsSessionChangeWhileReadingJournal() = runBlocking {
+        val env = Env()
+        assertTrue(env.submit() is DeletionRecoveryResult.Confirmed)
+        env.guest()
+        val changed = object : DeletionStateStore by env.journal {
+            override fun read(account: LocalAccountScope.SignedIn): DeletionRequestState? {
+                val row = env.journal.read(account)
+                env.version += 2
+                return row
+            }
+        }
+        assertEquals(AccountDeletionStatusView.Unknown,env.access.readSaved(changed))
+        assertEquals(0,env.statuses)
+    }
+
     @Test fun sharedSdkCacheAndIncompleteDrainNeverAuthorizeLocalCleanup() {
         val complete = AccountDeletionQuiescenceEvidence(account,LocalAccountScope.Guest,
             newCloudWorkBlocked=true,syncWorkerDrained=true,firstImportDrained=true,
