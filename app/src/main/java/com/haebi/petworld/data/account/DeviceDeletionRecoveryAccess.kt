@@ -34,20 +34,22 @@ internal class DeviceDeletionRecoveryAccess(
     private val confirmDeviceCredential: suspend () -> Boolean,
     private val currentScope: () -> LocalAccountScope?,
     private val foreground: () -> Boolean,
+    private val sessionVersion: () -> Long,
 ) : DeletionRecoveryEnrollment {
     private val gate = Mutex()
 
-    private fun allowed(scope: LocalAccountScope): Boolean =
-        foreground() && currentScope() == scope
+    private fun allowed(scope: LocalAccountScope, version: Long): Boolean =
+        foreground() && sessionVersion() == version && currentScope() == scope
 
     override suspend fun enroll(anchor: DeletionRecoveryAnchor): Boolean = gate.withLock {
         try {
-            if (!allowed(anchor.account) || !confirmDeviceCredential() || !allowed(anchor.account))
+            val version = sessionVersion()
+            if (!allowed(anchor.account, version) || !confirmDeviceCredential() || !allowed(anchor.account, version))
                 return@withLock false
             val old = anchors.read()
             if (old != null && old != anchor) return@withLock false
-            allowed(anchor.account) && anchors.retain(anchor) &&
-                anchors.read() == anchor && allowed(anchor.account)
+            allowed(anchor.account, version) && anchors.retain(anchor) &&
+                anchors.read() == anchor && allowed(anchor.account, version)
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { false }
     }
@@ -58,15 +60,16 @@ internal class DeviceDeletionRecoveryAccess(
     ): AccountDeletionStatusView {
         val guest = LocalAccountScope.Guest
         return try {
+            val version = sessionVersion()
             // Release the enrollment mutex before acquiring the controller mutex.
             // Enrollment is immutable; no other account can replace the selected slot.
             val anchor = gate.withLock {
-                if (!verifiedEndpoint || !allowed(guest) ||
-                    !confirmDeviceCredential() || !allowed(guest)) return@withLock null
-                anchors.read()?.takeIf { allowed(guest) }
+                if (!verifiedEndpoint || !allowed(guest, version) ||
+                    !confirmDeviceCredential() || !allowed(guest, version)) return@withLock null
+                anchors.read()?.takeIf { allowed(guest, version) }
             } ?: return AccountDeletionStatusView.Unknown
-            val result = recovery.refresh(anchor.account, verifiedEndpoint, anchor.jobId) { allowed(guest) }
-            if (!allowed(guest)) return AccountDeletionStatusView.Unknown
+            val result = recovery.refresh(anchor.account, verifiedEndpoint, anchor.jobId) { allowed(guest, version) }
+            if (!allowed(guest, version)) return AccountDeletionStatusView.Unknown
             if (result is DeletionRecoveryResult.Confirmed)
                 AccountDeletionStatusView.Saved(result.receipt.phase)
             else AccountDeletionStatusView.Unknown
