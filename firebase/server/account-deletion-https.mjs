@@ -1,6 +1,8 @@
 import {createServer} from 'node:https';
 import {DeletionDenied} from './account-deletion.mjs';
 import {prepareDeletionRuntime} from './account-deletion-runtime.mjs';
+import {prepareExistingGoogleWebDeletion} from './account-deletion-web-identity.mjs';
+import {WEB_AUTH_PATH,createWebExistingAuthHandler} from './account-deletion-web-http.mjs';
 import {createDeletionRateLimiter,createDevDeletionAdmission} from './account-deletion-admission.mjs';
 
 const paths = new Set(['/account-deletion/request','/account-deletion/status']);
@@ -57,14 +59,14 @@ function reject(res,statusCode,code,extra) {
  * no public worker route, no chunked/compressed body, no credential logging.
  * Fixed-length requests match the Android HTTPS adapter.
  */
-export function createDeletionTlsListener({origin,handleHttp} = {}) {
+export function createDeletionTlsListener({origin,handleHttp,webAuthEnabled=false} = {}) {
   const host = reviewedHost(origin);
   if (typeof handleHttp !== 'function') throw new DeletionDenied();
   return async (req,res) => {
     let rawBody;
     try {
       if (req.socket?.encrypted !== true) return reject(res,403,'DENIED');
-      if (!paths.has(req.url)) return reject(res,404,'NOT_FOUND');
+      if (!paths.has(req.url) && !(webAuthEnabled===true&&req.url===WEB_AUTH_PATH)) return reject(res,404,'NOT_FOUND');
       if (req.method !== 'POST') return reject(res,405,'METHOD_NOT_ALLOWED',{Allow:'POST'});
       const headers = readHeaders(req.rawHeaders);
       if (!headers || (headers.host !== host && headers.host !== host+':443') ||
@@ -110,7 +112,7 @@ export function createDeletionTlsListener({origin,handleHttp} = {}) {
  * Scheduled worker registration stays internal and is a separate step.
  */
 export async function prepareDevDeletionHttpsServer({
-  app,readiness,retentionAudit,origin,appIds,webAppIds=[],requestLimit,statusLimit,tls,now=Date.now,
+  app,readiness,retentionAudit,origin,appIds,webAppIds=[],webGoogleClientId,requestLimit,statusLimit,tls,now=Date.now,
 } = {}) {
   reviewedHost(origin);
   if (app?.options?.projectId !== 'petworld-dev' ||
@@ -131,7 +133,12 @@ export async function prepareDevDeletionHttpsServer({
   const take = createDeletionRateLimiter({db:getFirestore(app),appIds,webAppIds,requestLimit,statusLimit,now});
   const admit = createDevDeletionAdmission({appCheck:getAppCheck(app),appIds,webAppIds,webOrigin:origin,take});
   const runtime = await prepareDeletionRuntime({app,readiness,retentionAudit,admit,now});
-  const listener = createDeletionTlsListener({origin,handleHttp:runtime.handleHttp});
+  const webService=webAppIds.length?await prepareExistingGoogleWebDeletion({
+    app,readiness,clientId:webGoogleClientId,retentionAudit,now,
+  }):null;
+  const handleHttp=webService?createWebExistingAuthHandler({service:webService,admit,
+    fallback:runtime.handleHttp}):runtime.handleHttp;
+  const listener = createDeletionTlsListener({origin,handleHttp,webAuthEnabled:!!webService});
   const server = createServer({
     key:tls.key,cert:tls.cert,minVersion:'TLSv1.2',
     maxHeaderSize:24*1024,headersTimeout:5000,requestTimeout:10000,
