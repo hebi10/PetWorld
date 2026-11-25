@@ -10,12 +10,56 @@ import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.Until
 import com.haebi.petworld.auth.PetWorldAccountActivity
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
+import com.google.android.gms.tasks.TaskCompletionSource
+import com.haebi.petworld.auth.awaitTrackedFirebaseTask
+import com.haebi.petworld.data.account.AccountCloudWorkTracker
+import com.haebi.petworld.data.account.LocalAccountScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertFalse
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class FirebaseDevAccountSmokeTest {
+    @Test
+    fun sdkTaskCompletionNotCoroutineCancellationReleasesDrainPermit() = runBlocking {
+        val tracker = AccountCloudWorkTracker()
+        val account = LocalAccountScope.fromFirebaseUid("synthetic-qa") as LocalAccountScope.SignedIn
+        val source = TaskCompletionSource<String>()
+        val waiting = launch(start = CoroutineStart.UNDISPATCHED) {
+            awaitTrackedFirebaseTask(account, tracker, permitted = { true }) { source.task }
+        }
+        assertEquals(1, tracker.snapshot(account).sdkTasks)
+        tracker.blockNewWork(account)
+        waiting.cancelAndJoin()
+        assertEquals(1, tracker.snapshot(account).sdkTasks)
+        assertFalse(tracker.awaitDrained(account, 20))
+        source.setResult("synthetic-completion")
+        assertTrue(tracker.awaitDrained(account, 1000))
+        assertEquals(0, tracker.snapshot(account).sdkTasks)
+    }
+
+    @Test
+    fun sdkTaskBlockedAccountNeverInvokesTaskFactory() = runBlocking {
+        val tracker = AccountCloudWorkTracker()
+        val account = LocalAccountScope.fromFirebaseUid("blocked-qa") as LocalAccountScope.SignedIn
+        tracker.blockNewWork(account)
+        var starts = 0
+        val result = runCatching {
+            awaitTrackedFirebaseTask(account, tracker, permitted = { true }) {
+                starts++
+                TaskCompletionSource<String>().task
+            }
+        }
+        assertTrue(result.isFailure)
+        assertEquals(0, starts)
+        assertTrue(tracker.snapshot(account).drained)
+    }
+
     @Test
     fun accountScreenShowsGuestAndLocalOnlyStatusWithoutStartingGoogleLogin() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
