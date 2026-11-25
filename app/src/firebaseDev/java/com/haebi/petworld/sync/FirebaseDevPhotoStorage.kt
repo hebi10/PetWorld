@@ -2,20 +2,17 @@ package com.haebi.petworld.sync
 
 import android.content.Context
 import com.google.android.gms.tasks.Task
-import com.google.firebase.FirebaseApp
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
 import com.haebi.petworld.data.sync.PhotoEvidence
 import com.haebi.petworld.data.sync.SyncPhotoProof
 import com.haebi.petworld.data.migration.FirstImportPayloads
-import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageException
 import com.google.firebase.storage.StorageMetadata
 import com.google.firebase.storage.StorageReference
 import com.haebi.petworld.data.account.LocalAccountScope
 import com.haebi.petworld.data.account.AccountDeletionJournal
 import com.haebi.petworld.auth.awaitTrackedFirebaseTask
+import com.haebi.petworld.auth.FirebaseDevAccountSdkSessions
 import com.haebi.petworld.data.sync.CLOUD_PHOTO_MAX_BYTES
 import com.haebi.petworld.data.sync.CLOUD_PHOTO_MIME
 import com.haebi.petworld.data.sync.RemotePhotoMetadata
@@ -33,8 +30,8 @@ internal class FirebaseDevPhotoStorage(
     private val permission: SyncPermission,
 ) : SyncPhotoStorage {
     private val journal = AccountDeletionJournal(context.applicationContext)
-    private val app = FirebaseApp.getInstance()
-    private val auth = FirebaseAuth.getInstance(app)
+    private val binding = FirebaseDevAccountSdkSessions.binding(context.applicationContext)
+    private val app = binding.app
 
     init {
         check(context.applicationContext.packageName == "com.haebi.petworld.dev")
@@ -46,7 +43,7 @@ internal class FirebaseDevPhotoStorage(
             val uid = currentUid() ?: throw SyncReceiveDenied()
             val metadata = sdk(uid) { ref.metadata }
             if (!permission.permits(account)) throw SyncReceiveDenied()
-            val manifest = sdk(uid) { FirebaseFirestore.getInstance(app).collection("users").document(uid)
+            val manifest = sdk(uid) { binding.firestore.collection("users").document(uid)
                 .collection("pets").document(key.petId).collection("photoManifests").document(key.fileName)
                 .get(Source.SERVER) }
             if (currentUid() != uid || !permission.permits(account)) throw SyncReceiveDenied()
@@ -96,7 +93,7 @@ internal class FirebaseDevPhotoStorage(
         if (!permission.permits(account) || currentUid() != uid) throw SyncReceiveDenied()
         if (app.options.storageBucket.isNullOrBlank()) throw SyncPhotoRejected()
         val path = "users/$uid/pets/${key.petId}/photos/${key.fileName}"
-        val ref = FirebaseStorage.getInstance(app).reference.child(path)
+        val ref = binding.storage.reference.child(path)
         return try {
             action(ref)
         } catch (failure: StorageException) {
@@ -112,9 +109,7 @@ internal class FirebaseDevPhotoStorage(
     }
 
     private fun currentUid(): String? {
-        val user = auth.currentUser ?: return null
-        if (user.isAnonymous || user.providerData.none { it.providerId == "google.com" }) return null
-        return user.uid.takeIf { validSyncPathId(it) && LocalAccountScope.fromFirebaseUid(it) == account }
+        return binding.currentUid(account)?.takeIf(::validSyncPathId)
     }
     private suspend fun <T> sdk(uid: String, cancelStorage: Boolean = false, start: () -> Task<T>): T {
         if (!permission.permits(account)) throw SyncReceiveDenied()

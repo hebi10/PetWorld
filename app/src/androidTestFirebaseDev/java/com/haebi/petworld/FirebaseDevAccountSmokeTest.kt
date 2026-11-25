@@ -18,6 +18,15 @@ import org.junit.Assert.assertEquals
 import com.google.android.gms.tasks.TaskCompletionSource
 import com.haebi.petworld.auth.awaitTrackedFirebaseTask
 import com.haebi.petworld.data.account.AccountCloudWorkTracker
+import com.haebi.petworld.data.account.AccountSdkRouteJournal
+import com.haebi.petworld.data.account.AccountCacheTransitionEvidence
+import com.haebi.petworld.data.account.accountMemoryAppName
+import com.haebi.petworld.auth.FirebaseDevAccountSdkSessions
+import com.google.firebase.FirebaseApp
+import com.google.firebase.firestore.FirebaseFirestore
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotSame
+import java.util.UUID
 import com.haebi.petworld.data.account.LocalAccountScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.cancelAndJoin
@@ -29,6 +38,48 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class FirebaseDevAccountSmokeTest {
+    @Test
+    fun retainedRouteMarkerSurvivesNewJournalInstanceWithoutBlockingOtherAccount() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val a = LocalAccountScope.fromFirebaseUid("route-qa-" + UUID.randomUUID()) as LocalAccountScope.SignedIn
+        val b = LocalAccountScope.fromFirebaseUid("route-qa-other-" + UUID.randomUUID()) as LocalAccountScope.SignedIn
+        val journal = AccountSdkRouteJournal(context)
+        assertTrue(journal.permitsLegacy(a))
+        assertTrue(journal.retain(a))
+        assertTrue(journal.retain(a))
+        val restarted = AccountSdkRouteJournal(context)
+        assertFalse(restarted.permitsLegacy(a))
+        assertTrue(restarted.permitsLegacy(b))
+        assertTrue(restarted.retain(b))
+        assertFalse(restarted.permitsLegacy(b))
+    }
+
+    @Test
+    fun namedSdkSettingsDoNotChangeDefaultAndUnreviewedSessionCannotOpen() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val account = LocalAccountScope.fromFirebaseUid("named-qa-" + UUID.randomUUID()) as LocalAccountScope.SignedIn
+        val primary = FirebaseApp.getInstance()
+        val named = FirebaseApp.initializeApp(context, primary.options, accountMemoryAppName(account))
+        try {
+            val defaultClient = FirebaseFirestore.getInstance(primary)
+            val originalSettings = defaultClient.firestoreSettings
+            val client = FirebaseFirestore.getInstance(named)
+            client.firestoreSettings = FirebaseDevAccountMemoryCache.settings(client.firestoreSettings)
+            assertNotSame(defaultClient,client)
+            assertEquals(named.name,client.app.name)
+            assertTrue(client.firestoreSettings.cacheSettings is MemoryCacheSettings)
+            assertEquals(originalSettings,defaultClient.firestoreSettings)
+            assertNull(FirebaseDevAccountSdkSessions.open(
+                context,account,named,AccountCacheTransitionEvidence(account)))
+            assertTrue(AccountSdkRouteJournal(context).permitsLegacy(account))
+        } finally {
+            // Do not delete a named FirebaseApp while Auth internal callbacks can
+            // still resolve it. This unused fixture lives only in the QA process.
+            // No authenticated user or cloud data was created.
+        }
+    }
+
+
     @Test
     fun isolatedMemorySettingsDoNotModifyLegacyPersistentSettings() {
         val legacy = FirebaseFirestoreSettings.Builder()
@@ -85,13 +136,27 @@ class FirebaseDevAccountSmokeTest {
         device.executeShellCommand("wm dismiss-keyguard")
 
         ActivityScenario.launch(PetWorldAccountActivity::class.java).use { scenario ->
+            // Recheck the Android window after Activity launch; boot overlays can
+            // appear between the first keyguard dismissal and the resumed Activity.
+            device.executeShellCommand("wm dismiss-keyguard")
+            device.executeShellCommand("cmd statusbar collapse")
             device.waitForIdle(5_000)
+            val initialTitle = By.pkg(appPackage).text("계정")
+            if (!device.wait(Until.hasObject(initialTitle), 10_000) &&
+                device.currentPackageName in setOf("android", "com.android.systemui") &&
+                scenario.state == androidx.lifecycle.Lifecycle.State.RESUMED) {
+                device.executeShellCommand("wm dismiss-keyguard")
+                device.executeShellCommand("cmd statusbar collapse")
+                scenario.recreate()
+                device.waitForIdle(5_000)
+            }
 
             fun assertVisible(label: String, timeout: Long = 10_000) {
                 val visible = device.wait(Until.hasObject(By.pkg(appPackage).text(label)), timeout)
                 assertTrue(
                     "$label 표시 필요 (foreground=" + device.currentPackageName +
-                        ", screenOn=" + device.isScreenOn + ", lifecycle=" + scenario.state + ")",
+                        ", screenOn=" + device.isScreenOn + ", lifecycle=" + scenario.state +
+                        ", focus=" + device.executeShellCommand("dumpsys window | grep mCurrentFocus").take(300) + ")",
                     visible,
                 )
             }

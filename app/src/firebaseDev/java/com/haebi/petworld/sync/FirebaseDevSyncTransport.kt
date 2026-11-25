@@ -2,13 +2,11 @@ package com.haebi.petworld.sync
 
 import android.content.Context
 import com.google.android.gms.tasks.Task
-import com.google.firebase.FirebaseApp
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.haebi.petworld.data.account.LocalAccountScope
 import com.haebi.petworld.data.account.AccountDeletionJournal
 import com.haebi.petworld.auth.awaitTrackedFirebaseTask
+import com.haebi.petworld.auth.FirebaseDevAccountSdkSessions
 import com.haebi.petworld.auth.FirebaseDevCloudWork
 import com.haebi.petworld.data.sync.SyncCommand
 import com.haebi.petworld.data.sync.SyncCommitOutcome
@@ -28,9 +26,10 @@ internal class FirebaseDevSyncTransport(
     private val permission: SyncPermission = SyncPermission { false },
 ) : SyncTransport {
     private val journal = AccountDeletionJournal(context.applicationContext)
-    private val app = FirebaseApp.getInstance()
-    private val auth = FirebaseAuth.getInstance(app)
-    private val firestore = FirebaseFirestore.getInstance(app)
+    private val binding = FirebaseDevAccountSdkSessions.binding(context.applicationContext)
+    private val app = binding.app
+    private val auth = binding.auth
+    private val firestore get() = binding.firestore
 
     init {
         check(context.applicationContext.packageName == "com.haebi.petworld.dev")
@@ -39,9 +38,8 @@ internal class FirebaseDevSyncTransport(
 
     private fun currentUid(command: SyncCommand): String? {
         val user = auth.currentUser ?: return null
-        if (user.isAnonymous || user.providerData.none { it.providerId == "google.com" }) return null
         val scope = LocalAccountScope.fromFirebaseUid(user.uid) as? LocalAccountScope.SignedIn ?: return null
-        return user.uid.takeIf { scope.key == command.accountKey }
+        return binding.currentUid(scope)?.takeIf { scope.key == command.accountKey }
     }
 
     override suspend fun commit(command: SyncCommand): SyncCommitOutcome {

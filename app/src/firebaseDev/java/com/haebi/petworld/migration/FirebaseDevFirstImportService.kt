@@ -4,12 +4,8 @@ import android.content.Context
 import android.net.Uri
 import androidx.room.withTransaction
 import com.google.android.gms.tasks.Task
-import com.google.firebase.FirebaseApp
-import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentReference
-import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
-import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageException
 import com.google.firebase.storage.StorageMetadata
 import com.haebi.petworld.data.ThemePreferences
@@ -19,6 +15,7 @@ import com.haebi.petworld.data.migration.FirstImportBackupVerifier
 import com.haebi.petworld.data.account.LocalAccountScope
 import com.haebi.petworld.data.account.CloudWorkKind
 import com.haebi.petworld.auth.FirebaseDevCloudWork
+import com.haebi.petworld.auth.FirebaseDevAccountSdkSessions
 import com.haebi.petworld.auth.awaitTrackedFirebaseTask
 import kotlinx.coroutines.CancellationException
 import com.haebi.petworld.data.account.AccountDeletionJournal
@@ -66,10 +63,11 @@ class FirstImportConflict : IllegalStateException(
  */
 class FirebaseDevFirstImportService(private val context: Context) {
     private val gate = Mutex()
-    private val firebase = FirebaseApp.getInstance()
-    private val auth = FirebaseAuth.getInstance(firebase)
-    private val firestore = FirebaseFirestore.getInstance(firebase)
-    private val storage = FirebaseStorage.getInstance(firebase)
+    private val binding = FirebaseDevAccountSdkSessions.binding(context.applicationContext)
+    private val firebase = binding.app
+    private val auth = binding.auth
+    private val firestore get() = binding.firestore
+    private val storage get() = binding.storage
     private val checkpoint = context.getSharedPreferences("petworld_fb04_import", Context.MODE_PRIVATE)
 
     private data class PhotoEvidence(
@@ -111,7 +109,8 @@ class FirebaseDevFirstImportService(private val context: Context) {
         val uid = user.uid.takeIf { it.isNotBlank() }
             ?: error("Google 계정 인증을 다시 확인해 주세요.")
         val scope = LocalAccountScope.fromFirebaseUid(uid) as LocalAccountScope.SignedIn
-        check(!FirebaseDevCloudWork.tracker.isBlocked(scope) &&
+        check(binding.currentUid(scope) == uid &&
+            !FirebaseDevCloudWork.tracker.isBlocked(scope) &&
             !AccountDeletionJournal(context.applicationContext).blocksCloud(scope)) {
             "계정 삭제 요청 상태를 확인할 때까지 클라우드 보관을 사용할 수 없습니다."
         }

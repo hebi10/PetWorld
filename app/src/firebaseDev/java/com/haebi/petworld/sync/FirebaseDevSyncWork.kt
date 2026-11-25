@@ -15,6 +15,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.haebi.petworld.data.account.LocalAccountScope
 import com.haebi.petworld.data.account.CloudWorkKind
 import com.haebi.petworld.auth.FirebaseDevCloudWork
+import com.haebi.petworld.auth.FirebaseDevAccountSdkSessions
 import com.haebi.petworld.data.account.AccountDeletionJournal
 import com.haebi.petworld.data.backup.PetWorldRecoveryJournal
 import com.haebi.petworld.data.room.PetWorldDatabase
@@ -61,6 +62,7 @@ internal object FirebaseDevSyncWork {
         gate.permits(lease, account) &&
             account(context) == account &&
             account is LocalAccountScope.SignedIn &&
+            FirebaseDevAccountSdkSessions.canUseCloud(context, account) &&
             !FirebaseDevCloudWork.tracker.isBlocked(account) &&
             !AccountDeletionJournal(context.applicationContext).blocksCloud(account) &&
             !PetWorldRecoveryJournal(context.applicationContext).hasPending()
