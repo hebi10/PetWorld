@@ -93,7 +93,9 @@ class PetWorldPrimaryResponsiveDesignTest {
                     capture(folder, "D04-statistics")
                     ensure("생활 기록 요약")
                     ensure("배변")
+                    if (layoutCase == "compact160") swipe(true)
                     tap("더보기")
+                    assertMoreHeadingAtTop()
                     see("프로필 관리")
                     capture(folder, "D05-more")
                     ensure("화면 설정")
@@ -196,6 +198,18 @@ class PetWorldPrimaryResponsiveDesignTest {
             swipe(down)
         }
         failWithEvidence("Required action unavailable: $value")
+    }
+    private fun assertMoreHeadingAtTop() {
+        repeat(8) {
+            recover()
+            device.waitForIdle()
+            if (device.findObjects(By.text("더보기")).any { node ->
+                val bounds = node.visibleBounds
+                bounds.height() > 0 && bounds.top < device.displayHeight / 3
+            }) return
+            Thread.sleep(300)
+        }
+        failWithEvidence("More heading is not visible at the top after switching tabs")
     }
     private fun assertPaneOrder(left: String, right: String) {
         val l = checkNotNull(device.wait(Until.findObject(By.textContains(left)), 5000))
