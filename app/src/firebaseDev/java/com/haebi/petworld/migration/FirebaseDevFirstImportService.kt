@@ -17,6 +17,10 @@ import com.haebi.petworld.data.backup.PetWorldBackupRestorer
 import com.haebi.petworld.data.migration.FirstImportBackupEvidence
 import com.haebi.petworld.data.migration.FirstImportBackupVerifier
 import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.account.CloudWorkKind
+import com.haebi.petworld.auth.FirebaseDevCloudWork
+import com.haebi.petworld.auth.awaitTrackedFirebaseTask
+import kotlinx.coroutines.CancellationException
 import com.haebi.petworld.data.account.AccountDeletionJournal
 import com.haebi.petworld.data.account.photoDirectoryName
 import com.haebi.petworld.data.backup.PetWorldMutationGate
@@ -29,12 +33,9 @@ import java.io.File
 import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 data class FirstImportPreview(
     val petCount: Int,
@@ -110,7 +111,8 @@ class FirebaseDevFirstImportService(private val context: Context) {
         val uid = user.uid.takeIf { it.isNotBlank() }
             ?: error("Google 계정 인증을 다시 확인해 주세요.")
         val scope = LocalAccountScope.fromFirebaseUid(uid) as LocalAccountScope.SignedIn
-        check(!AccountDeletionJournal(context.applicationContext).blocksCloud(scope)) {
+        check(!FirebaseDevCloudWork.tracker.isBlocked(scope) &&
+            !AccountDeletionJournal(context.applicationContext).blocksCloud(scope)) {
             "계정 삭제 요청 상태를 확인할 때까지 클라우드 보관을 사용할 수 없습니다."
         }
         return uid
@@ -185,7 +187,7 @@ class FirebaseDevFirstImportService(private val context: Context) {
 
     private suspend fun remoteReview(uid: String, source: Snapshot): RemoteReview {
         val petsRef = firestore.collection("users").document(uid).collection("pets")
-        val cloudPets = petsRef.get(Source.SERVER).awaitImport().documents
+        val cloudPets = sdk(uid) { petsRef.get(Source.SERVER) }.documents
         val cloudPetIds = cloudPets.map { it.id }.toSet()
         val localIds = source.pets.map { it.id }.toSet()
         var matching = 0
@@ -203,7 +205,7 @@ class FirebaseDevFirstImportService(private val context: Context) {
                     conflicts++
                 }
             }
-            val existingRecords = ref.collection("records").get(Source.SERVER).awaitImport().documents
+            val existingRecords = sdk(uid) { ref.collection("records").get(Source.SERVER) }.documents
             val localRecords = source.records.filter { it.petId == pet.id }
             val expectedIds = localRecords.map { it.id }.toSet()
             extra += existingRecords.count { it.id !in expectedIds }
@@ -222,8 +224,8 @@ class FirebaseDevFirstImportService(private val context: Context) {
         for (photo in source.photos) {
             assertSameUser(uid)
             val ref = photoRef(uid, photo)
-            if (photoExists(ref)) {
-                if (remotePhotoMatches(ref, photo)) matching++ else conflicts++
+            if (photoExists(uid, ref)) {
+                if (remotePhotoMatches(uid, ref, photo)) matching++ else conflicts++
             }
         }
         return RemoteReview(matching, extra, conflicts)
@@ -232,29 +234,29 @@ class FirebaseDevFirstImportService(private val context: Context) {
     private fun photoRef(uid: String, photo: PhotoEvidence) = storage.reference
         .child("users/${uid}/pets/${photo.petId}/photos/${photo.name}")
 
-    private suspend fun photoExists(ref: com.google.firebase.storage.StorageReference): Boolean =
+    private suspend fun photoExists(uid: String, ref: com.google.firebase.storage.StorageReference): Boolean =
         try {
-            ref.metadata.awaitImport()
+            sdk(uid) { ref.metadata }
             true
         } catch (error: StorageException) {
             if (error.errorCode == StorageException.ERROR_OBJECT_NOT_FOUND) false else throw error
         }
 
     private suspend fun remotePhotoMatches(
+        uid: String,
         ref: com.google.firebase.storage.StorageReference,
         photo: PhotoEvidence,
     ): Boolean {
-        val metadata = ref.metadata.awaitImport()
+        val metadata = sdk(uid) { ref.metadata }
         if (metadata.sizeBytes != photo.bytes || metadata.contentType != "image/jpeg") return false
         val recordedHash = metadata.getCustomMetadata("sha256")
         if (recordedHash != null && recordedHash != photo.digest) return false
-        val downloaded = ref.getBytes(maximumPhotoSize).awaitImport()
+        val downloaded = sdk(uid) { ref.getBytes(maximumPhotoSize) }
         return downloaded.size.toLong() == photo.bytes &&
             hex(MessageDigest.getInstance("SHA-256").digest(downloaded)) == photo.digest
     }
 
-    suspend fun preview(): FirstImportPreview = gate.withLock {
-        val uid = checkedUid()
+    suspend fun preview(): FirstImportPreview = trackedImport { uid ->
         val source = PetWorldMutationGate.mutex.withLock { guestSnapshotLocked() }
         val remote = remoteReview(uid, source)
         assertSameUser(uid)
@@ -275,9 +277,8 @@ class FirebaseDevFirstImportService(private val context: Context) {
         preview: FirstImportPreview,
         sourceUri: Uri,
         password: CharArray,
-    ): FirstImportBackupEvidence = gate.withLock {
+    ): FirstImportBackupEvidence = trackedImport { uid ->
         require(preview.canImport)
-        val uid = checkedUid()
         FirstImportGuards.requireSameAccount(preview.accountFingerprint, uid)
         val source = PetWorldMutationGate.mutex.withLock { guestSnapshotLocked() }
         FirstImportGuards.requireFreshSource(preview.sourceFingerprint, source.fingerprint)
@@ -296,7 +297,7 @@ class FirebaseDevFirstImportService(private val context: Context) {
         backupEvidence: FirstImportBackupEvidence,
         allowCloudExtras: Boolean,
         onProgress: (String) -> Unit,
-    ): FirstImportResult = gate.withLock {
+    ): FirstImportResult = trackedImport { uid ->
         FirstImportBackupVerifier.requireApproved(
             preview.sourceFingerprint, preview.accountFingerprint, backupEvidence,
         )
@@ -306,10 +307,9 @@ class FirebaseDevFirstImportService(private val context: Context) {
         require(preview.extraCloudDocuments == 0 || allowCloudExtras) {
             "계정에 다른 데이터가 있습니다. 추가 방식의 이전을 선택해 주세요."
         }
-        val uid = checkedUid()
         FirstImportGuards.requireSameAccount(preview.accountFingerprint, uid)
         val onlineUid = auth.currentUser?.also { user ->
-            user.getIdToken(true).awaitImport()
+            sdk<com.google.firebase.auth.GetTokenResult>(uid) { user.getIdToken(true) }
         }?.uid
         check(onlineUid == uid) {
             "Firebase 인증이 변경됐습니다. 다시 로그인하고 미리보기를 확인해 주세요."
@@ -340,18 +340,20 @@ class FirebaseDevFirstImportService(private val context: Context) {
                     "업로드 전 사진이 변경됐습니다. 다시 미리보기를 진행해 주세요."
                 }
                 val target = photoRef(uid, photo)
-                if (!photoExists(target)) {
+                if (!photoExists(uid, target)) {
                     val metadata = StorageMetadata.Builder()
                         .setContentType("image/jpeg")
                         .build()
                     try {
-                        target.putFile(Uri.fromFile(photo.file), metadata).awaitImport()
+                        sdk(uid, cancelStorage = true) { target.putFile(Uri.fromFile(photo.file), metadata) }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
                     } catch (error: Exception) {
                         // A competing upload may have succeeded. Only matching bytes are reusable.
-                        if (!photoExists(target) || !remotePhotoMatches(target, photo)) throw error
+                        if (!photoExists(uid, target) || !remotePhotoMatches(uid, target, photo)) throw error
                     }
                 }
-                if (!remotePhotoMatches(target, photo)) throw FirstImportConflict()
+                if (!remotePhotoMatches(uid, target, photo)) throw FirstImportConflict()
             }
             assertSameUser(uid)
             onProgress("Firestore 기록 복사")
@@ -359,12 +361,13 @@ class FirebaseDevFirstImportService(private val context: Context) {
             ensureUser(uid, userRef)
             for (pet in source.pets) {
                 assertSameUser(uid)
-                createIfAbsentOrEqual(userRef.collection("pets").document(pet.id),
+                createIfAbsentOrEqual(uid, userRef.collection("pets").document(pet.id),
                     FirstImportPayloads.pet(pet))
             }
             for (record in source.records) {
                 assertSameUser(uid)
                 createIfAbsentOrEqual(
+                    uid,
                     userRef.collection("pets").document(record.petId).collection("records")
                         .document(record.id),
                     FirstImportPayloads.record(record),
@@ -394,7 +397,8 @@ class FirebaseDevFirstImportService(private val context: Context) {
 
     private suspend fun ensureUser(uid: String, ref: DocumentReference) {
         assertSameUser(uid)
-        firestore.runTransaction { transaction ->
+        sdk(uid) { firestore.runTransaction { transaction ->
+            assertSameUser(uid)
             val existing = transaction.get(ref)
             if (!existing.exists()) {
                 transaction.set(ref, mapOf(
@@ -405,14 +409,16 @@ class FirebaseDevFirstImportService(private val context: Context) {
                 ))
             }
             true
-        }.awaitImport()
+        } }
     }
 
     private suspend fun createIfAbsentOrEqual(
+        uid: String,
         ref: DocumentReference,
         expected: Map<String, Any?>,
     ) {
-        firestore.runTransaction { transaction ->
+        sdk(uid) { firestore.runTransaction { transaction ->
+            assertSameUser(uid)
             val current = transaction.get(ref)
             if (current.exists()) {
                 if (!FirstImportPayloads.sameRemote(expected, current.data)) {
@@ -422,12 +428,13 @@ class FirebaseDevFirstImportService(private val context: Context) {
                 transaction.set(ref, expected)
             }
             true
-        }.awaitImport()
+        } }
     }
 
     private suspend fun markReady(uid: String, ref: DocumentReference) {
         assertSameUser(uid)
-        firestore.runTransaction { transaction ->
+        sdk(uid) { firestore.runTransaction { transaction ->
+            assertSameUser(uid)
             val current = transaction.get(ref)
             check(current.exists()) { "이전 상태 문서를 찾을 수 없습니다." }
             if (current.getString("migrationState") != "ready") {
@@ -439,23 +446,25 @@ class FirebaseDevFirstImportService(private val context: Context) {
                 ))
             }
             true
-        }.awaitImport()
+        } }
     }
-}
-
-private suspend fun <T> Task<T>.awaitImport(): T = suspendCancellableCoroutine { continuation ->
-    addOnCompleteListener { completed ->
-        if (!continuation.isActive) return@addOnCompleteListener
-        if (completed.isSuccessful) {
-            try {
-                continuation.resume(completed.result)
-            } catch (error: Exception) {
-                continuation.resumeWithException(error)
-            }
-        } else {
-            continuation.resumeWithException(
-                completed.exception ?: IllegalStateException("Firebase 요청을 완료하지 못했습니다.")
-            )
+    private suspend fun <T> trackedImport(action: suspend (String) -> T): T = gate.withLock {
+        val uid = checkedUid()
+        val account = LocalAccountScope.fromFirebaseUid(uid) as LocalAccountScope.SignedIn
+        val permit = FirebaseDevCloudWork.tracker.tryBegin(account, CloudWorkKind.FIRST_IMPORT)
+            ?: error("Account cloud work is blocked")
+        try {
+            assertSameUser(uid)
+            action(uid)
+        } finally {
+            permit.close()
         }
+    }
+
+    private suspend fun <T> sdk(uid: String, cancelStorage: Boolean = false, start: () -> Task<T>): T {
+        assertSameUser(uid)
+        val account = LocalAccountScope.fromFirebaseUid(uid) as LocalAccountScope.SignedIn
+        return awaitTrackedFirebaseTask(account, permitted = { checkedUid() == uid },
+            cancelStorage = cancelStorage, start = start)
     }
 }

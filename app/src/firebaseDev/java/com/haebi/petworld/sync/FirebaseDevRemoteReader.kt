@@ -9,14 +9,13 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.Source
 import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.account.AccountDeletionJournal
+import com.haebi.petworld.auth.awaitTrackedFirebaseTask
 import com.haebi.petworld.data.sync.RemoteSyncDocument
 import com.haebi.petworld.data.sync.RemoteSyncPage
 import com.haebi.petworld.data.sync.SyncPermission
 import com.haebi.petworld.data.sync.SyncReceiveDenied
 import com.haebi.petworld.data.sync.validSyncPathId
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 /**
  * Explicit, server-only, bounded collection scan. A cursor is valid only for that collection.
@@ -26,6 +25,7 @@ internal class FirebaseDevRemoteReader(
     context: Context,
     private val permission: SyncPermission = SyncPermission { false },
 ) {
+    private val journal = AccountDeletionJournal(context.applicationContext)
     private val app = FirebaseApp.getInstance()
     private val auth = FirebaseAuth.getInstance(app)
     private val firestore = FirebaseFirestore.getInstance(app)
@@ -55,16 +55,16 @@ internal class FirebaseDevRemoteReader(
         }
         checkSession()
         val user = auth.currentUser?.takeIf { it.uid == expectedUid } ?: throw SyncReceiveDenied()
-        user.getIdToken(true).awaitReceive()
+        sdk(account, expectedUid) { user.getIdToken(true) }
         checkSession()
         val owner = firestore.collection("users").document(expectedUid)
-        val state = owner.get(Source.SERVER).awaitReceive()
+        val state = sdk(account, expectedUid) { owner.get(Source.SERVER) }
         check(state.exists() && !state.metadata.isFromCache && !state.metadata.hasPendingWrites())
         check(state.getString("migrationState") == "ready")
         checkSession()
         val pet = owner.collection("pets").document(petId)
         val target = if (kind == "PET") pet else pet.collection("records").document(entityId)
-        val snapshot = target.get(Source.SERVER).awaitReceive()
+        val snapshot = sdk(account, expectedUid) { target.get(Source.SERVER) }
         checkSession()
         check(!snapshot.metadata.isFromCache && !snapshot.metadata.hasPendingWrites())
         if (!snapshot.exists()) return null
@@ -86,10 +86,10 @@ internal class FirebaseDevRemoteReader(
         }
         requireCurrentSession()
         val user = auth.currentUser?.takeIf { it.uid == expectedUid } ?: throw SyncReceiveDenied()
-        user.getIdToken(true).awaitReceive()
+        sdk(account, expectedUid) { user.getIdToken(true) }
         requireCurrentSession()
         val owner = firestore.collection("users").document(expectedUid)
-        val state = owner.get(Source.SERVER).awaitReceive()
+        val state = sdk(account, expectedUid) { owner.get(Source.SERVER) }
         check(state.exists() && !state.metadata.isFromCache && !state.metadata.hasPendingWrites())
         check(state.getString("migrationState") == "ready") { "Remote baseline is not ready" }
         requireCurrentSession()
@@ -97,7 +97,7 @@ internal class FirebaseDevRemoteReader(
             else owner.collection("pets").document(parentPetId).collection("records")
         var query: Query = collection.orderBy(FieldPath.documentId())
         if (afterId != null) query = query.startAfter(afterId)
-        val snapshot = query.limit((limit + 1).toLong()).get(Source.SERVER).awaitReceive()
+        val snapshot = sdk(account, expectedUid) { query.limit((limit + 1).toLong()).get(Source.SERVER) }
         requireCurrentSession()
         check(!snapshot.metadata.isFromCache && !snapshot.metadata.hasPendingWrites())
         val docs = snapshot.documents.take(limit).map { item ->
@@ -111,12 +111,11 @@ internal class FirebaseDevRemoteReader(
         return RemoteSyncPage(account.key, parentPetId, docs, docs.lastOrNull()?.entityId,
             snapshot.documents.size > limit)
     }
-}
-
-private suspend fun <T> Task<T>.awaitReceive(): T = suspendCancellableCoroutine { continuation ->
-    addOnCompleteListener { task ->
-        if (!continuation.isActive) return@addOnCompleteListener
-        if (task.isSuccessful) continuation.resume(task.result)
-        else continuation.resumeWithException(task.exception ?: IllegalStateException("Firebase read failed"))
+    private suspend fun <T> sdk(account: LocalAccountScope.SignedIn, expectedUid: String,
+        start: () -> Task<T>): T {
+        if (!permission.permits(account)) throw SyncReceiveDenied()
+        return awaitTrackedFirebaseTask(account, permitted = {
+            uid(account) == expectedUid && !journal.blocksCloud(account)
+        }, start = start)
     }
 }

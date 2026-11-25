@@ -14,6 +14,8 @@ import com.google.firebase.storage.StorageException
 import com.google.firebase.storage.StorageMetadata
 import com.google.firebase.storage.StorageReference
 import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.account.AccountDeletionJournal
+import com.haebi.petworld.auth.awaitTrackedFirebaseTask
 import com.haebi.petworld.data.sync.CLOUD_PHOTO_MAX_BYTES
 import com.haebi.petworld.data.sync.CLOUD_PHOTO_MIME
 import com.haebi.petworld.data.sync.RemotePhotoMetadata
@@ -24,15 +26,13 @@ import com.haebi.petworld.data.sync.SyncPhotoStorage
 import com.haebi.petworld.data.sync.SyncReceiveDenied
 import com.haebi.petworld.data.sync.VerifiedPhoto
 import com.haebi.petworld.data.sync.validSyncPathId
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 internal class FirebaseDevPhotoStorage(
     context: Context,
     private val account: LocalAccountScope.SignedIn,
     private val permission: SyncPermission,
 ) : SyncPhotoStorage {
+    private val journal = AccountDeletionJournal(context.applicationContext)
     private val app = FirebaseApp.getInstance()
     private val auth = FirebaseAuth.getInstance(app)
 
@@ -43,12 +43,12 @@ internal class FirebaseDevPhotoStorage(
 
     override suspend fun metadata(key: SyncPhotoKey): RemotePhotoMetadata? =
         request(key, allowMissing = true) { ref ->
-            val metadata = ref.metadata.awaitPhoto()
             val uid = currentUid() ?: throw SyncReceiveDenied()
+            val metadata = sdk(uid) { ref.metadata }
             if (!permission.permits(account)) throw SyncReceiveDenied()
-            val manifest = FirebaseFirestore.getInstance(app).collection("users").document(uid)
+            val manifest = sdk(uid) { FirebaseFirestore.getInstance(app).collection("users").document(uid)
                 .collection("pets").document(key.petId).collection("photoManifests").document(key.fileName)
-                .get(Source.SERVER).awaitPhoto()
+                .get(Source.SERVER) }
             if (currentUid() != uid || !permission.permits(account)) throw SyncReceiveDenied()
             if (manifest.metadata.isFromCache || manifest.metadata.hasPendingWrites()) throw SyncPhotoRejected()
             val evidence = if (!manifest.exists()) null else try {
@@ -76,13 +76,16 @@ internal class FirebaseDevPhotoStorage(
                 .setContentType(CLOUD_PHOTO_MIME)
                 .setCustomMetadata("sha256", photo.evidence.sha256)
                 .build()
-            val upload = ref.putBytes(photo.bytes, metadata)
-            upload.awaitPhoto { upload.cancel() }
+            val uid = currentUid() ?: throw SyncReceiveDenied()
+            sdk(uid, cancelStorage = true) { ref.putBytes(photo.bytes, metadata) }
         }
     }
 
     override suspend fun download(key: SyncPhotoKey): ByteArray =
-        requireNotNull(request(key) { it.getBytes(CLOUD_PHOTO_MAX_BYTES).awaitPhoto() })
+        requireNotNull(request(key) { ref ->
+            val uid = currentUid() ?: throw SyncReceiveDenied()
+            sdk(uid) { ref.getBytes(CLOUD_PHOTO_MAX_BYTES) }
+        })
 
     private suspend fun <T : Any> request(
         key: SyncPhotoKey,
@@ -113,14 +116,10 @@ internal class FirebaseDevPhotoStorage(
         if (user.isAnonymous || user.providerData.none { it.providerId == "google.com" }) return null
         return user.uid.takeIf { validSyncPathId(it) && LocalAccountScope.fromFirebaseUid(it) == account }
     }
-}
-
-private suspend fun <T> Task<T>.awaitPhoto(cancel: (() -> Unit)? = null): T =
-    suspendCancellableCoroutine { continuation ->
-        if (cancel != null) continuation.invokeOnCancellation { cancel() }
-        addOnCompleteListener { task ->
-            if (!continuation.isActive) return@addOnCompleteListener
-            if (task.isSuccessful) continuation.resume(task.result)
-            else continuation.resumeWithException(task.exception ?: IllegalStateException("Storage task ended"))
-        }
+    private suspend fun <T> sdk(uid: String, cancelStorage: Boolean = false, start: () -> Task<T>): T {
+        if (!permission.permits(account)) throw SyncReceiveDenied()
+        return awaitTrackedFirebaseTask(account, permitted = {
+            currentUid() == uid && !journal.blocksCloud(account)
+        }, cancelStorage = cancelStorage, start = start)
     }
+}

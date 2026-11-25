@@ -37,6 +37,10 @@ internal class SyncSessionGate {
     fun revoke(): SyncWorkLease? = active.value.also { active.value = null }
 
     @Synchronized
+    fun revokeAccount(account: LocalAccountScope.SignedIn): SyncWorkLease? =
+        if (active.value?.accountKey == account.key) revoke() else null
+
+    @Synchronized
     fun revokeUnlessAccount(account: LocalAccountScope): SyncWorkLease? {
         val key = (account as? LocalAccountScope.SignedIn)?.key
         return if (active.value != null && active.value?.accountKey != key) revoke() else null
