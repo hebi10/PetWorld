@@ -5,6 +5,7 @@ import com.haebi.petworld.data.account.AccountDeletionReadiness
 import com.haebi.petworld.data.account.DeletionRecoveryController
 import com.haebi.petworld.data.account.DeletionRecoveryResult
 import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.account.deletionJobId
 import com.haebi.petworld.sync.FirebaseDevSyncWork
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -43,7 +44,8 @@ internal class FirebaseDevDeletionCoordinator(
     suspend fun refresh(account: LocalAccountScope.SignedIn): DeletionRecoveryResult = gate.withLock {
         if (!readiness.verifiedEndpoint || !readiness.secureStatusTicket || currentScope() != account)
             return@withLock DeletionRecoveryResult.NotReady
-        val result = recovery.refresh(account, verifiedEndpoint = true)
+        val result = recovery.refresh(account, verifiedEndpoint = true, expectedJobId =
+            gateway.currentAccount()?.uid?.let(::deletionJobId)) { currentScope() == account }
         if (currentScope() != account) DeletionRecoveryResult.StateUnknown else result
     }
 }
