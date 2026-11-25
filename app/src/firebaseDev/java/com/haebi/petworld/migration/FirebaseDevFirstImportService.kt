@@ -63,7 +63,7 @@ class FirstImportConflict : IllegalStateException(
  */
 class FirebaseDevFirstImportService(private val context: Context) {
     private val gate = Mutex()
-    private val binding = FirebaseDevAccountSdkSessions.binding()
+    private val binding = FirebaseDevAccountSdkSessions.binding(context.applicationContext)
     private val firebase = binding.app
     private val auth = binding.auth
     private val firestore get() = binding.firestore
