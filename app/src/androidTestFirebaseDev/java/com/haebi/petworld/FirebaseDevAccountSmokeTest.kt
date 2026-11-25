@@ -31,7 +31,7 @@ class FirebaseDevAccountSmokeTest {
         val account = LocalAccountScope.fromFirebaseUid("synthetic-qa") as LocalAccountScope.SignedIn
         val source = TaskCompletionSource<String>()
         val waiting = launch(start = CoroutineStart.UNDISPATCHED) {
-            awaitTrackedFirebaseTask(account, tracker, permitted = { true }) { source.task }
+            awaitTrackedFirebaseTask<String>(account, tracker, permitted = { true }) { source.task }
         }
         assertEquals(1, tracker.snapshot(account).sdkTasks)
         tracker.blockNewWork(account)
