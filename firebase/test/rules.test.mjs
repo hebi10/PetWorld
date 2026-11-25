@@ -546,3 +546,39 @@ test('FB-06-C: photo evidence cannot authorize another pet or mutate deleted pho
   await assertSucceeds(syncBatch(alice,pet,remove,{...petDoc('pet-1',1),photoFile:name,deletedAtMs:now}));
   deepStrictEqual((await getDocFromServer(pet)).data().photoFile,name);
 });
+
+test('FB-07-A: account deletion lock denies cloud access and stale authenticated writes', async () => {
+  const alice = env.authenticatedContext('alice').firestore();
+  const bob = env.authenticatedContext('bob').firestore();
+  const user = doc(alice, 'users/alice');
+  const pet = doc(alice, 'users/alice/pets/pet-1');
+  const lock = doc(alice, 'accountDeletionLocks/alice');
+  const photo = ref(env.authenticatedContext('alice').storage(bucket), pathFor('alice'));
+  const bytes = new Uint8Array([0xff, 0xd8, 1, 0xff, 0xd9]);
+  await assertSucceeds(setDoc(user, userDoc()));
+  await assertSucceeds(setDoc(pet, petDoc()));
+  await assertSucceeds(uploadBytes(photo, bytes, { contentType: 'image/jpeg' }));
+  await assertFails(setDoc(lock, { state: 'LOCKED' }));
+  await env.withSecurityRulesDisabled(async admin => {
+    await setDoc(doc(admin.firestore(), lock.path), { state: 'LOCKED' });
+  });
+  await assertFails(getDoc(lock));
+  await assertFails(getDoc(doc(bob, lock.path)));
+  await assertFails(deleteDoc(lock));
+  await assertFails(getDoc(user));
+  await assertFails(getDoc(pet));
+  await assertFails(updateDoc(pet, { name:'stale device', revision:1 }));
+  await assertFails(setDoc(doc(alice, pet.path + '/records/record-1'), careDoc()));
+  await assertFails(getBytes(photo));
+  const newPhoto = ref(env.authenticatedContext('alice').storage(bucket),
+      pathFor('alice', 'pet-1', 'pet_88888888-8888-4888-8888-888888888888.jpg'));
+  await assertFails(uploadBytes(newPhoto, bytes, { contentType:'image/jpeg' }));
+  await assertSucceeds(setDoc(doc(bob, 'users/bob'), userDoc()));
+  await assertSucceeds(setDoc(doc(bob, 'users/bob/pets/pet-1'), petDoc()));
+  await assertSucceeds(uploadBytes(ref(env.authenticatedContext('bob').storage(bucket), pathFor('bob')),
+    bytes, { contentType:'image/jpeg' }));
+  await env.withSecurityRulesDisabled(async admin => {
+    await deleteDoc(doc(admin.firestore(), user.path));
+  });
+  await assertFails(setDoc(user, userDoc()));
+});

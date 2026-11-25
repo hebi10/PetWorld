@@ -2,7 +2,8 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     function owner(uid) {
-      return request.auth != null && request.auth.uid == uid;
+      return request.auth != null && request.auth.uid == uid &&
+        !firestore.exists(/databases/(default)/documents/accountDeletionLocks/$(uid));
     }
 
     function permittedPhoto(fileName) {
