@@ -55,10 +55,11 @@ function requireRuntimeReadiness(readiness) {
       readiness?.sdkCachePolicyVerified !== true) throw new DeletionDenied();
 }
 
-async function prepareTrustedBatch({app,service,now}) {
-  const {getFirestore,FieldPath}=await import('firebase-admin/firestore');
-  const db=getFirestore(app);
-  const readPage=async ({after,limit})=>{
+/** Read only Admin-owned, nonterminal jobs; caller must supply trusted Firestore. */
+export function createDeletionJobPageReader({db,FieldPath} = {}) {
+  if (typeof db?.collection !== 'function' || typeof FieldPath?.documentId !== 'function')
+    throw new DeletionDenied();
+  return async ({after,limit})=>{
     let query=db.collection('accountDeletionJobs').where('phase','in',[...PHASES])
       .orderBy(FieldPath.documentId()).limit(limit);
     if(after!==null) query=query.startAfter(after);
@@ -69,6 +70,11 @@ async function prepareTrustedBatch({app,service,now}) {
       return {uid:row.uid,jobId:row.jobId,phase:row.phase};
     });
   };
+}
+
+async function prepareTrustedBatch({app,service,now}) {
+  const {getFirestore,FieldPath}=await import('firebase-admin/firestore');
+  const readPage=createDeletionJobPageReader({db:getFirestore(app),FieldPath});
   return createDeletionBatchRunner({service,readPage,now});
 }
 
