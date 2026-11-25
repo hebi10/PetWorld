@@ -11,6 +11,7 @@ import com.haebi.petworld.data.account.AccountCacheTransitionDecision
 import com.haebi.petworld.data.account.AccountCacheTransitionEvidence
 import com.haebi.petworld.data.account.AccountDeletionJournal
 import com.haebi.petworld.data.account.AccountSdkRouteGate
+import com.haebi.petworld.data.account.AccountSdkRouteJournal
 import com.haebi.petworld.data.account.LocalAccountScope
 import com.haebi.petworld.data.account.accountMemoryAppName
 import com.haebi.petworld.sync.FirebaseDevSyncWork
@@ -127,16 +128,21 @@ internal object FirebaseDevAccountSdkSessions {
     private val lock = Any()
     private val sessions = mutableMapOf<LocalAccountScope.SignedIn, FirebaseDevIsolatedSdkSession>()
 
-    fun binding(): FirebaseDevSdkBinding {
+    fun binding(context: Context): FirebaseDevSdkBinding {
         val app = FirebaseApp.getInstance()
         val primaryAuth = FirebaseAuth.getInstance(app)
         val scope = googleUid(primaryAuth)?.let(LocalAccountScope::fromFirebaseUid) as? LocalAccountScope.SignedIn
         val named = synchronized(lock) { scope?.let { sessions[it] } }
-        return named?.binding ?: FirebaseDevSdkBinding(app, primaryAuth, routes::permitsLegacy, primaryAuth)
+        return named?.binding ?: FirebaseDevSdkBinding(app, primaryAuth,
+            { target -> permitsLegacy(context, target) }, primaryAuth)
     }
 
-    fun canUseCloud(account: LocalAccountScope.SignedIn): Boolean =
-        routes.permitsLegacy(account) ||
+    private fun permitsLegacy(context: Context, account: LocalAccountScope.SignedIn): Boolean =
+        routes.permitsLegacy(account) &&
+            runCatching { AccountSdkRouteJournal(context).permitsLegacy(account) }.getOrDefault(false)
+
+    fun canUseCloud(context: Context, account: LocalAccountScope.SignedIn): Boolean =
+        permitsLegacy(context, account) ||
             synchronized(lock) { sessions[account]?.binding }?.currentUid(account) != null
 
     private fun idle(account: LocalAccountScope.SignedIn): Boolean =
@@ -171,7 +177,7 @@ internal object FirebaseDevAccountSdkSessions {
         var prepared: FirebaseDevIsolatedSdkSession? = null
         var active = false
         try {
-            if (!idle(account)) return null
+            if (!idle(account) || !AccountSdkRouteJournal(appContext).retain(account)) return null
             val client = FirebaseDevAccountMemoryCache.prepare(appContext,account,isolatedApp,evidence)
                 ?: return null
             val binding = FirebaseDevSdkBinding(isolatedApp,isolatedAuth,
