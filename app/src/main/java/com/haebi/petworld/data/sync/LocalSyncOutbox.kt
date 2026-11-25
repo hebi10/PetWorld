@@ -52,6 +52,20 @@ interface SyncOutboxDao {
     @Query("SELECT COUNT(*) FROM sync_outbox WHERE account_key = :accountKey")
     fun observeCount(accountKey: String): Flow<Int>
 
+    @Query("""
+        SELECT EXISTS(SELECT 1 FROM sync_outbox
+        WHERE account_key = :accountKey AND entity_kind = :kind AND pet_id = :petId
+          AND entity_id = :entityId AND status != 'ACKNOWLEDGED')
+    """)
+    suspend fun hasPending(accountKey: String, kind: String, petId: String, entityId: String): Boolean
+
+    @Query("""
+        SELECT EXISTS(SELECT 1 FROM sync_outbox
+        WHERE account_key = :accountKey AND entity_kind = :kind AND pet_id = :petId
+          AND entity_id = :entityId)
+    """)
+    suspend fun hasHistory(accountKey: String, kind: String, petId: String, entityId: String): Boolean
+
     @Query("SELECT * FROM sync_outbox WHERE account_key = :accountKey AND status != 'ACKNOWLEDGED' ORDER BY sequence ASC LIMIT 1")
     suspend fun firstOutstanding(accountKey: String): SyncOutboxEntry?
 
