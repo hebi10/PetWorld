@@ -18,10 +18,12 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import java.io.ByteArrayOutputStream
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class LocalPhotoJournalTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val account = LocalAccountScope.fromFirebaseUid("photo-a") as LocalAccountScope.SignedIn
