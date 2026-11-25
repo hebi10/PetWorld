@@ -36,7 +36,7 @@ class DeletionRecoveryControllerTest {
                 return requireNotNull(AccountDeletionReceipt.fromServer(jobId,"COMPLETE"))
             }
         }
-        val controller = DeletionRecoveryController(store,transport)
+        val controller = DeletionRecoveryController(store,transport,DeletionRecoveryEnrollment { true })
         assertEquals(DeletionRecoveryResult.StateUnknown,controller.submit(uid,"test-token",true,true,ready){account})
         assertNotNull(store.read(account))
         assertTrue(store.blocksCloud(account))
@@ -44,7 +44,7 @@ class DeletionRecoveryControllerTest {
         assertEquals(2,tickets.size)
         assertEquals(tickets[0],tickets[1])
         assertFalse(store.read(account).toString().contains(tickets[0]))
-        val result = controller.refresh(account,true) as DeletionRecoveryResult.Confirmed
+        val result = controller.refresh(account,true) { true } as DeletionRecoveryResult.Confirmed
         assertTrue(result.receipt.phase.serverDeletionComplete)
         assertTrue(store.blocksCloud(account))
     }
@@ -58,7 +58,7 @@ class DeletionRecoveryControllerTest {
             }
             override suspend fun status(jobId: String,statusTicket: String): AccountDeletionReceipt = error("not expected")
         }
-        val c = DeletionRecoveryController(store,transport)
+        val c = DeletionRecoveryController(store,transport,DeletionRecoveryEnrollment { true })
         assertEquals(DeletionRecoveryResult.NotReady,c.submit(uid,"t",true,true,AccountDeletionReadiness()){account})
         assertEquals(DeletionRecoveryResult.NotReady,c.submit(uid,"t",true,true,ready){other})
         assertEquals(0,calls)
