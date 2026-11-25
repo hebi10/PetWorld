@@ -40,6 +40,7 @@ button:focus-visible,input:focus-visible {outline:2px solid currentColor;outline
 <h2 id="request-title">삭제 요청</h2>
 <p id="account-status">로그인 연결 준비 중</p>
 <button type="button" id="connect-existing" disabled>기존 Google 계정 인증</button>
+<p>이미 PetWorld에 연결된 계정만 확인하며, 웹 삭제 화면에서 신규 PetWorld 계정을 만들지 않습니다.</p>
 <p>삭제 요청 전 암호화된 복구 파일을 저장해 주세요. 계정 인증이 삭제된 뒤에도 파일과 비밀번호로 진행 상태를 확인할 수 있습니다.</p>
 <label for="recovery-password">복구 파일 비밀번호 (12자 이상)</label>
 <input id="recovery-password" type="password" autocomplete="new-password" minlength="12" maxlength="256" disabled>
@@ -47,6 +48,7 @@ button:focus-visible,input:focus-visible {outline:2px solid currentColor;outline
 <label class="choice"><input id="saved-recovery" type="checkbox" disabled> 복구 파일과 비밀번호를 별도 보관했습니다.</label>
 <label class="choice"><input id="confirm-deletion" type="checkbox" disabled> 클라우드 기록과 PetWorld 계정이 삭제되고 복구할 수 없음을 확인했습니다.</label>
 <button type="button" id="submit-deletion" disabled>Google 재인증 후 삭제 요청</button>
+<p>최근 Google 본인 인증을 확인할 수 없으면 삭제 요청을 진행하지 않습니다. 복구 파일을 보존하고 다시 인증해 주세요.</p>
 </section>
 <section aria-labelledby="restore-title">
 <h2 id="restore-title">삭제 처리 상태 확인</h2>
