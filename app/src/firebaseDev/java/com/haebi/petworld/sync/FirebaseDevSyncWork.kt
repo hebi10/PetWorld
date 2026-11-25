@@ -62,7 +62,7 @@ internal object FirebaseDevSyncWork {
         gate.permits(lease, account) &&
             account(context) == account &&
             account is LocalAccountScope.SignedIn &&
-            FirebaseDevAccountSdkSessions.canUseCloud(account) &&
+            FirebaseDevAccountSdkSessions.canUseCloud(context, account) &&
             !FirebaseDevCloudWork.tracker.isBlocked(account) &&
             !AccountDeletionJournal(context.applicationContext).blocksCloud(account) &&
             !PetWorldRecoveryJournal(context.applicationContext).hasPending()
