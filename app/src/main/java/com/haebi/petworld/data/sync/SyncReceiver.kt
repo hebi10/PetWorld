@@ -60,10 +60,10 @@ internal class SyncReceiver(
         val kind = remote.kind
         val petId = remote.petId
         val id = remote.entityId
-        val exact = inbox.exact(key, kind, petId, id, remote.revision, remote.digest)
-        if (exact != null && exact.status != "PARENT_PENDING") return InboundResult.DUPLICATE
         val latest = inbox.latest(key, kind, petId, id)
         if (latest != null && latest.revision > remote.revision) return InboundResult.STALE
+        val exact = inbox.exact(key, kind, petId, id, remote.revision, remote.digest)
+        if (exact != null && exact.status != "PARENT_PENDING") return InboundResult.DUPLICATE
 
         val localPet = if (kind == "PET") database.petDao().find(id) else null
         val localCare = if (kind == "CARE") database.careDao().find(id) else null
@@ -91,7 +91,8 @@ internal class SyncReceiver(
                 remote.revision > previous.revision &&
                 sameSyncDomain(local, parseSyncJson(previous.remoteJson)) -> {
                 val previousFields = parseSyncJson(previous.remoteJson)
-                if (previousFields["createdAtMs"] != remote.fields["createdAtMs"] ||
+                if ((previousFields["createdAtMs"] as? Number)?.toLong() !=
+                    (remote.fields["createdAtMs"] as? Number)?.toLong() ||
                     previousFields["type"] != remote.fields["type"]) {
                     InboundResult.CONFLICT
                 } else {
