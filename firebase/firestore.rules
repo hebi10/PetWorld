@@ -43,7 +43,7 @@ service cloud.firestore {
           'id', 'schemaVersion', 'revision', 'name', 'species',
           'isArchived', 'createdAtMs', 'updatedAtMs',
           'breed', 'birthday', 'estimatedAgeYears', 'sex',
-          'neuterStatus', 'notes', 'photoFile', 'deletedAtMs'
+          'neuterStatus', 'notes', 'photoFile', 'deletedAtMs', 'lastSyncOpId'
         ]) &&
         data.id == petId && textBetween(data.id, 100) &&
         data.schemaVersion == 1 &&
@@ -74,7 +74,7 @@ service cloud.firestore {
           'foodKind', 'foodProductName', 'foodServedMilli', 'foodConsumedMilli',
           'foodUnit', 'waterMl', 'eliminationKind', 'eliminationCount',
           'activityKind', 'activityMinutes', 'weightGrams', 'weightInputUnit',
-          'photoFile', 'deletedAtMs'
+          'photoFile', 'deletedAtMs', 'lastSyncOpId'
         ]) &&
         data.id == recordId && textBetween(data.id, 100) &&
         data.petId == petId &&
@@ -102,6 +102,85 @@ service cloud.firestore {
         optionalNumber(data, 'deletedAtMs', 1, 9999999999999);
     }
 
+    function validOpId(id) {
+      return id is string &&
+        id.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
+    }
+
+    function readyAccount(uid) {
+      let user = get(/databases/$(database)/documents/users/$(uid));
+      return user.data.migrationState == 'ready';
+    }
+
+    function validReceipt(opId, data) {
+      return data.keys().hasAll([
+          'opId', 'entityKind', 'petId', 'entityId', 'operation',
+          'expectedRevision', 'resultingRevision', 'requestDigest'
+        ]) && data.keys().hasOnly([
+          'opId', 'entityKind', 'petId', 'entityId', 'operation',
+          'expectedRevision', 'resultingRevision', 'requestDigest'
+        ]) &&
+        validOpId(opId) && data.opId == opId &&
+        data.entityKind in ['PET', 'CARE'] &&
+        textBetween(data.petId, 100) && textBetween(data.entityId, 100) &&
+        !data.petId.matches('.*[/].*') && !data.entityId.matches('.*[/].*') &&
+        !(data.petId in ['.', '..']) && !(data.entityId in ['.', '..']) &&
+        (data.entityKind != 'PET' || data.petId == data.entityId) &&
+        data.operation in ['CREATE', 'UPDATE', 'DELETE'] &&
+        data.expectedRevision is int && data.resultingRevision is int &&
+        data.resultingRevision == data.expectedRevision + 1 &&
+        ((data.operation == 'CREATE' && data.expectedRevision == -1) ||
+          (data.operation in ['UPDATE', 'DELETE'] && data.expectedRevision >= 0)) &&
+        data.requestDigest is string && data.requestDigest.matches('^[0-9a-f]{64}$');
+    }
+
+    function matchesSyncReceipt(uid, kind, petId, entityId, oldRevision, data) {
+      let opId = data.get('lastSyncOpId', '');
+      let path = /databases/$(database)/documents/users/$(uid)/syncReceipts/$(opId);
+      let receipt = getAfter(path).data;
+      return validOpId(opId) && readyAccount(uid) &&
+        !exists(path) && validReceipt(opId, receipt) &&
+        receipt.entityKind == kind && receipt.petId == petId &&
+        receipt.entityId == entityId && receipt.expectedRevision == oldRevision &&
+        receipt.resultingRevision == data.revision &&
+        ((receipt.operation == 'DELETE' && data.get('deletedAtMs', null) != null) ||
+          (receipt.operation != 'DELETE' && data.get('deletedAtMs', null) == null));
+    }
+
+    // Preserve the prior first-import path; once synchronized, writes cannot remove
+    // their receipt linkage or bypass the new atomic protocol.
+    function permittedCreate(uid, kind, petId, entityId, data) {
+      return (!data.keys().hasAny(['lastSyncOpId', 'deletedAtMs'])) ||
+        (data.get('photoFile', null) == null &&
+          matchesSyncReceipt(uid, kind, petId, entityId, -1, data));
+    }
+
+    function permittedUpdate(uid, kind, petId, entityId, before, after) {
+      return before.get('deletedAtMs', null) == null &&
+        ((!before.keys().hasAny(['lastSyncOpId']) &&
+          !after.keys().hasAny(['lastSyncOpId', 'deletedAtMs'])) ||
+          (before.get('photoFile', null) == after.get('photoFile', null) &&
+            matchesSyncReceipt(uid, kind, petId, entityId, before.revision, after)));
+    }
+
+    function activeParent(uid, petId) {
+      let path = /databases/$(database)/documents/users/$(uid)/pets/$(petId);
+      return exists(path) && existsAfter(path) &&
+        get(path).data.get('deletedAtMs', null) == null &&
+        getAfter(path).data.get('deletedAtMs', null) == null;
+    }
+
+    function receiptTargetMatches(target, data) {
+      let next = getAfter(target).data;
+      return existsAfter(target) &&
+        next.get('lastSyncOpId', '') == data.opId &&
+        next.revision == data.resultingRevision &&
+        ((data.operation == 'CREATE' && !exists(target)) ||
+          (data.operation != 'CREATE' && exists(target) &&
+            get(target).data.revision == data.expectedRevision &&
+            get(target).data.get('deletedAtMs', null) == null));
+    }
+
     match /users/{uid} {
       allow get: if owner(uid);
       allow list: if false;
@@ -113,30 +192,51 @@ service cloud.firestore {
         request.resource.data.revision == resource.data.revision + 1;
       allow delete: if false;
 
+      match /syncReceipts/{opId} {
+        allow get: if owner(uid);
+        allow list, update, delete: if false;
+        allow create: if owner(uid) && readyAccount(uid) &&
+          validReceipt(opId, request.resource.data) &&
+          ((request.resource.data.entityKind == 'PET' &&
+            receiptTargetMatches(
+              /databases/$(database)/documents/users/$(uid)/pets/$(request.resource.data.petId),
+              request.resource.data)) ||
+           (request.resource.data.entityKind == 'CARE' &&
+            receiptTargetMatches(
+              /databases/$(database)/documents/users/$(uid)/pets/$(request.resource.data.petId)/records/$(request.resource.data.entityId),
+              request.resource.data)));
+      }
+
       match /pets/{petId} {
         allow get, list: if owner(uid);
         allow create: if owner(uid) &&
           validPet(petId, request.resource.data) &&
-          request.resource.data.revision == 0;
+          request.resource.data.revision == 0 &&
+          permittedCreate(uid, 'PET', petId, petId, request.resource.data);
         allow update: if owner(uid) &&
           validPet(petId, request.resource.data) &&
           request.resource.data.id == resource.data.id &&
           request.resource.data.createdAtMs == resource.data.createdAtMs &&
-          request.resource.data.revision == resource.data.revision + 1;
+          request.resource.data.revision == resource.data.revision + 1 &&
+          permittedUpdate(uid, 'PET', petId, petId, resource.data, request.resource.data);
         allow delete: if false;
 
         match /records/{recordId} {
           allow get, list: if owner(uid);
           allow create: if owner(uid) &&
-            exists(/databases/$(database)/documents/users/$(uid)/pets/$(petId)) &&
+            activeParent(uid, petId) &&
             validCare(petId, recordId, request.resource.data) &&
-            request.resource.data.revision == 0;
+            request.resource.data.revision == 0 &&
+            permittedCreate(uid, 'CARE', petId, recordId, request.resource.data);
           allow update: if owner(uid) &&
             validCare(petId, recordId, request.resource.data) &&
             request.resource.data.id == resource.data.id &&
             request.resource.data.petId == resource.data.petId &&
+            request.resource.data.type == resource.data.type &&
             request.resource.data.createdAtMs == resource.data.createdAtMs &&
-            request.resource.data.revision == resource.data.revision + 1;
+            request.resource.data.revision == resource.data.revision + 1 &&
+            activeParent(uid, petId) &&
+            permittedUpdate(uid, 'CARE', petId, recordId, resource.data, request.resource.data);
           allow delete: if false;
         }
       }

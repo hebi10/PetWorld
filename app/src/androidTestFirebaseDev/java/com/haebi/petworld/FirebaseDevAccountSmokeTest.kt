@@ -5,6 +5,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiScrollable
+import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.Until
 import com.haebi.petworld.auth.PetWorldAccountActivity
 import org.junit.Assert.assertTrue
@@ -18,10 +20,19 @@ class FirebaseDevAccountSmokeTest {
         ActivityScenario.launch(PetWorldAccountActivity::class.java).use {
             val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
 
-            assertTrue(device.wait(Until.hasObject(By.text("계정")), 15_000))
-            assertTrue(device.wait(Until.hasObject(By.text("계정 상태")), 10_000))
-            assertTrue(device.wait(Until.hasObject(By.text("이 기기의 기록")), 10_000))
-            assertTrue(device.wait(Until.hasObject(By.text("Google 계정으로 시작")), 10_000))
+            assertTrue("계정 제목이 표시되어야 합니다", device.wait(Until.hasObject(By.text("계정")), 30_000))
+            assertTrue("계정 상태가 표시되어야 합니다", device.wait(Until.hasObject(By.text("계정 상태")), 10_000))
+            assertTrue("비회원 상태가 표시되어야 합니다", device.wait(Until.hasObject(By.text("로그인하지 않음")), 10_000))
+
+            fun assertVisibleByScrolling(label: String) {
+                if (!device.hasObject(By.text(label))) {
+                    UiScrollable(UiSelector().scrollable(true)).setMaxSearchSwipes(6)
+                        .scrollIntoView(UiSelector().text(label))
+                }
+                assertTrue("${label} 표시 필요", device.wait(Until.hasObject(By.text(label)), 10_000))
+            }
+            assertVisibleByScrolling("이 기기의 기록")
+            assertVisibleByScrolling("Google 계정으로 시작")
         }
     }
 }

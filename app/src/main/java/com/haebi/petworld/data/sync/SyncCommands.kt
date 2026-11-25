@@ -57,8 +57,10 @@ internal fun decideSyncCommit(
     if (current?.get("deletedAtMs") != null) return SyncRemoteDecision.Stop(SyncCommitOutcome.Conflict)
     val expected = command.previous
     val matches = if (expected == null) current == null
-        else FirstImportPayloads.sameRemote(expected, current)
-    return if (matches) SyncRemoteDecision.Write(command.next, command.receipt())
+        else FirstImportPayloads.sameRemote(expected, current?.minus("lastSyncOpId"))
+    return if (matches) SyncRemoteDecision.Write(
+        command.next + ("lastSyncOpId" to command.opId), command.receipt(),
+    )
         else SyncRemoteDecision.Stop(SyncCommitOutcome.Conflict)
 }
 
