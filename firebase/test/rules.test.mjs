@@ -654,3 +654,48 @@ test('FB-07-C2-C2-02: Admin emulator scheduler claims and persists cursor across
     await deleteApp(app);
   }
 });
+
+test('FB-07-D2: browser nonce records are Admin-only and cannot be forged by a client', async () => {
+  const path='accountDeletionWebChallenges/'+'a'.repeat(64);
+  const record={purpose:'identify',jobId:null,issuedAtMs:now,expiresAt:new Date(now+300_000)};
+  await env.withSecurityRulesDisabled(async admin=>{
+    await setDoc(doc(admin.firestore(),path),record);
+  });
+  for(const db of [env.unauthenticatedContext().firestore(),env.authenticatedContext('alice').firestore()]){
+    const target=doc(db,path);
+    await assertFails(getDoc(target));
+    await assertFails(updateDoc(target,{purpose:'submit'}));
+    await assertFails(deleteDoc(target));
+    await assertFails(setDoc(doc(db,'accountDeletionWebChallenges/'+'b'.repeat(64)),record));
+  }
+  await env.withSecurityRulesDisabled(async admin=>{
+    deepStrictEqual((await getDoc(doc(admin.firestore(),path))).data().purpose,'identify');
+  });
+});
+
+test('FB-07-D2: actual Admin Firestore transaction consumes a challenge only once', {timeout:60_000}, async()=>{
+  if(!/^(127\.0\.0\.1|localhost):8080$/.test(process.env.FIRESTORE_EMULATOR_HOST||'')||
+    projectId!=='demo-petworld-fb01')throw Error('Local demo Firestore emulator required');
+  const [{initializeApp,deleteApp},{getFirestore},{createWebDeletionChallenges}]=await Promise.all([
+    import('firebase-admin/app'),import('firebase-admin/firestore'),
+    import('../server/account-deletion-web-identity.mjs'),
+  ]);
+  const app=initializeApp({projectId},'web-nonce-emulator-qa');
+  const db=getFirestore(app);
+  try{
+    const first=createWebDeletionChallenges({db,now:()=>now});
+    const second=createWebDeletionChallenges({db,now:()=>now});
+    const {nonce}=await first.issue('submit','a'.repeat(64));
+    await rejects(()=>second.consume(nonce,'submit','b'.repeat(64),Math.floor(now/1000)));
+    const results=await Promise.allSettled([
+      first.consume(nonce,'submit','a'.repeat(64),Math.floor(now/1000)),
+      second.consume(nonce,'submit','a'.repeat(64),Math.floor(now/1000)),
+    ]);
+    deepStrictEqual(results.filter(r=>r.status==='fulfilled').length,1);
+    const rows=await db.collection('accountDeletionWebChallenges').get();
+    deepStrictEqual(rows.empty,true);
+  }finally{
+    await db.terminate();
+    await deleteApp(app);
+  }
+});
