@@ -17,6 +17,7 @@ import com.haebi.petworld.data.backup.PetWorldBackupRestorer
 import com.haebi.petworld.data.migration.FirstImportBackupEvidence
 import com.haebi.petworld.data.migration.FirstImportBackupVerifier
 import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.account.AccountDeletionJournal
 import com.haebi.petworld.data.account.photoDirectoryName
 import com.haebi.petworld.data.backup.PetWorldMutationGate
 import com.haebi.petworld.data.migration.FirstImportGuards
@@ -106,8 +107,13 @@ class FirebaseDevFirstImportService(private val context: Context) {
         check(!user.isAnonymous && user.providerData.any { it.providerId == "google.com" }) {
             "Google 계정으로 로그인한 뒤에만 기록을 이전할 수 있습니다."
         }
-        return user.uid.takeIf { it.isNotBlank() }
+        val uid = user.uid.takeIf { it.isNotBlank() }
             ?: error("Google 계정 인증을 다시 확인해 주세요.")
+        val scope = LocalAccountScope.fromFirebaseUid(uid) as LocalAccountScope.SignedIn
+        check(!AccountDeletionJournal(context.applicationContext).blocksCloud(scope)) {
+            "계정 삭제 요청 상태를 확인할 때까지 클라우드 보관을 사용할 수 없습니다."
+        }
+        return uid
     }
 
     private fun assertSameUser(uid: String) {
