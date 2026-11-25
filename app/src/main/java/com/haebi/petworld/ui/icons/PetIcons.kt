@@ -1,10 +1,10 @@
 package com.haebi.petworld.ui.icons
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.ListAlt
+import androidx.compose.material.icons.filled.Home as FilledHome
+import androidx.compose.material.icons.filled.ListAlt as FilledListAlt
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.BarChart as FilledBarChart
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.ChevronRight
@@ -68,10 +68,10 @@ object PetIcons {
     val Health: ImageVector = Icons.Outlined.FavoriteBorder
     val Statistics: ImageVector = Icons.Outlined.BarChart
     val More: ImageVector = Icons.Outlined.MoreHoriz
-    val HomeSelected: ImageVector = Icons.Filled.Home
-    val RecordsSelected: ImageVector = Icons.Filled.ListAlt
+    val HomeSelected: ImageVector = Icons.Filled.FilledHome
+    val RecordsSelected: ImageVector = Icons.Filled.FilledListAlt
     val HealthSelected: ImageVector = Icons.Filled.Favorite
-    val StatisticsSelected: ImageVector = Icons.Filled.BarChart
+    val StatisticsSelected: ImageVector = Icons.Filled.FilledBarChart
     val Expand: ImageVector = Icons.Outlined.KeyboardArrowDown
     val Chevron: ImageVector = Icons.Outlined.ChevronRight
 

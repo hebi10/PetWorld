@@ -1,0 +1,74 @@
+name: PetWorld primary tabs design comparison
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'app/src/main/java/com/haebi/petworld/ui/**'
+      - 'app/src/androidTest/java/com/haebi/petworld/PetWorldPrimaryTabsDesignTest.kt'
+      - '.github/workflows/primary-tabs-design-capture.yml'
+      - '.github/scripts/capture-primary-tabs-design.sh'
+
+permissions:
+  contents: read
+concurrency:
+  group: petworld-primary-design-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  actual-screens:
+    if: github.repository == 'hebi10/PetWorld' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feature/pw-design-mono2-primary-tabs-20261125'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Record exact source
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          mkdir -p qa/primary-tabs/provenance
+          printf '%s\n' "$EXPECTED_SHA" > qa/primary-tabs/provenance/source-sha.txt
+          printf '%s\n' 'debug; API35 Pixel 6; actual Android; synthetic six-record fixture; no real Firebase' > qa/primary-tabs/provenance/scope.txt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - name: Install Android platform
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -path '*/bin/sdkmanager' -type f | head -n 1)"
+          test -n "$SDK_MANAGER"
+          "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install "platforms;android-37.0" "build-tools;36.0.0"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+      - name: Build exact app and screenshot test
+        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+      - name: Enable KVM
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Real Android light and dark primary tabs
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: bash .github/scripts/capture-primary-tabs-design.sh
+      - name: Upload actual screenshots and provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: petworld-mono2-primary-actual-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            qa/primary-tabs/screenshots/**/*.png
+            qa/primary-tabs/provenance/
+          if-no-files-found: warn
+          retention-days: 90
