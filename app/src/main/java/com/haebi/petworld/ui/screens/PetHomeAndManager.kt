@@ -2,6 +2,7 @@ package com.haebi.petworld.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
@@ -43,6 +44,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.haebi.petworld.data.CareType
 import com.haebi.petworld.data.localDate
+import com.haebi.petworld.data.displayValue
 import com.haebi.petworld.data.summarizeCare
 import com.haebi.petworld.data.room.CareEntity
 import com.haebi.petworld.data.PetPhotoStore
@@ -73,6 +75,7 @@ fun PetHomeScreen(
     onViewType: (CareType) -> Unit,
     onSwitchPet: () -> Unit,
     onViewAll: () -> Unit,
+    onViewToday: () -> Unit,
     expandedLayout: Boolean = false,
 ) {
     val day = LocalDate.now()
@@ -82,7 +85,7 @@ fun PetHomeScreen(
 
     val intro: @Composable () -> Unit = {
         PetHomeIntro(selected, photoStore, todayLabel, largeText, onEdit, onSwitchPet)
-        PetHomeDailySummary(todayRecords, largeText, onQuickAdd, onViewType)
+        PetHomeDailySummary(todayRecords, largeText, onQuickAdd, onViewType, onViewToday)
     }
     if (expandedLayout) {
         Row(modifier = Modifier.fillMaxWidth(),
@@ -117,7 +120,7 @@ private fun PetHomeIntro(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 PetAvatar(photoStore, selected.name, selected.photoFile,
-                    size = if (largeText) 56.dp else 76.dp, shape = RectangleShape)
+                    size = if (largeText) 56.dp else 72.dp, shape = RectangleShape)
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("${selected.name}의 하루", modifier = Modifier.weight(1f),
@@ -145,9 +148,11 @@ private fun PetHomeDailySummary(
     largeText: Boolean,
     onQuickAdd: () -> Unit,
     onViewType: (CareType) -> Unit,
+    onViewToday: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
-        if (largeText) PetPrimaryButton("빠른 기록 추가", onClick = onQuickAdd, modifier = Modifier.fillMaxWidth())
+        if (largeText) PetPrimaryButton("빠른 기록 추가", onClick = onQuickAdd, modifier = Modifier.fillMaxWidth(),
+            prominent = true, leadingIcon = PetIcons.Add)
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = MaterialTheme.colorScheme.surface,
@@ -156,9 +161,13 @@ private fun PetHomeDailySummary(
         ) {
             Column {
                 Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
-                    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = PetSpacing.medium, vertical = PetSpacing.small),
+                    Row(modifier = Modifier.fillMaxWidth().padding(start = PetSpacing.medium, end = PetSpacing.xSmall),
                         verticalAlignment = Alignment.CenterVertically) {
-                        Text("오늘의 돌봄", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text("오늘의 돌봄", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = onViewToday) {
+                            Text("자세히 보기")
+                            Icon(PetIcons.Chevron, contentDescription = null, modifier = Modifier.size(16.dp))
+                        }
                     }
                 }
                 CareType.entries.forEachIndexed { index, type ->
@@ -166,15 +175,20 @@ private fun PetHomeDailySummary(
                     Row(
                         modifier = Modifier.fillMaxWidth().heightIn(min = PetSpacing.minTouchTarget)
                             .clickable(role = Role.Button) { onViewType(type) }
-                            .padding(horizontal = PetSpacing.medium, vertical = PetSpacing.small),
+                            .padding(horizontal = PetSpacing.medium, vertical = PetSpacing.xSmall),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(PetSpacing.medium),
                     ) {
                         Icon(careGlyph(type), contentDescription = null, modifier = Modifier.size(24.dp))
-                        Column(modifier = Modifier.weight(0.85f)) {
-                            Text(type.label, style = MaterialTheme.typography.titleSmall)
-                            Text("${todayRecords.count { it.type == type.name }}건", style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Column(modifier = Modifier.weight(1f)) {
+                            val count = todayRecords.count { it.type == type.name }
+                            if (largeText) {
+                                Text(type.label, style = MaterialTheme.typography.titleSmall)
+                                Text("${count}건", style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            } else {
+                                Text("${type.label} · ${count}건", style = MaterialTheme.typography.titleSmall)
+                            }
                         }
                         Text(summarizeCare(type, todayRecords), modifier = Modifier.weight(1.65f),
                             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
@@ -183,7 +197,8 @@ private fun PetHomeDailySummary(
                 }
             }
         }
-        if (!largeText) PetPrimaryButton("빠른 기록 추가", onClick = onQuickAdd, modifier = Modifier.fillMaxWidth())
+        if (!largeText) PetPrimaryButton("빠른 기록 추가", onClick = onQuickAdd, modifier = Modifier.fillMaxWidth(),
+            prominent = true, leadingIcon = PetIcons.Add)
     }
 }
 
@@ -198,7 +213,41 @@ private fun PetHomeRecentRecords(records: List<CareEntity>, onViewRecord: (Strin
         if (recent.isEmpty()) {
             PetEmptyState("아직 입력한 기록이 없습니다", "빠른 기록으로 식사·음수·배변·활동·체중을 추가해 주세요.")
         } else {
-            recent.forEach { record -> CareRecordRow(record, onClick = { onViewRecord(record.id) }) }
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surface,
+                shape = RectangleShape,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            ) {
+                Column {
+                    recent.forEachIndexed { index, record ->
+                        if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        val type = CareType.valueOf(record.type)
+                        Row(
+                            modifier = Modifier.fillMaxWidth().heightIn(min = PetSpacing.minTouchTarget)
+                                .clickable(role = Role.Button) { onViewRecord(record.id) }
+                                .padding(horizontal = PetSpacing.medium, vertical = PetSpacing.xSmall),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+                        ) {
+                            Box(modifier = Modifier.size(32.dp).background(MaterialTheme.colorScheme.surfaceContainer),
+                                contentAlignment = Alignment.Center) {
+                                Icon(careGlyph(type), contentDescription = null, modifier = Modifier.size(20.dp))
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("${record.homeClockLabel()} · ${type.label}",
+                                    style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                Text(record.displayValue(), style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                if (record.note.isNotBlank()) Text(record.note, style = MaterialTheme.typography.bodyMedium)
+                                if (record.photoFile != null) Text("관찰 사진 있음", style = MaterialTheme.typography.labelMedium)
+                            }
+                            Icon(PetIcons.Chevron, contentDescription = null, modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
         }
     }
 }

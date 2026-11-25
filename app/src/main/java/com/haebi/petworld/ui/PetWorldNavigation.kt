@@ -226,9 +226,9 @@ fun PetWorldApp(
                             painter = painterResource(id = R.drawable.petworld_brand_mark),
                             contentDescription = null,
                             colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
-                            modifier = Modifier.size(width = 40.dp, height = 36.dp),
+                            modifier = Modifier.size(width = 32.dp, height = 32.dp),
                         )
-                        Text("PetWorld", style = MaterialTheme.typography.headlineMedium,
+                        Text("PetWorld", style = MaterialTheme.typography.headlineLarge,
                             fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                         if (showTabs && tab == PrimaryTab.HOME) {
                             IconButton(onClick = { tab = PrimaryTab.MORE }) {
@@ -298,7 +298,8 @@ fun PetWorldApp(
                             },
                             icon = { Icon(if (tab == item) item.selectedVector else item.imageVector,
                                 contentDescription = null, modifier = Modifier.size(24.dp)) },
-                            label = { Text(item.label, fontWeight = if (tab == item) FontWeight.Bold else FontWeight.Normal) },
+                            label = { Text(item.label, style = MaterialTheme.typography.labelLarge,
+                                fontWeight = if (tab == item) FontWeight.Bold else FontWeight.Normal) },
                             alwaysShowLabel = true,
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = MaterialTheme.colorScheme.primary,
@@ -526,6 +527,7 @@ fun PetWorldApp(
                                 onViewType = ::openFilteredRecords,
                                 onSwitchPet = { showSwitcher = true },
                                 onViewAll = { selectedTypeFilter = null; selectedRange = CareRange.ALL; tab = PrimaryTab.RECORDS },
+                                onViewToday = { selectedTypeFilter = null; selectedRange = CareRange.TODAY; tab = PrimaryTab.RECORDS },
                                 expandedLayout = expandedUi,
                             )
                             PrimaryTab.RECORDS -> Unit
@@ -685,6 +687,7 @@ private fun SettingsContent(
 ) {
     val context = LocalContext.current
     var showInfo by rememberSaveable { mutableStateOf(false) }
+    var showThemePicker by rememberSaveable { mutableStateOf(false) }
     Text("더보기", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
     if (onOpenAccount != null) {
         PetMenuRow(
@@ -695,42 +698,35 @@ private fun SettingsContent(
             emphasized = true,
         )
     }
-    Text("반려동물 관리", style = MaterialTheme.typography.titleLarge)
     PetMenuRow(
-        icon = PetIcons.Profile, label = "프로필 관리", detail = "등록 ${profileCount}개", onClick = onManage,
+        icon = PetIcons.Profile, label = "프로필 관리", detail = "반려동물 관리 · 등록 ${profileCount}개", onClick = onManage,
     )
     PetMenuRow(icon = PetIcons.Add, label = "반려동물 추가", onClick = onAdd)
-    Text("화면 설정", style = MaterialTheme.typography.titleLarge)
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RectangleShape,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-    ) {
-        Column(modifier = Modifier.padding(PetSpacing.medium),
-            verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall)) {
-            Text("화면 모드", style = MaterialTheme.typography.labelLarge)
-            val choices = listOf(ThemeMode.SYSTEM to "시스템", ThemeMode.LIGHT to "라이트", ThemeMode.DARK to "다크")
-            val largeText = LocalDensity.current.fontScale >= 1.3f
-            val choice: @Composable (ThemeMode, String, Modifier) -> Unit = { mode, label, modifier ->
-                Row(
-                    modifier = modifier.heightIn(min = PetSpacing.minTouchTarget)
-                        .selectable(selected = themeMode == mode, role = Role.RadioButton,
-                            onClick = { onThemeModeChange(mode) }),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(PetSpacing.xSmall),
-                ) {
-                    RadioButton(selected = themeMode == mode, onClick = null, modifier = Modifier.size(24.dp))
-                    Text(label, style = MaterialTheme.typography.bodyMedium)
+    val choices = listOf(ThemeMode.SYSTEM to "시스템", ThemeMode.LIGHT to "라이트", ThemeMode.DARK to "다크")
+    PetMenuRow(icon = PetIcons.Settings, label = "화면 설정",
+        detail = choices.first { it.first == themeMode }.second, onClick = { showThemePicker = true })
+    if (showThemePicker) {
+        AlertDialog(
+            onDismissRequest = { showThemePicker = false },
+            title = { Text("화면 모드") },
+            text = {
+                Column {
+                    choices.forEach { (mode, label) ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().heightIn(min = PetSpacing.minTouchTarget)
+                                .selectable(selected = themeMode == mode, role = Role.RadioButton,
+                                    onClick = { onThemeModeChange(mode); showThemePicker = false }),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+                        ) {
+                            RadioButton(selected = themeMode == mode, onClick = null)
+                            Text(label, style = MaterialTheme.typography.bodyLarge)
+                        }
+                    }
                 }
-            }
-            if (largeText) {
-                choices.forEach { (mode, label) -> choice(mode, label, Modifier.fillMaxWidth()) }
-            } else {
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    choices.forEach { (mode, label) -> choice(mode, label, Modifier.weight(1f)) }
-                }
-            }
-        }
+            },
+            confirmButton = { TextButton(onClick = { showThemePicker = false }) { Text("닫기") } },
+        )
     }
     if (guestScope) {
         PetBackupSection(restoring = restoring, onRestore = onRestoreBackup)

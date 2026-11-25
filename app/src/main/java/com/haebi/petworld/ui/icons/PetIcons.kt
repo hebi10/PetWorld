@@ -32,6 +32,7 @@ import androidx.compose.material.icons.outlined.Healing
 import androidx.compose.material.icons.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.ListAlt
 import androidx.compose.material.icons.outlined.LocalHospital
@@ -80,6 +81,7 @@ object PetIcons {
     val Food: ImageVector = Icons.Outlined.Restaurant
     val Water: ImageVector = Icons.Outlined.WaterDrop
     val Elimination: ImageVector = Icons.Outlined.Wc
+    val LitterTray: ImageVector = Icons.Outlined.Inbox
     val Activity: ImageVector = Icons.Outlined.DirectionsWalk
     val Sleep: ImageVector = Icons.Outlined.Bedtime
     val Weight: ImageVector = Icons.Outlined.MonitorWeight

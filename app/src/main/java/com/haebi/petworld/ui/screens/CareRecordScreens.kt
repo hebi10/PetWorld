@@ -77,7 +77,9 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import kotlin.math.roundToLong
+import kotlin.math.floor
+import kotlin.math.log10
+import kotlin.math.pow
 
 enum class CareRange(val label: String) {
     TODAY("오늘"), SEVEN("7일"), THIRTY("30일"), ALL("전체")
@@ -109,6 +111,13 @@ internal fun CareEntity.displayRecordTime(instantMillis: Long): String {
 }
 
 fun CareEntity.displayDateTime(): String = displayRecordTime(occurredAt)
+
+internal fun CareEntity.displayClockTime(): String =
+    displayDateTime().substringAfterLast(' ')
+
+internal fun CareEntity.homeClockLabel(today: LocalDate = LocalDate.now()): String =
+    if (localDate() == today) displayClockTime()
+    else "${localDate().format(DateTimeFormatter.ofPattern("M/d", Locale.KOREAN))} ${displayClockTime()}"
 
 internal fun CareEntity.hasBeenEdited(): Boolean = updatedAt > createdAt
 
@@ -196,12 +205,12 @@ fun CareRecordList(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
             ) {
-                PetSecondaryButton(
+                RecordFilterButton(
                     label = "기간: ${selectedRange.label}",
                     onClick = { showRangePicker = true },
                     modifier = Modifier.weight(1f),
                 )
-                PetSecondaryButton(
+                RecordFilterButton(
                     label = "유형: ${selectedType?.label ?: "전체"}",
                     onClick = { showTypePicker = true },
                     modifier = Modifier.weight(1f),
@@ -250,7 +259,7 @@ fun CareRecordList(
                         }
                     }
                     item(key = "care-${record.id}") {
-                        CareRecordCompactRow(record = record, onClick = { onView(record.id) })
+                        CareRecordCompactRow(record = record, onClick = { onView(record.id) }, groupedByDate = true)
                     }
                 }
                 if (loaded?.request != request) {
@@ -321,13 +330,29 @@ fun CareRecordList(
 internal fun careGlyph(type: CareType): ImageVector = when (type) {
     CareType.FOOD -> PetIcons.Food
     CareType.WATER -> PetIcons.Water
-    CareType.ELIMINATION -> PetIcons.Elimination
-    CareType.ACTIVITY -> PetIcons.Activity
+    CareType.ELIMINATION -> PetIcons.LitterTray
+    CareType.ACTIVITY -> PetIcons.Profile
     CareType.WEIGHT -> PetIcons.Weight
 }
 
 @Composable
-private fun CareRecordCompactRow(record: CareEntity, onClick: () -> Unit) {
+private fun RecordFilterButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier.heightIn(min = PetSpacing.minTouchTarget).clickable(role = Role.Button, onClick = onClick),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RectangleShape,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = PetSpacing.medium, vertical = PetSpacing.small),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
+            Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+            Icon(PetIcons.Expand, contentDescription = null, modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
+@Composable
+private fun CareRecordCompactRow(record: CareEntity, onClick: () -> Unit, groupedByDate: Boolean = false) {
     val type = CareType.valueOf(record.type)
     val largeText = LocalDensity.current.fontScale >= 1.3f
     Surface(
@@ -336,23 +361,26 @@ private fun CareRecordCompactRow(record: CareEntity, onClick: () -> Unit) {
         shape = RectangleShape,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(PetSpacing.medium),
-            verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall)) {
-            Row(modifier = Modifier.fillMaxWidth().heightIn(min = PetSpacing.minTouchTarget),
-                horizontalArrangement = Arrangement.spacedBy(PetSpacing.medium),
+        Column(modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp)
+            .padding(horizontal = PetSpacing.medium, vertical = PetSpacing.small),
+            verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall),
+            horizontalAlignment = Alignment.Start) {
+            Row(modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
                 verticalAlignment = Alignment.CenterVertically) {
                 Box(modifier = Modifier.size(40.dp).background(MaterialTheme.colorScheme.surfaceContainer),
                     contentAlignment = Alignment.Center) {
                     Icon(careGlyph(type), contentDescription = null, modifier = Modifier.size(24.dp))
                 }
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(record.displayDateTime(), style = MaterialTheme.typography.labelMedium,
+                    Text(if (groupedByDate) record.displayClockTime() else record.displayDateTime(),
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(type.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                     if (largeText) Text(record.displayValue(), style = MaterialTheme.typography.bodyLarge)
                 }
                 if (!largeText) Text(record.displayValue(), modifier = Modifier.weight(1.25f),
-                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold), textAlign = TextAlign.End)
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold), textAlign = TextAlign.End)
                 Icon(PetIcons.Chevron, contentDescription = null, modifier = Modifier.size(18.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -520,58 +548,32 @@ fun CareStatisticsScreen(
     }
 
     val weightSection: @Composable () -> Unit = {
-        PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
-            Text("체중 변화", style = MaterialTheme.typography.titleLarge)
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
+            Text("체중 변화", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             val latest = weights.latest
             if (latest == null) {
-                Text(
-                    "선택한 기간에 체중 기록이 없습니다.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    "체중 추이는 측정값 2개 이상부터 표시됩니다.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Text("선택한 기간에 체중 기록이 없습니다.", style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("체중 추이는 측정값 2개 이상부터 표시됩니다.", style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
-                Text(
-                    "최근 측정 ${milliText(latest.weightGrams!!)}kg",
-                    style = MaterialTheme.typography.titleLarge,
-                )
-                Text(
-                    "${latest.displayDateTime()} · 측정 ${weights.entries.size}건",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 if (weights.entries.size >= 2) {
                     WeightTrend(weights.entries)
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            weightAxisDate(weights.entries.first()),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Text(
-                            weightAxisDate(weights.entries.last()),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.End,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
                 } else {
-                    Text(
-                        "체중 추이는 측정값 2개 이상부터 표시됩니다.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Text("체중 추이는 측정값 2개 이상부터 표시됩니다.", style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Text(
-                    "최저 ${milliText(weights.minimumGrams!!)}kg · 최고 ${milliText(weights.maximumGrams!!)}kg",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+                Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainer,
+                    shape = RectangleShape) {
+                    Column(modifier = Modifier.padding(PetSpacing.medium), verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall)) {
+                        Text("최근 측정 ${milliText(latest.weightGrams!!)}kg",
+                            style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("최저 ${milliText(weights.minimumGrams!!)}kg · 최고 ${milliText(weights.maximumGrams!!)}kg",
+                            style = MaterialTheme.typography.bodyMedium)
+                        Text("${latest.displayDateTime()} · 측정 ${weights.entries.size}건",
+                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
         }
     }
@@ -605,8 +607,9 @@ fun CareStatisticsScreen(
 @Composable
 private fun CareStatisticsSummaryCard(type: CareType, records: List<CareEntity>, modifier: Modifier) {
     Surface(modifier = modifier, color = MaterialTheme.colorScheme.surfaceContainer, shape = RectangleShape) {
-        Row(modifier = Modifier.fillMaxWidth().heightIn(min = PetSpacing.minTouchTarget).padding(PetSpacing.medium),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(PetSpacing.medium)) {
+        Row(modifier = Modifier.fillMaxWidth().heightIn(min = PetSpacing.minTouchTarget)
+            .padding(horizontal = PetSpacing.medium, vertical = PetSpacing.xSmall),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
             Icon(careGlyph(type), contentDescription = null, modifier = Modifier.size(24.dp))
             Column(modifier = Modifier.weight(0.85f)) {
                 Text(type.label, style = MaterialTheme.typography.titleSmall)
@@ -619,49 +622,73 @@ private fun CareStatisticsSummaryCard(type: CareType, records: List<CareEntity>,
     }
 }
 
+internal data class WeightChartScale(val bottom: Long, val step: Long) {
+    val top: Long get() = bottom + step * 4
+    val ticks: List<Long> get() = (4 downTo 0).map { bottom + step * it }
+}
+
+/** Five evenly spaced labels; leave headroom without exaggerating tiny weight changes. */
+internal fun weightChartScale(lowest: Long, highest: Long): WeightChartScale {
+    require(lowest in 1L..highest && highest <= 1_000_000_000L)
+    val desired = maxOf(1.0, (highest - lowest) / 2.0, highest * 0.025)
+    val magnitude = 10.0.pow(floor(log10(desired)))
+    val step = (listOf(1.0, 2.0, 5.0, 10.0).first { it * magnitude >= desired } * magnitude)
+        .toLong().coerceAtLeast(1L)
+    val bottom = ((lowest / step - 1L) * step).coerceAtLeast(0L)
+    return WeightChartScale(bottom, step)
+}
+
 @Composable
 private fun WeightTrend(weights: List<CareEntity>) {
     val first = weights.first()
     val last = weights.last()
     val lowest = weights.minOf { it.weightGrams!! }
     val highest = weights.maxOf { it.weightGrams!! }
-    val extent = (highest - lowest).coerceAtLeast(100L).toDouble() * 0.2
-    val bottom = (lowest.toDouble() - extent).coerceAtLeast(0.0)
-    val top = highest.toDouble() + extent
-    val span = (top - bottom).coerceAtLeast(1.0)
+    val scale = weightChartScale(lowest, highest)
+    val span = (scale.top - scale.bottom).toDouble()
     val timeSpan = last.occurredAt - first.occurredAt
     val lineColor = MaterialTheme.colorScheme.onSurface
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     val dotColor = MaterialTheme.colorScheme.surface
+    val labelStyle = MaterialTheme.typography.labelMedium
+    val labelInset = with(LocalDensity.current) { labelStyle.lineHeight.toDp() / 2 }
+    val chartHeight = if (LocalDensity.current.fontScale >= 1.3f) 180.dp else 136.dp
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
-        verticalAlignment = Alignment.CenterVertically) {
-        Column(modifier = Modifier.height(132.dp), verticalArrangement = Arrangement.SpaceBetween) {
-            listOf(top, bottom + span * 0.5, bottom).forEach { value ->
-                Text("${milliText(value.roundToLong())}kg", style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+        verticalAlignment = Alignment.Top) {
+        Column(modifier = Modifier.height(chartHeight), verticalArrangement = Arrangement.SpaceBetween) {
+            scale.ticks.forEach { value ->
+                Text("${milliText(value)}kg", style = labelStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        Canvas(modifier = Modifier.weight(1f).height(132.dp)) {
-            val inset = 5.dp.toPx()
-            val plotWidth = (size.width - 2 * inset).coerceAtLeast(1f)
-            val plotHeight = (size.height - 2 * inset).coerceAtLeast(1f)
-            repeat(5) { tick ->
-                val y = inset + plotHeight * tick / 4f
-                drawLine(gridColor, Offset(inset, y), Offset(inset + plotWidth, y), strokeWidth = 1.dp.toPx())
+        Column(modifier = Modifier.weight(1f)) {
+            Canvas(modifier = Modifier.fillMaxWidth().height(chartHeight)) {
+                val xInset = 5.dp.toPx()
+                val yInset = labelInset.toPx()
+                val plotWidth = (size.width - 2 * xInset).coerceAtLeast(1f)
+                val plotHeight = (size.height - 2 * yInset).coerceAtLeast(1f)
+                repeat(scale.ticks.size) { tick ->
+                    val y = yInset + plotHeight * tick / 4f
+                    drawLine(gridColor, Offset(xInset, y), Offset(xInset + plotWidth, y), strokeWidth = 1.dp.toPx())
+                }
+                drawLine(gridColor, Offset(xInset, yInset), Offset(xInset, yInset + plotHeight), strokeWidth = 1.dp.toPx())
+                val vertices = weights.mapIndexed { index, record ->
+                    val fraction = if (timeSpan > 0L) ((record.occurredAt - first.occurredAt).toDouble() / timeSpan).toFloat()
+                        else index.toFloat() / (weights.size - 1)
+                    Offset(xInset + fraction.coerceIn(0f, 1f) * plotWidth,
+                        yInset + plotHeight * (1 - ((record.weightGrams!! - scale.bottom) / span).toFloat().coerceIn(0f, 1f)))
+                }
+                vertices.zipWithNext { from, to ->
+                    drawLine(lineColor, from, to, strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
+                }
+                vertices.forEach { point ->
+                    drawCircle(lineColor, radius = 4.dp.toPx(), center = point)
+                    drawCircle(dotColor, radius = 2.3.dp.toPx(), center = point)
+                }
             }
-            drawLine(gridColor, Offset(inset, inset), Offset(inset, inset + plotHeight), strokeWidth = 1.dp.toPx())
-            val vertices = weights.mapIndexed { index, record ->
-                val fraction = if (timeSpan > 0L) ((record.occurredAt - first.occurredAt).toDouble() / timeSpan).toFloat()
-                    else index.toFloat() / (weights.size - 1)
-                Offset(inset + fraction.coerceIn(0f, 1f) * plotWidth,
-                    inset + plotHeight * (1 - ((record.weightGrams!!.toDouble() - bottom) / span).toFloat().coerceIn(0f, 1f)))
-            }
-            vertices.zipWithNext { from, to ->
-                drawLine(lineColor, from, to, strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
-            }
-            vertices.forEach { point ->
-                drawCircle(lineColor, radius = 4.dp.toPx(), center = point)
-                drawCircle(dotColor, radius = 2.3.dp.toPx(), center = point)
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = PetSpacing.xSmall),
+                horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(weightAxisDate(first), style = labelStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(weightAxisDate(last), style = labelStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

@@ -91,14 +91,10 @@ fun PetBackupSection(
 
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
         Text("데이터 관리", style = MaterialTheme.typography.titleLarge)
-        Text(
-            "프로필·기록·사진·설정을 암호화해 백업·복원합니다.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         PetMenuRow(
             icon = PetIcons.Lock,
             label = if (busy) "처리 중..." else "암호화 백업 생성",
+            detail = "프로필·기록·사진·설정",
             enabled = !busy && !restoring,
             onClick = { showPasswordDialog = true },
         )

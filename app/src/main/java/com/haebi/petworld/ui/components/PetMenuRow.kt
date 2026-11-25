@@ -41,7 +41,7 @@ internal fun PetMenuRow(
         shape = RectangleShape,
         border = if (emphasized) null else BorderStroke(1.dp, colors.outlineVariant),
     ) {
-        Row(modifier = Modifier.fillMaxWidth().padding(PetSpacing.medium),
+        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = PetSpacing.medium, vertical = PetSpacing.small),
             horizontalArrangement = Arrangement.spacedBy(PetSpacing.medium),
             verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp), tint = tint)
