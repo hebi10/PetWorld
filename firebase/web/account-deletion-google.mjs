@@ -90,6 +90,10 @@ export function createGoogleCredentialPrompt({gis,root,document=globalThis.docum
     const dialog=document.createElement('dialog'),title=document.createElement('h2');
     const detail=document.createElement('p'),container=document.createElement('div');
     const cancel=document.createElement('button');
+    title.id='petworld-google-credential-title';
+    dialog.setAttribute('aria-labelledby',title.id);
+    detail.id='petworld-google-credential-description';
+    dialog.setAttribute('aria-describedby',detail.id);
     title.textContent=purpose==='submit'?'Google 계정 다시 인증':'기존 Google 계정 확인';
     detail.textContent=purpose==='submit'
       ?'최근 Google 인증이 확인되어야 삭제 요청을 할 수 있습니다. 다른 계정을 선택하면 요청하지 않습니다.'
@@ -108,6 +112,7 @@ export function createGoogleCredentialPrompt({gis,root,document=globalThis.docum
     const abort=()=>finish(null);
     cancel.addEventListener('click',abort);
     dialog.addEventListener('cancel',event=>{event.preventDefault();abort();});
+    dialog.addEventListener('close',abort,{once:true});
     globalThis.addEventListener?.('pagehide',abort,{once:true});
     timer=setTimeout(abort,240000);
     try{

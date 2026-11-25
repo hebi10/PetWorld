@@ -20,7 +20,7 @@ export function mountDeletionPage(root,runtime) {
     typeof runtime.currentAccount!=='function'||typeof runtime.subscribe!=='function')return null;
   const by=id=>{const node=root.querySelector('#'+id);if(!node)throw new Error('Missing deletion screen element');return node;};
   const ui={
-    availability:by('availability'),account:by('account-status'),connect:by('connect-existing'),
+    availability:by('availability'),availabilityDetail:by('availability-detail'),account:by('account-status'),connect:by('connect-existing'),
     password:by('recovery-password'),prepare:by('prepare-recovery'),saved:by('saved-recovery'),
     confirm:by('confirm-deletion'),submit:by('submit-deletion'),
     file:by('recovery-file'),restorePassword:by('restore-password'),restore:by('restore-recovery'),
@@ -28,20 +28,20 @@ export function mountDeletionPage(root,runtime) {
   };
   const c=runtime.controller;
   let busy=false,connected=!!runtime.currentAccount(),uid=runtime.currentAccount();
-  let encryptedReady=false,restored=false,disposed=false;
+  let restored=false,disposed=false,revision=0;
   function sync(){
     const s=c.snapshot(),ready=!busy&&!disposed;
     ui.account.textContent=connected?'기존 Google 계정 인증됨':'로그인하지 않음';
     ui.connect.disabled=!ready||connected;
     ui.password.disabled=!ready||!connected||s.hasRecovery;
     ui.prepare.disabled=!ready||!connected||s.hasRecovery;
-    ui.saved.disabled=!ready||!encryptedReady;
-    ui.confirm.disabled=!ready||!connected||!(ui.saved.checked||restored)||s.phase!==null;
-    ui.submit.disabled=!ready||!connected||!ui.confirm.checked||!(ui.saved.checked||restored)||s.phase!==null;
+    ui.saved.disabled=!ready||!connected||!restored;
+    ui.confirm.disabled=!ready||!connected||!restored||!ui.saved.checked||s.phase!==null;
+    ui.submit.disabled=!ready||!connected||!restored||!ui.saved.checked||!ui.confirm.checked||s.phase!==null;
     ui.file.disabled=!ready;
     ui.restorePassword.disabled=!ready;
     ui.restore.disabled=!ready;
-    ui.refresh.disabled=!ready||!s.hasRecovery||!(ui.saved.checked||restored);
+    ui.refresh.disabled=!ready||!s.hasRecovery||!restored;
   }
   function show(result) {
     if(disposed)return;
@@ -66,6 +66,7 @@ export function mountDeletionPage(root,runtime) {
   const listen=(node,event,callback)=>node.addEventListener(event,callback,{signal:events.signal});
   const events=new AbortController();
   ui.availability.textContent='삭제 요청 및 저장된 복구 파일 조회';
+  ui.availabilityDetail.textContent='기존 계정의 인증, 복구 파일 확인 및 직접 승인 후에만 삭제 요청을 제출합니다.';
   listen(ui.connect,'click',()=>run(async()=>{
     connected=await runtime.connectExisting();
     if(disposed)return;
@@ -77,29 +78,35 @@ export function mountDeletionPage(root,runtime) {
     const result=await c.prepare(password);
     if(disposed)return;
     if(result.kind==='PREPARED'){
-      download(result.file);encryptedReady=true;
-      ui.status.textContent='암호화 복구 파일을 저장하고 아래 확인란을 선택해 주세요. 파일과 비밀번호가 모두 필요합니다.';
+      download(result.file);restored=false;
+      ui.saved.checked=false;ui.confirm.checked=false;
+      ui.status.textContent='암호화 복구 파일 다운로드를 요청했습니다. 아래 복구 파일 확인에서 저장한 파일과 비밀번호를 다시 확인해 주세요.';
     }else show(result);
   }));
-  listen(ui.saved,'change',()=>{if(ui.saved.checked)c.confirmSaved();sync();});
+  listen(ui.saved,'change',()=>{if(!ui.saved.checked)ui.confirm.checked=false;sync();});
   listen(ui.confirm,'change',sync);
   listen(ui.submit,'click',()=>run(async()=>{
-    if(!(ui.saved.checked||restored)||!ui.confirm.checked)return;
+    if(!restored||!ui.saved.checked||!ui.confirm.checked)return;
     show(await c.submit(true));
   }));
   listen(ui.restore,'click',()=>run(async()=>{
     const file=ui.file.files?.[0],password=ui.restorePassword.value;
     ui.restorePassword.value='';ui.file.value='';
+    restored=false;ui.saved.checked=false;ui.confirm.checked=false;
     if(!file||file.size>2048){show({kind:'UNKNOWN'});return;}
-    const result=await c.restore(await file.text(),password);
-    restored=result.kind==='RESTORED'||restored;
+    const version=revision,contents=await file.text();
+    if(disposed||revision!==version)return;
+    const result=await c.restore(contents,password);
+    if(disposed||revision!==version)return;
+    restored=result.kind==='RESTORED';
+    ui.saved.checked=false;ui.confirm.checked=false;
     show(result);
   }));
   listen(ui.refresh,'click',()=>run(async()=>show(await c.refresh())));
   const unsubscribe=runtime.subscribe(()=>{
     const next=runtime.currentAccount();
     if(next!==uid){
-      c.forget();encryptedReady=false;restored=false;
+      revision++;c.forget();restored=false;
       ui.saved.checked=false;ui.confirm.checked=false;
       ui.password.value='';ui.restorePassword.value='';ui.file.value='';
       ui.status.textContent='계정이 변경되었습니다. 저장한 복구 파일이 있다면 다시 불러와 주세요.';
@@ -107,7 +114,7 @@ export function mountDeletionPage(root,runtime) {
     }
     connected=next!==null;sync();
   });
-  function dispose(){if(disposed)return;disposed=true;events.abort();unsubscribe?.();runtime.dispose?.();c.forget();
+  function dispose(){if(disposed)return;disposed=true;revision++;events.abort();unsubscribe?.();runtime.dispose?.();c.forget();
     ui.password.value='';ui.restorePassword.value='';ui.file.value='';ui.status.textContent='';
     sync();}
   globalThis.addEventListener?.('pagehide',dispose,{once:true,signal:events.signal});
