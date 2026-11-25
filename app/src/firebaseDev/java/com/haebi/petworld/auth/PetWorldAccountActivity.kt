@@ -3,6 +3,8 @@ package com.haebi.petworld.auth
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,6 +34,7 @@ import com.haebi.petworld.migration.FirstImportSection
 import com.haebi.petworld.data.account.LocalAccountScope
 import com.haebi.petworld.data.account.AccountDeletionJournal
 import com.haebi.petworld.data.account.AccountDeletionStatusView
+import com.haebi.petworld.data.account.DeviceDeletionRecoveryAccess
 import com.haebi.petworld.data.account.readDeletionStatusView
 import androidx.compose.runtime.produceState
 import kotlinx.coroutines.Dispatchers
@@ -59,10 +62,15 @@ class PetWorldAccountActivity : ComponentActivity() {
             null
         }
 
+        val recoveryAccess = if (firebaseAuth != null) {
+            runCatching { FirebaseDevDeletionDeviceCredential(this).createAccess() }.getOrNull()
+        } else null
+
         setContent {
             PetWorldTheme {
                 AccountContent(
                     auth = firebaseAuth,
+                    recoveryAccess = recoveryAccess,
                     onClose = ::finish,
                 )
             }
@@ -72,6 +80,7 @@ class PetWorldAccountActivity : ComponentActivity() {
     @Composable
     private fun AccountContent(
         auth: FirebaseAuth?,
+        recoveryAccess: DeviceDeletionRecoveryAccess?,
         onClose: () -> Unit,
     ) {
         val scope = rememberCoroutineScope()
@@ -82,11 +91,20 @@ class PetWorldAccountActivity : ComponentActivity() {
                 GoogleLoginOutcome.SignedIn(it.uid, it.email)
             })
         }
+        var recoveryStatus by remember(auth) { mutableStateOf<AccountDeletionStatusView?>(null) }
+        DisposableEffect(Unit) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_STOP) recoveryStatus = null
+            }
+            lifecycle.addObserver(observer)
+            onDispose { lifecycle.removeObserver(observer) }
+        }
         val gateway = remember(auth) { auth?.let { FirebaseGoogleAuthGateway(it) } }
 
         DisposableEffect(auth) {
             val listener = auth?.let { firebase ->
                 FirebaseAuth.AuthStateListener { changed ->
+                    if (changed.currentUser?.uid != currentAccount?.uid) recoveryStatus = null
                     currentAccount = changed.currentUser?.let {
                         GoogleLoginOutcome.SignedIn(it.uid, it.email)
                     }
@@ -175,6 +193,40 @@ class PetWorldAccountActivity : ComponentActivity() {
                         }
                     },
                 )
+            }
+            if (auth != null && currentAccount == null && recoveryAccess != null) {
+                PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
+                    Text("삭제 처리 상태 확인", style = MaterialTheme.typography.titleMedium)
+                    Text("이 기기에 등록했던 요청의 마지막 저장 상태만 확인합니다. 화면 잠금 인증이 필요하며 서버 조회나 새로운 삭제는 수행하지 않습니다.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    when (val saved = recoveryStatus) {
+                        is AccountDeletionStatusView.Saved -> {
+                            Text("기기에 저장된 마지막 확인 상태", style = MaterialTheme.typography.labelMedium)
+                            Text(saved.phase.title, style = MaterialTheme.typography.titleSmall)
+                            Text(saved.phase.detail, style = MaterialTheme.typography.bodyMedium)
+                        }
+                        AccountDeletionStatusView.Unknown ->
+                            Text("저장된 상태를 확인할 수 없습니다. 새 요청이나 기기 자료 삭제는 하지 않았습니다.",
+                                style = MaterialTheme.typography.bodySmall)
+                        else -> Unit
+                    }
+                    PetSecondaryButton("기기 인증 후 상태 확인", enabled = !waiting,
+                        modifier = Modifier.fillMaxWidth(), onClick = {
+                            waiting = true
+                            feedback = null
+                            recoveryStatus = null
+                            scope.launch {
+                                try {
+                                    val result = recoveryAccess.readSaved(AccountDeletionJournal(applicationContext))
+                                    if (auth.currentUser == null &&
+                                        lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) recoveryStatus = result
+                                } finally {
+                                    waiting = false
+                                }
+                            }
+                        })
+                }
             }
             if (auth != null && currentAccount != null) {
                 val signedIn = currentAccount
