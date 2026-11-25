@@ -14,6 +14,8 @@ import {
   getDocFromServer,
   setDoc,
   updateDoc,
+  writeBatch,
+  runTransaction,
 } from 'firebase/firestore';
 import {
   deleteObject,
@@ -352,4 +354,104 @@ test('FB-04-FINAL: no Guest records means no initial upload or user ready marker
   if (canImport) throw new Error('Empty guest data must not start migration');
   const after = await getDocFromServer(doc(alice, 'users/alice'));
   if (after.exists()) throw new Error('Preview created a remote user unexpectedly');
+});
+
+const syncId1 = '11111111-1111-4111-8111-111111111111';
+const syncId2 = '22222222-2222-4222-8222-222222222222';
+const syncId3 = '33333333-3333-4333-8333-333333333333';
+
+function syncReceipt(opId, entityKind, petId, entityId, operation, expectedRevision) {
+  return {
+    opId, entityKind, petId, entityId, operation, expectedRevision,
+    resultingRevision: expectedRevision + 1, requestDigest: 'a'.repeat(64),
+  };
+}
+
+async function syncReady(db, uid = 'alice') {
+  const user = doc(db, 'users/' + uid);
+  await assertSucceeds(setDoc(user, userDoc()));
+  await assertSucceeds(updateDoc(user, { revision: 1, migrationState: 'ready' }));
+}
+
+function syncBatch(db, target, receipt, data, uid = 'alice') {
+  const batch = writeBatch(db);
+  batch.set(target, { ...data, lastSyncOpId: receipt.opId });
+  batch.set(doc(db, 'users/' + uid + '/syncReceipts/' + receipt.opId), receipt);
+  return batch.commit();
+}
+
+test('FB-05-B2: entity and receipt must be created atomically and only for ready owner', async () => {
+  const alice = env.authenticatedContext('alice').firestore();
+  const bob = env.authenticatedContext('bob').firestore();
+  const guest = env.unauthenticatedContext().firestore();
+  const pet = doc(alice, 'users/alice/pets/pet-1');
+  const receipt = syncReceipt(syncId1, 'PET', 'pet-1', 'pet-1', 'CREATE', -1);
+  const ref = doc(alice, 'users/alice/syncReceipts/' + syncId1);
+  await assertFails(syncBatch(alice, pet, receipt, petDoc()));
+  await syncReady(alice);
+  await assertFails(setDoc(ref, receipt));
+  await assertFails(setDoc(pet, { ...petDoc(), lastSyncOpId: syncId1 }));
+  await assertFails(syncBatch(alice, pet, { ...receipt, entityId: 'other' }, petDoc()));
+  await assertFails(syncBatch(alice, pet, { ...receipt, requestDigest: 'wrong' }, petDoc()));
+  await assertFails(syncBatch(bob, doc(bob, pet.path), receipt, petDoc()));
+  await assertSucceeds(syncBatch(alice, pet, receipt, petDoc()));
+  deepStrictEqual((await getDocFromServer(ref)).data(), receipt);
+  await assertFails(getDoc(doc(bob, ref.path)));
+  await assertFails(getDoc(doc(guest, ref.path)));
+  await assertFails(updateDoc(ref, { requestDigest: 'b'.repeat(64) }));
+  await assertFails(deleteDoc(ref));
+  await assertFails(updateDoc(pet, { name: 'bypass', revision: 1 }));
+  await assertFails(setDoc(pet, { ...petDoc('pet-1', 1), name: 'remove-link' }));
+});
+
+test('FB-05-B2: lost-response replay reads immutable receipt instead of writing twice', async () => {
+  const alice = env.authenticatedContext('alice').firestore();
+  await syncReady(alice);
+  const pet = doc(alice, 'users/alice/pets/pet-1');
+  const ref = doc(alice, 'users/alice/syncReceipts/' + syncId1);
+  const receipt = syncReceipt(syncId1, 'PET', 'pet-1', 'pet-1', 'CREATE', -1);
+  async function commit() {
+    return runTransaction(alice, async tx => {
+      const existing = await tx.get(ref);
+      if (existing.exists()) {
+        deepStrictEqual(existing.data(), receipt);
+        return 'replay';
+      }
+      const current = await tx.get(pet);
+      if (current.exists()) throw Error('conflict');
+      tx.set(pet, { ...petDoc(), lastSyncOpId: syncId1 });
+      tx.set(ref, receipt);
+      return 'created';
+    });
+  }
+  deepStrictEqual(await commit(), 'created');
+  deepStrictEqual(await commit(), 'replay');
+  deepStrictEqual((await getDocFromServer(pet)).data().revision, 0);
+  await assertFails(syncBatch(alice, pet, receipt, petDoc('pet-1', 1)));
+});
+
+test('FB-05-B2: revisions, immutable tombstones and parent deletion block stale writes', async () => {
+  const alice = env.authenticatedContext('alice').firestore();
+  await syncReady(alice);
+  const pet = doc(alice, 'users/alice/pets/pet-1');
+  const record = doc(alice, pet.path + '/records/record-1');
+  await assertSucceeds(setDoc(pet, petDoc()));
+  const create = syncReceipt(syncId1, 'CARE', 'pet-1', 'record-1', 'CREATE', -1);
+  await assertSucceeds(syncBatch(alice, record, create, careDoc()));
+  const update = syncReceipt(syncId2, 'CARE', 'pet-1', 'record-1', 'UPDATE', 0);
+  await assertFails(syncBatch(alice, record, { ...update, expectedRevision: 1, resultingRevision: 2 },
+    careDoc('record-1', 'pet-1', 2)));
+  await assertSucceeds(syncBatch(alice, record, update, { ...careDoc('record-1', 'pet-1', 1), foodConsumedMilli: 0 }));
+  const remove = syncReceipt(syncId3, 'CARE', 'pet-1', 'record-1', 'DELETE', 1);
+  await assertFails(syncBatch(alice, record, remove, careDoc('record-1', 'pet-1', 2)));
+  await assertSucceeds(syncBatch(alice, record, remove, {
+    ...careDoc('record-1', 'pet-1', 2), foodConsumedMilli: 0, deletedAtMs: now,
+  }));
+  deepStrictEqual((await getDocFromServer(record)).data().deletedAtMs, now);
+  await assertFails(updateDoc(record, { revision: 3, deletedAtMs: null }));
+  await assertFails(deleteDoc(record));
+  const parentId = '44444444-4444-4444-8444-444444444444';
+  const parentDelete = syncReceipt(parentId, 'PET', 'pet-1', 'pet-1', 'DELETE', 0);
+  await assertSucceeds(syncBatch(alice, pet, parentDelete, { ...petDoc('pet-1', 1), deletedAtMs: now }));
+  await assertFails(setDoc(doc(alice, pet.path + '/records/record-2'), careDoc('record-2')));
 });
