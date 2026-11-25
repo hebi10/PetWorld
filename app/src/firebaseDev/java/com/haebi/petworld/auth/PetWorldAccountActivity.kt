@@ -30,6 +30,7 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.haebi.petworld.migration.FirstImportSection
 import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.account.AccountDeletionJournal
 import com.haebi.petworld.sync.FirebaseDevSyncStatusSection
 import com.haebi.petworld.ui.components.PetPrimaryButton
 import com.haebi.petworld.ui.components.PetSecondaryButton
@@ -176,11 +177,19 @@ class PetWorldAccountActivity : ComponentActivity() {
                     val localScope = LocalAccountScope.fromFirebaseUid(signedIn.uid)
                     if (localScope is LocalAccountScope.SignedIn) {
                         key(localScope.key) {
-                            FirebaseDevSyncStatusSection(localScope)
+                            val deletionBlocked = AccountDeletionJournal(applicationContext).blocksCloud(localScope)
+                            if (deletionBlocked) {
+                                PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
+                                    Text("계정 삭제 상태 확인 필요", style = MaterialTheme.typography.titleMedium)
+                                    Text("삭제 요청 기록이 남아 있어 클라우드 보관과 동기화를 차단했습니다. 서버 상태 확인 기능을 검증한 뒤 제공할 예정입니다. 기기 자료는 임의로 삭제하지 않습니다.")
+                                }
+                            } else {
+                                FirebaseDevSyncStatusSection(localScope)
+                                FirstImportSection(auth)
+                            }
                         }
                     }
                 }
-                FirstImportSection(auth)
                 PetSecondaryButton(
                     label = "실제 Firebase 인증 확인",
                     modifier = Modifier.fillMaxWidth(),

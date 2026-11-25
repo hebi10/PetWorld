@@ -20,6 +20,7 @@ import com.haebi.petworld.sync.FirebaseDevSyncWork
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellableContinuation
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 
@@ -79,6 +80,53 @@ class FirebaseGoogleAuthGateway(
             return GoogleLoginOutcome.ProviderUnavailable
         } catch (_: Exception) {
             return GoogleLoginOutcome.ProviderUnavailable
+        } finally {
+            requestGate.unlock()
+        }
+    }
+
+    /**
+     * A destructive operation must reauthenticate the current Firebase user,
+     * never sign in with a potentially different Google account.
+     * Called only by a future verified deletion controller.
+     */
+    internal suspend fun reauthenticateForDeletion(activity: Activity, expectedUid: String): FreshDeletionAuth? {
+        if (!requestGate.tryLock()) return null
+        try {
+            val clientId = webClientId(activity) ?: return null
+            val user = firebaseAuth.currentUser ?: return null
+            if (user.uid != expectedUid || user.isAnonymous ||
+                user.providerData.none { it.providerId == "google.com" }) return null
+            FirebaseDevSyncWork.revoke(activity)
+            val credential = CredentialManager.create(activity).getCredential(
+                context = activity,
+                request = GetCredentialRequest.Builder()
+                    .addCredentialOption(GetSignInWithGoogleOption.Builder(clientId).build())
+                    .build(),
+            ).credential
+            if (credential !is CustomCredential ||
+                credential.type != GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL ||
+                firebaseAuth.currentUser?.uid != expectedUid) return null
+            val googleToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
+            val reauthenticated = suspendCancellableCoroutine<Boolean> { continuation ->
+                user.reauthenticate(GoogleAuthProvider.getCredential(googleToken, null))
+                    .addOnCompleteListener { task ->
+                        if (continuation.isActive) continuation.resume(task.isSuccessful)
+                    }
+            }
+            if (!reauthenticated || firebaseAuth.currentUser?.uid != expectedUid) return null
+            val token = suspendCancellableCoroutine<com.google.firebase.auth.GetTokenResult?> { continuation ->
+                user.getIdToken(true).addOnCompleteListener { task ->
+                    if (continuation.isActive) continuation.resume(if (task.isSuccessful) task.result else null)
+                }
+            } ?: return null
+            if (firebaseAuth.currentUser?.uid != expectedUid) return null
+            val value = token.token ?: return null
+            return FreshDeletionAuth.create(expectedUid, value, token.authTimestamp, System.currentTimeMillis() / 1000)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return null
         } finally {
             requestGate.unlock()
         }

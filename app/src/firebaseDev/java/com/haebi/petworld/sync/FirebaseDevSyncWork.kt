@@ -13,6 +13,7 @@ import androidx.work.workDataOf
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.account.AccountDeletionJournal
 import com.haebi.petworld.data.backup.PetWorldRecoveryJournal
 import com.haebi.petworld.data.room.PetWorldDatabase
 import com.haebi.petworld.data.sync.SyncBatchOutcome
@@ -57,6 +58,8 @@ internal object FirebaseDevSyncWork {
     internal fun allowed(context: Context, lease: SyncWorkLease, account: LocalAccountScope): Boolean =
         gate.permits(lease, account) &&
             account(context) == account &&
+            account is LocalAccountScope.SignedIn &&
+            !AccountDeletionJournal(context.applicationContext).blocksCloud(account) &&
             !PetWorldRecoveryJournal(context.applicationContext).hasPending()
 
     fun enqueue(context: Context, lease: SyncWorkLease): Boolean {
