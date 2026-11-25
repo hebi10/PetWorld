@@ -143,7 +143,7 @@ test('web: App Check allowlist is explicit and browser Origin is additional enfo
   const verifyToken=async value=>({appId:value==='web-token'?web:android});
   const take=async input=>{counted.push(input);return true;};
   const plain=createDevDeletionAdmission({appIds:[android],appCheck:{verifyToken},take});
-  const input={route:'request',appCheckToken:'web-token',ingress:{directTls:true,origin}};
+  const input={route:'web-auth',appCheckToken:'web-token',ingress:{directTls:true,origin}};
   assert.equal(await plain(input),'DENY');
   assert.throws(()=>createDevDeletionAdmission({appIds:[android],webAppIds:[web],
     appCheck:{verifyToken},take}),DeletionDenied);
@@ -152,7 +152,9 @@ test('web: App Check allowlist is explicit and browser Origin is additional enfo
   assert.equal(await admit({...input,ingress:{directTls:true}}),'DENY');
   assert.equal(await admit({...input,ingress:{directTls:true,origin:'https://other.example.invalid'}}),'DENY');
   assert.equal(await admit(input),'ALLOW');
-  assert.equal(await admit({...input,appCheckToken:'android-token',ingress:{directTls:true}}),'ALLOW');
+  assert.equal(await admit({...input,route:'request'}),'DENY');
+  assert.equal(await admit({...input,appCheckToken:'android-token'}),'DENY');
+  assert.equal(await admit({...input,route:'request',appCheckToken:'android-token',ingress:{directTls:true}}),'ALLOW');
   assert.deepEqual(counted.map(x=>x.appId),[web,android]);
   assert.throws(()=>createDeletionRateLimiter({db:{},appIds:[web],requestLimit:1,statusLimit:1}),DeletionDenied);
 });
