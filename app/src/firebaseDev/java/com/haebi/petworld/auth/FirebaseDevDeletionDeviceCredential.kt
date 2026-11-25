@@ -20,7 +20,7 @@ import kotlinx.coroutines.withContext
  * Register in Activity.onCreate, before STARTED. Only the actual Android
  * credential Activity result can release the pending request. No Intent extra
  * or previously cached app boolean constitutes authorization.
- * Not constructed by the current account UI.
+ * Used for explicitly requested local-only guest recovery; live requests remain disabled.
  */
 internal class FirebaseDevDeletionDeviceCredential(private val activity: ComponentActivity) {
     private val keyguard = requireNotNull(activity.getSystemService(KeyguardManager::class.java))
@@ -45,6 +45,9 @@ internal class FirebaseDevDeletionDeviceCredential(private val activity: Compone
     init {
         auth.addAuthStateListener(authListener)
         activity.lifecycle.addObserver(LifecycleEventObserver { _, event ->
+            // A normal background/foreground transition must not reuse an old
+            // recovery session. The pending system credential Activity itself is exempt.
+            if (event == Lifecycle.Event.ON_STOP && pending == null) version.incrementAndGet()
             if (event == Lifecycle.Event.ON_DESTROY) {
                 auth.removeAuthStateListener(authListener)
                 version.incrementAndGet()

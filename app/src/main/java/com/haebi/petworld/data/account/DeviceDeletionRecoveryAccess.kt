@@ -1,6 +1,8 @@
 package com.haebi.petworld.data.account
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -52,6 +54,30 @@ internal class DeviceDeletionRecoveryAccess(
                 anchors.read() == anchor && allowed(anchor.account, version)
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { false }
+    }
+
+    /**
+     * Read only the last locally saved receipt. No network, no account list and
+     * no credential-bearing value reaches presentation. Absent, denied and
+     * corrupt slots are deliberately indistinguishable to the guest UI.
+     */
+    suspend fun readSaved(store: DeletionStateStore): AccountDeletionStatusView = gate.withLock {
+        val guest = LocalAccountScope.Guest
+        try {
+            val version = sessionVersion()
+            if (!allowed(guest, version) || !confirmDeviceCredential() || !allowed(guest, version))
+                return@withLock AccountDeletionStatusView.Unknown
+            val result = withContext(Dispatchers.IO) {
+                val anchor = anchors.read() ?: return@withContext AccountDeletionStatusView.Unknown
+                val state = store.read(anchor.account)
+                if (state == null || state.account != anchor.account || state.jobId != anchor.jobId ||
+                    !store.blocksCloud(anchor.account)) return@withContext AccountDeletionStatusView.Unknown
+                state.receipt?.let { AccountDeletionStatusView.Saved(it.phase) }
+                    ?: AccountDeletionStatusView.Unknown
+            }
+            if (allowed(guest, version)) result else AccountDeletionStatusView.Unknown
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { AccountDeletionStatusView.Unknown }
     }
 
     suspend fun refresh(
