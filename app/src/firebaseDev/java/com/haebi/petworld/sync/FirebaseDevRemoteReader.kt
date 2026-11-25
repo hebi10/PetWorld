@@ -24,7 +24,7 @@ internal class FirebaseDevRemoteReader(
     private val permission: SyncPermission = SyncPermission { false },
 ) {
     private val journal = AccountDeletionJournal(context.applicationContext)
-    private val binding = FirebaseDevAccountSdkSessions.binding()
+    private val binding = FirebaseDevAccountSdkSessions.binding(context.applicationContext)
     private val app = binding.app
     private val auth = binding.auth
     private val firestore get() = binding.firestore
