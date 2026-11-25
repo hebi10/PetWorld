@@ -1,0 +1,54 @@
+name: PetWorld local account deletion E2E QA
+
+on:
+  pull_request:
+    paths:
+      - firebase/**
+      - firebase-deletion-qa.json
+      - .github/workflows/firebase-deletion-e2e-qa.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deletion-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify isolated configuration
+        run: |
+          test ! -f .firebaserc
+          test ! -f app/google-services.json
+          test ! -f app/src/firebaseDev/google-services.json
+          test ! -f app/src/release/google-services.json
+          test -z "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          node scripts/firebase/check-connection-readiness.mjs
+          node --check firebase/test/account-deletion-e2e.test.mjs
+      - name: Install local emulator tooling
+        run: npm install --prefix firebase --no-audit --no-fund
+      - name: Execute synthetic account deletion against fixed local demo emulators
+        env:
+          FIREBASE_CLI_DISABLE_TELEMETRY: '1'
+          PETWORLD_LOCAL_DELETION_QA: 'true'
+        run: |
+          ./firebase/node_modules/.bin/firebase emulators:exec \
+            --project demo-petworld-deletion-qa \
+            --only auth,firestore,storage \
+            --config firebase-deletion-qa.json \
+            --non-interactive \
+            "timeout --kill-after=10s 240s node --test firebase/test/account-deletion-e2e.test.mjs"
