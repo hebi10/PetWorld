@@ -309,7 +309,7 @@ class FirebaseDevFirstImportService(private val context: Context) {
         }
         FirstImportGuards.requireSameAccount(preview.accountFingerprint, uid)
         val onlineUid = auth.currentUser?.also { user ->
-            sdk(uid) { user.getIdToken(true) }
+            sdk<com.google.firebase.auth.GetTokenResult>(uid) { user.getIdToken(true) }
         }?.uid
         check(onlineUid == uid) {
             "Firebase 인증이 변경됐습니다. 다시 로그인하고 미리보기를 확인해 주세요."
