@@ -16,6 +16,11 @@ import com.haebi.petworld.data.account.LocalAccountScope
 import com.haebi.petworld.data.backup.PetWorldRecoveryJournal
 import com.haebi.petworld.data.room.PetWorldDatabase
 import com.haebi.petworld.data.sync.SyncBatchOutcome
+import com.haebi.petworld.data.sync.SyncBaselinePreparer
+import com.haebi.petworld.data.sync.SyncDocumentSource
+import com.haebi.petworld.data.sync.SyncPageSource
+import com.haebi.petworld.data.sync.SyncScanCoordinator
+import com.haebi.petworld.data.sync.ScanStep
 import com.haebi.petworld.data.sync.SyncPermission
 import com.haebi.petworld.data.sync.SyncSender
 import com.haebi.petworld.data.sync.SyncSessionGate
@@ -102,13 +107,25 @@ class FirebaseDevSyncWorker(
         val permission = SyncPermission { candidate -> candidate == account && allowed() }
         return try {
             val db = PetWorldDatabase.get(app, account)
+            val reader = FirebaseDevRemoteReader(app, permission)
             val sender = SyncSender(db, FirebaseDevSyncTransport(app, permission), permission)
-            val outcome = drainSyncBatch(allowed = { allowed() }, next = { sender.runOnce(account) })
-            if (!allowed()) return Result.success()
-            when (outcome) {
-                SyncBatchOutcome.RETRY, SyncBatchOutcome.MORE_WORK -> Result.retry()
-                else -> Result.success()
+            val preparer = SyncBaselinePreparer(db, account,
+                SyncDocumentSource { scope, kind, pet, id -> reader.readDocument(scope, kind, pet, id) },
+                permission)
+            val outcome = drainSyncBatch(allowed = { allowed() }, next = { preparer.next(sender) })
+            if (!allowed() || outcome == SyncBatchOutcome.PAUSED) return Result.success()
+            if (outcome == SyncBatchOutcome.RETRY || outcome == SyncBatchOutcome.MORE_WORK) {
+                return Result.retry()
             }
+            // Receiving may continue while the FIFO sender is blocked; never skip a conflicted send.
+            val scan = SyncScanCoordinator(db, account,
+                SyncPageSource { scope, parent, after, limit -> reader.readPage(scope, parent, after, limit) },
+                permission)
+            repeat(10) {
+                if (!allowed()) return Result.success()
+                if (scan.step() == ScanStep.COMPLETE) return Result.success()
+            }
+            Result.retry()
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {

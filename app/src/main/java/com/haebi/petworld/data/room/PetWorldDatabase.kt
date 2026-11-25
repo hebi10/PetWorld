@@ -7,6 +7,8 @@ import com.haebi.petworld.data.sync.SyncOutboxDao
 import com.haebi.petworld.data.sync.SyncOutboxEntry
 import com.haebi.petworld.data.sync.SyncInboundDao
 import com.haebi.petworld.data.sync.SyncInboundEntry
+import com.haebi.petworld.data.sync.SyncScanDao
+import com.haebi.petworld.data.sync.SyncScanState
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
@@ -267,9 +269,25 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
     }
 }
 
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS `sync_scan` (
+                `account_key` TEXT NOT NULL PRIMARY KEY,
+                `round` INTEGER NOT NULL,
+                `pet_cursor` TEXT,
+                `pending_parents_json` TEXT NOT NULL,
+                `record_cursor` TEXT,
+                `root_exhausted` INTEGER NOT NULL
+            )""".trimIndent()
+        )
+    }
+}
+
 @Database(
-    entities = [PetEntity::class, CareEntity::class, SyncOutboxEntry::class, SyncInboundEntry::class],
-    version = 4,
+    entities = [PetEntity::class, CareEntity::class, SyncOutboxEntry::class,
+        SyncInboundEntry::class, SyncScanState::class],
+    version = 5,
     exportSchema = false,
 )
 abstract class PetWorldDatabase : RoomDatabase() {
@@ -277,6 +295,7 @@ abstract class PetWorldDatabase : RoomDatabase() {
     abstract fun careDao(): CareDao
     abstract fun syncOutboxDao(): SyncOutboxDao
     abstract fun syncInboundDao(): SyncInboundDao
+    abstract fun syncScanDao(): SyncScanDao
 
     companion object {
         private val instances = mutableMapOf<String, PetWorldDatabase>()
@@ -292,7 +311,7 @@ abstract class PetWorldDatabase : RoomDatabase() {
                     PetWorldDatabase::class.java,
                     name,
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .build()
             }
         }
