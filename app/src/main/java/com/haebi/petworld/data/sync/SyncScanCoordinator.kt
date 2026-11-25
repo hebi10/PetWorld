@@ -12,6 +12,7 @@ import com.haebi.petworld.data.account.LocalAccountScope
 import com.haebi.petworld.data.backup.PetWorldMutationGate
 import com.haebi.petworld.data.room.PetWorldDatabase
 import org.json.JSONArray
+import kotlinx.coroutines.sync.withLock
 
 @Entity(tableName = "sync_scan")
 data class SyncScanState(
