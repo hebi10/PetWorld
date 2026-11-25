@@ -2,6 +2,7 @@ package com.haebi.petworld.data.sync
 
 import androidx.room.withTransaction
 import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.backup.PetWorldMutationGate
 import com.haebi.petworld.data.room.PetWorldDatabase
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
@@ -38,6 +39,7 @@ internal class SyncSender(
     private val database: PetWorldDatabase,
     private val transport: SyncTransport,
     private val permission: SyncPermission = SyncPermission { false },
+    private val photos: SyncPhotoTransfer? = null,
 ) {
     private val dao = database.syncOutboxDao()
 
@@ -53,6 +55,30 @@ internal class SyncSender(
             else -> return@withLock SyncDispatch.Blocked
         }
         if (row.expectedRevision == null || row.attempt >= 100) return@withLock SyncDispatch.Blocked
+        val command = try {
+            if (photos == null) SyncCommands.from(row)
+            else PetWorldMutationGate.mutex.withLock {
+                if (!permission.permits(signedIn)) throw SyncReceiveDenied()
+                val candidate = SyncCommands.forBaseline(row)
+                val proof = candidate.newPhotoReference?.let { name ->
+                    if (!validCloudPhotoName(name)) throw SyncPhotoPending()
+                    photos.verifiedProofUnderGate(SyncPhotoKey(candidate.petId, name))
+                        ?: throw SyncPhotoPending()
+                }
+                SyncCommands.withVerifiedPhoto(candidate, proof)
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: SyncReceiveDenied) {
+            return@withLock SyncDispatch.Paused
+        } catch (_: SyncPhotoPending) {
+            return@withLock SyncDispatch.WaitingPhoto
+        } catch (_: SyncPhotoRejected) {
+            return@withLock SyncDispatch.WaitingPhoto
+        } catch (_: Exception) {
+            return@withLock SyncDispatch.Blocked
+        }
+        if (!permission.permits(signedIn)) return@withLock SyncDispatch.Paused
         val claimed = database.withTransaction {
             if (dao.beginAttempt(signedIn.key, row.opId, row.status, row.attempt) == 1)
                 row.copy(status = "IN_FLIGHT", attempt = row.attempt + 1)
@@ -61,14 +87,6 @@ internal class SyncSender(
 
         // Recheck after durable claim; logout or restore keeps this entry replayable.
         if (!permission.permits(signedIn)) return@withLock SyncDispatch.Paused
-        val command = try {
-            SyncCommands.from(claimed)
-        } catch (_: Exception) {
-            if (permission.permits(signedIn)) {
-                dao.finishAttempt(signedIn.key, claimed.opId, claimed.attempt, "BLOCKED")
-            }
-            return@withLock SyncDispatch.Blocked
-        }
         val outcome = try {
             transport.commit(command)
         } catch (cancelled: CancellationException) {

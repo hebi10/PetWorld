@@ -147,11 +147,32 @@ service cloud.firestore {
           (receipt.operation != 'DELETE' && data.get('deletedAtMs', null) == null));
     }
 
+    function validPhotoManifest(name, data) {
+      return name is string &&
+        name.matches('^pet_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[.]jpg$') &&
+        data.keys().hasAll(['fileName', 'sha256', 'sizeBytes', 'width', 'height', 'mimeType']) &&
+        data.keys().hasOnly(['fileName', 'sha256', 'sizeBytes', 'width', 'height', 'mimeType']) &&
+        data.fileName == name && data.sha256 is string && data.sha256.matches('^[0-9a-f]{64}$') &&
+        data.sizeBytes is int && data.sizeBytes > 0 && data.sizeBytes <= 5242880 &&
+        data.width is int && data.width > 0 && data.width <= 1200 &&
+        data.height is int && data.height > 0 && data.height <= 1200 &&
+        data.mimeType == 'image/jpeg';
+    }
+
+    function permittedPhotoReference(uid, petId, beforeName, afterName) {
+      return afterName == null || beforeName == afterName ||
+        (afterName is string &&
+          validPhotoManifest(afterName,
+            getAfter(/databases/$(database)/documents/users/$(uid)/pets/$(petId)/photoManifests/$(afterName)).data));
+    }
+
+    // The manifest is an immutable client attestation, not proof of Storage existence.
+    // Only the app's byte-verifying adapter creates it. A trusted server audit is still required.
     // Preserve the prior first-import path; once synchronized, writes cannot remove
     // their receipt linkage or bypass the new atomic protocol.
     function permittedCreate(uid, kind, petId, entityId, data) {
       return (!data.keys().hasAny(['lastSyncOpId', 'deletedAtMs'])) ||
-        (data.get('photoFile', null) == null &&
+        (permittedPhotoReference(uid, petId, null, data.get('photoFile', null)) &&
           matchesSyncReceipt(uid, kind, petId, entityId, -1, data));
     }
 
@@ -159,7 +180,9 @@ service cloud.firestore {
       return before.get('deletedAtMs', null) == null &&
         ((!before.keys().hasAny(['lastSyncOpId']) &&
           !after.keys().hasAny(['lastSyncOpId', 'deletedAtMs'])) ||
-          (before.get('photoFile', null) == after.get('photoFile', null) &&
+          (permittedPhotoReference(uid, petId, before.get('photoFile', null), after.get('photoFile', null)) &&
+            (after.get('deletedAtMs', null) == null ||
+              before.get('photoFile', null) == after.get('photoFile', null)) &&
             matchesSyncReceipt(uid, kind, petId, entityId, before.revision, after)));
     }
 
@@ -208,6 +231,13 @@ service cloud.firestore {
       }
 
       match /pets/{petId} {
+        match /photoManifests/{fileName} {
+          allow get: if owner(uid);
+          allow list, update, delete: if false;
+          allow create: if owner(uid) && readyAccount(uid) &&
+            validPhotoManifest(fileName, request.resource.data);
+        }
+
         allow get, list: if owner(uid);
         allow create: if owner(uid) &&
           validPet(petId, request.resource.data) &&

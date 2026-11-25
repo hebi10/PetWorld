@@ -34,6 +34,20 @@ internal interface SyncPhotoStorage {
 
 internal class SyncPhotoRejected : IllegalStateException("Photo requires review")
 
+internal data class SyncPhotoProof(val petId: String, val fileName: String, val evidence: PhotoEvidence) {
+    init {
+        require(validSyncPathId(petId) && validCloudPhotoName(fileName))
+        require(evidence.sha256.matches(Regex("[0-9a-f]{64}")))
+        require(evidence.sizeBytes in 1L..CLOUD_PHOTO_MAX_BYTES)
+        require(evidence.width in 1..1200 && evidence.height in 1..1200)
+    }
+
+    fun manifest(): Map<String, Any?> = mapOf(
+        "fileName" to fileName, "sha256" to evidence.sha256, "sizeBytes" to evidence.sizeBytes,
+        "width" to evidence.width, "height" to evidence.height, "mimeType" to CLOUD_PHOTO_MIME,
+    )
+}
+
 internal class SyncPhotoTransfer(
     context: Context,
     private val db: PetWorldDatabase,
@@ -98,6 +112,23 @@ internal class SyncPhotoTransfer(
             }
             saveVerified(key, photo.evidence)
         }
+    }
+
+    /** Caller already holds PetWorldMutationGate. A journal flag alone is not sufficient. */
+    internal suspend fun verifiedProofUnderGate(key: SyncPhotoKey): SyncPhotoProof? {
+        requirePermission()
+        val entry = journal.find(account.key, key.petId, key.fileName) ?: return null
+        if (entry.status != "REMOTE_VERIFIED") return null
+        val local = readLocal(key) ?: return null
+        if (!entry.matches(local.evidence)) return null
+        requirePermission()
+        return SyncPhotoProof(key.petId, key.fileName, local.evidence)
+    }
+
+    /** Call only within the same transaction as an accepted Room reference change. */
+    internal suspend fun recordReferenceChange(petId: String, before: String?, after: String?) {
+        requirePermission()
+        LocalPhotoJournal(db, account, files).changed(petId, before, after)
     }
 
     private suspend fun verifyRemote(

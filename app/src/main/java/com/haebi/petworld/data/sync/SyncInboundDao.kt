@@ -75,6 +75,15 @@ interface SyncInboundDao {
     suspend fun hasUnresolved(account: String, kind: String, pet: String, entity: String): Boolean
 
     @Query("""
+        SELECT EXISTS(SELECT 1 FROM sync_inbound WHERE account_key = :account
+        AND entity_kind = :kind AND pet_id = :pet AND entity_id = :entity
+        AND status IN ('CONFLICT', 'DELETE_REVIEW', 'PHOTO_PENDING')
+        AND NOT (status = 'PHOTO_PENDING' AND sequence = :retrySequence))
+    """)
+    suspend fun hasOtherUnresolved(account: String, kind: String, pet: String, entity: String,
+        retrySequence: Long): Boolean
+
+    @Query("""
         SELECT COUNT(*) FROM sync_inbound WHERE account_key = :account
         AND status IN ('CONFLICT', 'DELETE_REVIEW', 'PHOTO_PENDING', 'PARENT_PENDING')
     """)

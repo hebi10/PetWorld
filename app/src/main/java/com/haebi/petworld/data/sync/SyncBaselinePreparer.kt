@@ -54,7 +54,7 @@ internal class SyncBaselinePreparer(
                 if (outbox.firstOutstanding(account.key) != row) return@withTransaction SyncDispatch.Paused
                 val prior = inbox.baseline(account.key, row.entityKind, row.petId, row.entityId)
                 val ack = outbox.lastAcknowledged(account.key, row.entityKind, row.petId, row.entityId)
-                    ?.let(SyncCommands::from)
+                    ?.let(SyncCommands::forBaseline)
                 val knownRevision = maxOf(prior?.revision ?: -1L, ack?.resultingRevision ?: -1L)
                 val knownFields = if (ack != null && ack.resultingRevision == knownRevision) ack.next
                     else prior?.let { parseSyncJson(it.remoteJson) }
@@ -78,14 +78,31 @@ internal class SyncBaselinePreparer(
                 SyncDispatch.Acknowledged
             }
         }
-        if (canPromote == SyncDispatch.WaitingPhoto && row.operation != "DELETE") {
-            val fileName = command?.next?.get("photoFile") as? String
-            if (fileName != null) {
-                try {
-                    photos?.upload(row, fileName)
-                } catch (_: SyncPhotoRejected) {
-                    // Leave the existing record and its queued snapshot available for review.
+        if (canPromote == SyncDispatch.WaitingPhoto) {
+            val transfer = photos ?: return SyncDispatch.WaitingPhoto
+            val candidate = command ?: return SyncDispatch.WaitingPhoto
+            val name = candidate.newPhotoReference
+            try {
+                if (name != null) transfer.upload(row, name)
+                return PetWorldMutationGate.mutex.withLock {
+                    requirePermission()
+                    db.withTransaction {
+                        if (outbox.firstOutstanding(account.key) != row)
+                            return@withTransaction SyncDispatch.Paused
+                        if (inbox.hasUnresolved(account.key, row.entityKind, row.petId, row.entityId) ||
+                            inbox.hasTombstone(account.key, row.entityKind, row.petId, row.entityId))
+                            return@withTransaction SyncDispatch.Conflict
+                        if (name != null && transfer.verifiedProofUnderGate(
+                                SyncPhotoKey(row.petId, name)) == null)
+                            return@withTransaction SyncDispatch.WaitingPhoto
+                        // The final server transaction still performs the exact revision/data CAS.
+                        check(outbox.readyAfterVerifiedBaseline(account.key, row.opId, revision) == 1)
+                        requirePermission()
+                        SyncDispatch.Acknowledged
+                    }
                 }
+            } catch (_: SyncPhotoRejected) {
+                return SyncDispatch.WaitingPhoto
             }
         }
         if (canPromote != SyncDispatch.Conflict) return canPromote

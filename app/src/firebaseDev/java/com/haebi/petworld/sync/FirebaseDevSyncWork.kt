@@ -110,7 +110,7 @@ class FirebaseDevSyncWorker(
             val db = PetWorldDatabase.get(app, account)
             val reader = FirebaseDevRemoteReader(app, permission)
             val photos = SyncPhotoTransfer(app, db, account, FirebaseDevPhotoStorage(app, account, permission), permission)
-            val sender = SyncSender(db, FirebaseDevSyncTransport(app, permission), permission)
+            val sender = SyncSender(db, FirebaseDevSyncTransport(app, permission), permission, photos)
             val preparer = SyncBaselinePreparer(db, account,
                 SyncDocumentSource { scope, kind, pet, id -> reader.readDocument(scope, kind, pet, id) },
                 permission, photos)
