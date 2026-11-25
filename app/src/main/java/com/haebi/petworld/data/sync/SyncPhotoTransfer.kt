@@ -24,6 +24,7 @@ internal data class RemotePhotoMetadata(
     val contentType: String?,
     val sha256: String?,
     val md5: String?,
+    val manifestEvidence: PhotoEvidence? = null,
 )
 
 internal interface SyncPhotoStorage {
@@ -141,7 +142,10 @@ internal class SyncPhotoTransfer(
             (metadata.sha256 != null && !metadata.sha256.matches(Regex("[0-9a-f]{64}"))) ||
             (expected != null && (metadata.sizeBytes != expected.sizeBytes ||
                 (metadata.sha256 != null && metadata.sha256 != expected.sha256))) ||
-            (expected == null && metadata.sha256 == null && metadata.md5.isNullOrBlank())
+            (expected == null && metadata.sha256 == null && metadata.md5.isNullOrBlank()) ||
+            (metadata.manifestEvidence != null &&
+                (metadata.manifestEvidence.sizeBytes != metadata.sizeBytes ||
+                    metadata.sha256 != null && metadata.manifestEvidence.sha256 != metadata.sha256))
         ) throw SyncPhotoRejected()
 
         val bytes = checkSession { remote.download(key) }
@@ -160,7 +164,8 @@ internal class SyncPhotoTransfer(
             throw SyncPhotoRejected()
         }
         if ((expected != null && evidence != expected) ||
-            (metadata.sha256 != null && evidence.sha256 != metadata.sha256)
+            (metadata.sha256 != null && evidence.sha256 != metadata.sha256) ||
+            (metadata.manifestEvidence != null && evidence != metadata.manifestEvidence)
         ) throw SyncPhotoRejected()
         return VerifiedPhoto(bytes, evidence)
     }

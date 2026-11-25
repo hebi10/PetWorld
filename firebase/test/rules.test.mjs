@@ -482,3 +482,67 @@ test('FB-05-B2: revisions, immutable tombstones and parent deletion block stale 
   await assertSucceeds(syncBatch(alice, pet, parentDelete, { ...petDoc('pet-1', 1), deletedAtMs: now }));
   await assertFails(setDoc(doc(alice, pet.path + '/records/record-2'), careDoc('record-2')));
 });
+
+test('FB-06-C: ready photo reference requires immutable same-owner manifest and receipt', async () => {
+  const alice = env.authenticatedContext('alice').firestore();
+  const bob = env.authenticatedContext('bob').firestore();
+  const guest = env.unauthenticatedContext().firestore();
+  await syncReady(alice);
+  const pet = doc(alice, 'users/alice/pets/pet-1');
+  const name = 'pet_55555555-5555-4555-8555-555555555555.jpg';
+  const manifest = doc(alice, pet.path + '/photoManifests/' + name);
+  const proof = {fileName:name, sha256:'a'.repeat(64), sizeBytes:1024, width:16, height:12, mimeType:'image/jpeg'};
+  const create = syncReceipt(syncId1, 'PET', 'pet-1', 'pet-1', 'CREATE', -1);
+  const payload = {...petDoc(), photoFile:name};
+  await assertFails(setDoc(pet, payload));
+  await assertFails(syncBatch(alice, pet, create, payload));
+  await assertFails(setDoc(manifest, {...proof, width:1201}));
+  await assertFails(setDoc(manifest, {...proof, sha256:'invalid'}));
+  await assertFails(setDoc(doc(bob, manifest.path), proof));
+  const batch = writeBatch(alice);
+  batch.set(manifest, proof);
+  batch.set(pet, {...payload, lastSyncOpId:syncId1});
+  batch.set(doc(alice, 'users/alice/syncReceipts/' + syncId1), create);
+  await assertSucceeds(batch.commit());
+  deepStrictEqual((await getDocFromServer(pet)).data().photoFile, name);
+  await assertFails(getDoc(doc(bob, manifest.path)));
+  await assertFails(getDoc(doc(guest, manifest.path)));
+  await assertFails(updateDoc(manifest, {sha256:'b'.repeat(64)}));
+  await assertFails(deleteDoc(manifest));
+  const replacement = 'pet_66666666-6666-4666-8666-666666666666.jpg';
+  const change = syncReceipt(syncId2, 'PET', 'pet-1', 'pet-1', 'UPDATE', 0);
+  await assertFails(syncBatch(alice, pet, change, {...petDoc('pet-1',1), photoFile:replacement}));
+  deepStrictEqual((await getDocFromServer(pet)).data().photoFile, name);
+  const remove = syncReceipt(syncId3, 'PET', 'pet-1', 'pet-1', 'UPDATE', 0);
+  await assertSucceeds(syncBatch(alice, pet, remove, {...petDoc('pet-1',1), photoFile:null}));
+  deepStrictEqual((await getDocFromServer(manifest)).data(), proof);
+});
+
+test('FB-06-C: legacy first import photo path is allowed only during pending migration', async () => {
+  const alice = env.authenticatedContext('alice').firestore();
+  const user = doc(alice, 'users/alice');
+  await assertSucceeds(setDoc(user,userDoc()));
+  const pet = doc(alice,'users/alice/pets/pet-1');
+  await assertSucceeds(setDoc(pet,{...petDoc(),photoFile:photoName}));
+  await assertSucceeds(updateDoc(user,{revision:1,migrationState:'ready'}));
+  await assertFails(updateDoc(pet,{photoFile:null,revision:1}));
+  await assertFails(setDoc(doc(alice,'users/alice/pets/pet-2'),{...petDoc('pet-2'),photoFile:photoName}));
+  await assertSucceeds(updateDoc(pet,{name:'이름 수정',revision:1}));
+});
+
+test('FB-06-C: photo evidence cannot authorize another pet or mutate deleted photo reference', async () => {
+  const alice = env.authenticatedContext('alice').firestore();
+  await syncReady(alice);
+  const name = 'pet_77777777-7777-4777-8777-777777777777.jpg';
+  const proof = {fileName:name,sha256:'c'.repeat(64),sizeBytes:1024,width:16,height:12,mimeType:'image/jpeg'};
+  await assertSucceeds(setDoc(doc(alice,'users/alice/pets/pet-other/photoManifests/'+name),proof));
+  const pet = doc(alice,'users/alice/pets/pet-1');
+  const create = syncReceipt(syncId1,'PET','pet-1','pet-1','CREATE',-1);
+  await assertFails(syncBatch(alice,pet,create,{...petDoc(),photoFile:name}));
+  await assertSucceeds(setDoc(doc(alice,pet.path+'/photoManifests/'+name),proof));
+  await assertSucceeds(syncBatch(alice,pet,create,{...petDoc(),photoFile:name}));
+  const remove = syncReceipt(syncId2,'PET','pet-1','pet-1','DELETE',0);
+  await assertFails(syncBatch(alice,pet,remove,{...petDoc('pet-1',1),photoFile:null,deletedAtMs:now}));
+  await assertSucceeds(syncBatch(alice,pet,remove,{...petDoc('pet-1',1),photoFile:name,deletedAtMs:now}));
+  deepStrictEqual((await getDocFromServer(pet)).data().photoFile,name);
+});

@@ -166,12 +166,20 @@ service cloud.firestore {
             getAfter(/databases/$(database)/documents/users/$(uid)/pets/$(petId)/photoManifests/$(afterName)).data));
     }
 
+    function legacyPhotoChange(uid, beforeName, afterName) {
+      return beforeName == afterName ||
+        (afterName is string &&
+          afterName.matches('^pet_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[.]jpg$') &&
+          get(/databases/$(database)/documents/users/$(uid)).data.migrationState == 'pending');
+    }
+
     // The manifest is an immutable client attestation, not proof of Storage existence.
     // Only the app's byte-verifying adapter creates it. A trusted server audit is still required.
     // Preserve the prior first-import path; once synchronized, writes cannot remove
     // their receipt linkage or bypass the new atomic protocol.
     function permittedCreate(uid, kind, petId, entityId, data) {
-      return (!data.keys().hasAny(['lastSyncOpId', 'deletedAtMs'])) ||
+      return (!data.keys().hasAny(['lastSyncOpId', 'deletedAtMs']) &&
+          legacyPhotoChange(uid, null, data.get('photoFile', null))) ||
         (permittedPhotoReference(uid, petId, null, data.get('photoFile', null)) &&
           matchesSyncReceipt(uid, kind, petId, entityId, -1, data));
     }
@@ -179,7 +187,8 @@ service cloud.firestore {
     function permittedUpdate(uid, kind, petId, entityId, before, after) {
       return before.get('deletedAtMs', null) == null &&
         ((!before.keys().hasAny(['lastSyncOpId']) &&
-          !after.keys().hasAny(['lastSyncOpId', 'deletedAtMs'])) ||
+          !after.keys().hasAny(['lastSyncOpId', 'deletedAtMs']) &&
+          legacyPhotoChange(uid, before.get('photoFile', null), after.get('photoFile', null))) ||
           (permittedPhotoReference(uid, petId, before.get('photoFile', null), after.get('photoFile', null)) &&
             (after.get('deletedAtMs', null) == null ||
               before.get('photoFile', null) == after.get('photoFile', null)) &&

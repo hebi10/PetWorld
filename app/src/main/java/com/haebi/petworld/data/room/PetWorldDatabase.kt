@@ -92,6 +92,9 @@ data class CareEntity(
 
 @Dao
 interface PetDao {
+    @Query("SELECT EXISTS(SELECT 1 FROM pets WHERE photo_file = :name)")
+    suspend fun referencesPhoto(name: String): Boolean
+
     @Query("SELECT * FROM pets ORDER BY is_archived ASC, created_at ASC")
     suspend fun list(): List<PetEntity>
 
@@ -124,6 +127,9 @@ data class CareHistoryIndex(
 
 @Dao
 interface CareDao {
+    @Query("SELECT EXISTS(SELECT 1 FROM care_entries WHERE photo_file = :name)")
+    suspend fun referencesPhoto(name: String): Boolean
+
     @Query("SELECT * FROM care_entries ORDER BY occurred_at DESC, created_at DESC")
     fun observeAll(): Flow<List<CareEntity>>
 

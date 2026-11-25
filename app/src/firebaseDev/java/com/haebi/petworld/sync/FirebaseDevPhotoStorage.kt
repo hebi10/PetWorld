@@ -4,6 +4,11 @@ import android.content.Context
 import com.google.android.gms.tasks.Task
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Source
+import com.haebi.petworld.data.sync.PhotoEvidence
+import com.haebi.petworld.data.sync.SyncPhotoProof
+import com.haebi.petworld.data.migration.FirstImportPayloads
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageException
 import com.google.firebase.storage.StorageMetadata
@@ -39,9 +44,29 @@ internal class FirebaseDevPhotoStorage(
     override suspend fun metadata(key: SyncPhotoKey): RemotePhotoMetadata? =
         request(key, allowMissing = true) { ref ->
             val metadata = ref.metadata.awaitPhoto()
+            val uid = currentUid() ?: throw SyncReceiveDenied()
+            if (!permission.permits(account)) throw SyncReceiveDenied()
+            val manifest = FirebaseFirestore.getInstance(app).collection("users").document(uid)
+                .collection("pets").document(key.petId).collection("photoManifests").document(key.fileName)
+                .get(Source.SERVER).awaitPhoto()
+            if (currentUid() != uid || !permission.permits(account)) throw SyncReceiveDenied()
+            if (manifest.metadata.isFromCache || manifest.metadata.hasPendingWrites()) throw SyncPhotoRejected()
+            val evidence = if (!manifest.exists()) null else try {
+                val fields = requireNotNull(manifest.data)
+                val width = requireNotNull(manifest.getLong("width"))
+                val height = requireNotNull(manifest.getLong("height"))
+                require(width in 1L..1200L && height in 1L..1200L)
+                val proof = SyncPhotoProof(key.petId, key.fileName, PhotoEvidence(
+                    requireNotNull(manifest.getString("sha256")),
+                    requireNotNull(manifest.getLong("sizeBytes")), width.toInt(), height.toInt()))
+                require(FirstImportPayloads.sameRemote(proof.manifest(), fields))
+                proof.evidence
+            } catch (_: IllegalArgumentException) {
+                throw SyncPhotoRejected()
+            }
             RemotePhotoMetadata(
                 metadata.sizeBytes, metadata.contentType,
-                metadata.getCustomMetadata("sha256"), metadata.md5Hash,
+                metadata.getCustomMetadata("sha256"), metadata.md5Hash, evidence,
             )
         }
 

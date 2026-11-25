@@ -51,6 +51,13 @@ interface SyncOutboxDao {
     @Query("SELECT * FROM sync_outbox WHERE account_key = :accountKey ORDER BY sequence ASC LIMIT :limit")
     suspend fun list(accountKey: String, limit: Int): List<SyncOutboxEntry>
 
+    // Filename is strict UUID JPEG; substring matching is intentionally conservative.
+    @Query("""
+        SELECT EXISTS(SELECT 1 FROM sync_outbox WHERE account_key = :accountKey
+        AND (instr(COALESCE(before_json, ''), :name) > 0 OR instr(COALESCE(after_json, ''), :name) > 0))
+    """)
+    suspend fun retainsPhotoHistory(accountKey: String, name: String): Boolean
+
     @Query("SELECT COUNT(*) FROM sync_outbox WHERE account_key = :accountKey")
     fun observeCount(accountKey: String): Flow<Int>
 

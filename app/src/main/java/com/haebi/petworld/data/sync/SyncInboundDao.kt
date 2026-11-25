@@ -110,6 +110,12 @@ interface SyncInboundDao {
     suspend fun markReviewed(account: String, kind: String, pet: String, entity: String,
         revision: Long): Int
 
+    @Query("""
+        SELECT EXISTS(SELECT 1 FROM sync_inbound WHERE account_key = :account
+        AND (instr(remote_json, :name) > 0 OR instr(COALESCE(local_json, ''), :name) > 0))
+    """)
+    suspend fun retainsPhotoHistory(account: String, name: String): Boolean
+
     @Query("SELECT * FROM sync_inbound WHERE account_key = :account ORDER BY sequence")
     suspend fun list(account: String): List<SyncInboundEntry>
 }

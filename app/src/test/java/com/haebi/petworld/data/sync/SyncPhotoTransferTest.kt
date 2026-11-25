@@ -81,23 +81,41 @@ class SyncPhotoTransferTest {
         }
     }
 
-    @Test fun uploadRecoversLostResponseWithoutPublishingThePhotoReference() = runBlocking {
+    @Test fun uploadRecoversLostResponseBeforePublishingThePhotoReference() = runBlocking {
         val bytes = jpeg(Color.RED)
         queueLocalPhoto(bytes)
         remote.failAfterCreate = true
         val preparer = SyncBaselinePreparer(db, account, SyncDocumentSource { _, _, _, _ -> null },
             permission, transfer)
-        val sender = SyncSender(db, SyncTransport { error("Firestore photo write attempted") }, permission)
+        var remoteDoc: Map<String, Any?>? = null
+        var writes = 0
+        val receipts = mutableMapOf<String, Map<String, Any?>>()
+        val sender = SyncSender(db, SyncTransport { command ->
+            val proof = requireNotNull(command.photoProof)
+            assertEquals(key.fileName, proof.fileName)
+            assertEquals(photoSha256(bytes), proof.evidence.sha256)
+            assertArrayEquals(bytes, remote.bytes)
+            when (val decision = decideSyncCommit(command, receipts[command.opId], remoteDoc)) {
+                is SyncRemoteDecision.Write -> {
+                    remoteDoc = decision.document
+                    receipts[command.opId] = decision.receipt
+                    writes++
+                    SyncCommitOutcome.Retry // server committed but response was lost
+                }
+                is SyncRemoteDecision.Stop -> decision.result
+            }
+        }, permission, transfer)
 
-        assertEquals(SyncDispatch.WaitingPhoto, preparer.next(sender))
-        assertEquals(SyncDispatch.WaitingPhoto, preparer.next(sender))
+        assertEquals(SyncDispatch.Retry(30_000), preparer.next(sender))
+        assertEquals(SyncDispatch.Acknowledged, preparer.next(sender))
+        assertEquals(1, writes)
+        assertEquals(key.fileName, remoteDoc?.get("photoFile"))
         assertEquals(1, remote.creates)
         assertEquals(1, remote.downloads)
         assertArrayEquals(bytes, remote.bytes)
         assertEquals("REMOTE_VERIFIED", db.syncPhotoDao().find(account.key, key.petId, key.fileName)?.status)
-        val pending = requireNotNull(db.syncOutboxDao().firstOutstanding(account.key))
-        assertEquals(SYNC_WAITING_BASELINE, pending.status)
-        assertEquals(0, pending.attempt)
+        assertNull(db.syncOutboxDao().firstOutstanding(account.key))
+        assertEquals("ACKNOWLEDGED", db.syncOutboxDao().list(account.key, 10).single().status)
     }
 
     @Test fun uploadNeverReplacesExistingCloudBytesOrMarksDifferentContentVerified() = runBlocking {
@@ -130,7 +148,7 @@ class SyncPhotoTransferTest {
         assertFalse(store.fileFor(key.fileName)!!.exists())
 
         remote.beforeDownload = {}
-        assertEquals(listOf(InboundResult.PHOTO_PENDING), receiver.applyPage(page) { advanced = true })
+        assertEquals(listOf(InboundResult.CONFLICT), receiver.applyPage(page) { advanced = true })
         assertTrue(advanced)
         assertEquals(listOf(InboundResult.DUPLICATE), receiver.applyPage(page))
         assertEquals(2, remote.downloads)
@@ -138,6 +156,40 @@ class SyncPhotoTransferTest {
         assertArrayEquals(previous, store.fileFor(previousName)!!.readBytes())
         assertEquals(previousName, db.petDao().find(key.petId)?.photoFile)
         assertFalse(PetPhotoStore(context, other).fileFor(key.fileName)!!.exists())
+    }
+
+    @Test fun verifiedRemotePhotoAppliesOnlyWithMatchingBaselineAndRetainsOldFile() = runBlocking {
+        val initial = RemoteSyncDocument("PET", key.petId, key.petId, FirstImportPayloads.pet(pet(null)))
+        val receiver = SyncReceiver(db, account, permission, transfer)
+        fun page(doc: RemoteSyncDocument) = RemoteSyncPage(account.key, null, listOf(doc), key.petId, false)
+        assertEquals(listOf(InboundResult.APPLIED), receiver.applyPage(page(initial)))
+        val bytes = jpeg(Color.RED)
+        remote.seed(bytes)
+        val updated = initial.copy(fields = FirstImportPayloads.pet(pet(key.fileName)) + ("revision" to 1L))
+        assertEquals(listOf(InboundResult.APPLIED), receiver.applyPage(page(updated)))
+        assertEquals(key.fileName, db.petDao().find(key.petId)?.photoFile)
+        assertArrayEquals(bytes, store.fileFor(key.fileName)!!.readBytes())
+        val removed = initial.copy(fields = initial.fields + ("revision" to 2L))
+        assertEquals(listOf(InboundResult.APPLIED), receiver.applyPage(page(removed)))
+        assertNull(db.petDao().find(key.petId)?.photoFile)
+        assertArrayEquals(bytes, store.fileFor(key.fileName)!!.readBytes())
+        assertTrue(db.syncPhotoDao().find(account.key,key.petId,key.fileName)!!.retired)
+        assertTrue(db.syncOutboxDao().list(account.key,10).isEmpty())
+    }
+
+    @Test fun manifestMismatchAndUnverifiedPhotoNeverPublishOrOverwrite() = runBlocking {
+        val bytes = jpeg(Color.RED)
+        queueLocalPhoto(bytes)
+        remote.seed(jpeg(Color.BLUE))
+        val preparer = SyncBaselinePreparer(db, account, SyncDocumentSource { _, _, _, _ -> null },
+            permission, transfer)
+        val sender = SyncSender(db, SyncTransport { error("Unverified photo must never send") }, permission, transfer)
+        assertEquals(SyncDispatch.WaitingPhoto, preparer.next(sender))
+        assertEquals(SYNC_WAITING_BASELINE, db.syncOutboxDao().firstOutstanding(account.key)?.status)
+        remote.seed(bytes)
+        remote.info = remote.info!!.copy(manifestEvidence = cloudJpegEvidence(bytes).copy(width=17))
+        assertEquals(SyncDispatch.WaitingPhoto, preparer.next(sender))
+        assertEquals(SYNC_WAITING_BASELINE, db.syncOutboxDao().firstOutstanding(account.key)?.status)
     }
 
     @Test fun checksumMismatchAndRevokedLeaseNeverInstallAFile() = runBlocking {
