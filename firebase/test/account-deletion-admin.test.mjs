@@ -45,7 +45,7 @@ class FakeBucket {
   async getFiles(options){
     const source=options.softDeleted?this.retained:this.names;
     const matches=[...source].filter(n=>n.startsWith(options.prefix));
-    const files=matches.slice(0,options.maxResults).map(name=>({name,generation:'1234567890123456789',
+    const files=matches.slice(0,options.maxResults).map(name=>({name,generation:'1234567890123456789',metadata:{generation:'1234567890123456789'},
       delete:async options=>{assert.equal(options.ifGenerationMatch,'1234567890123456789');this.deleted.push(name);this.names.delete(name);}}));
     return [files,matches.length>options.maxResults?{pageToken:'next'}:null];
   }
@@ -123,4 +123,22 @@ test('FB07-B: lease excludes another worker and wrong-generation write cannot ad
     assert.equal(await port.advance('alice',jobId,lease,'LOCKED','AUTH_REVOKED'),true);
     assert.equal(await port.advance('alice',jobId,lease,'LOCKED','AUTH_REVOKED'),false);
   });
+});
+
+test('FB07-B: unsafe or mismatched SDK generation fails closed without deleting any object',async()=>{
+  const {auth,db,bucket}=setup();
+  const port=createAdminDeletionPort({db,auth,bucket,ticketDigest:statusTicketDigest(ticket()),now:()=>now});
+  const jobId=deletionJobId('alice');
+  await port.requestLock('alice',jobId);
+  const original=bucket.getFiles.bind(bucket);
+  bucket.getFiles=async options=>{
+    const result=await original(options);
+    for (const file of result[0]) file.generation=Number(file.metadata.generation);
+    return result;
+  };
+  await port.withLease('alice',jobId,async lease=>{
+    await assert.rejects(()=>port.purgeUserObjects('alice',lease),DeletionDenied);
+  });
+  assert.deepEqual(bucket.deleted,[]);
+  assert(bucket.names.has('users/alice/pets/p/photos/a.jpg'));
 });

@@ -9,6 +9,12 @@ const hex = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const phases = ['LOCKED','AUTH_REVOKED','RECORDS_PURGED','PHOTOS_PURGED','AUTH_DELETED','VERIFIED','COMPLETE'];
 const missingAuth = error => error?.code === 'auth/user-not-found';
 
+function generationText(value) {
+  if (typeof value === 'string' && /^[1-9][0-9]*$/.test(value)) return value;
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return String(value);
+  throw new DeletionDenied();
+}
+
 export function statusTicketDigest(ticket) {
   if (typeof ticket !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(ticket)) throw new DeletionDenied();
   const bytes = Buffer.from(ticket,'base64url');
@@ -156,8 +162,10 @@ export function createAdminDeletionPort({db, auth, bucket, ticketDigest = null,
         const {files,more} = await listPage(uid);
         for (const file of files) {
           await assertLease(uid,lease);
-          const generation = file.generation ?? file.metadata?.generation;
-          if (typeof generation !== 'string' || !/^[0-9]+$/.test(generation))
+          // Cloud Storage SDK can expose the generation as a number while metadata
+          // retains its decimal representation. Never silently round an int64.
+          const generation = generationText(file.metadata?.generation ?? file.generation);
+          if (file.generation != null && generationText(file.generation) !== generation)
             throw new DeletionDenied();
           try { await file.delete({ifGenerationMatch:generation}); }
           catch (error) { if (Number(error?.code) !== 404) throw error; }
@@ -190,7 +198,8 @@ export function createAdminDeletionPort({db, auth, bucket, ticketDigest = null,
           job.jobId !== jobId || !phases.includes(job.phase)) throw new DeletionDenied();
       checkedJob(job.uid,jobId);
       const lock = await lockRef(job.uid).get();
-      if (!lock.exists || lock.data()?.jobId !== jobId) throw new DeletionDenied();
+      if (!lock.exists || lock.data()?.jobId !== jobId || lock.data()?.state !== 'LOCKED')
+        throw new DeletionDenied();
       return {jobId,phase:job.phase};
     },
   };
