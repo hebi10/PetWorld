@@ -20,7 +20,7 @@ export function mountDeletionPage(root,runtime) {
     typeof runtime.currentAccount!=='function'||typeof runtime.subscribe!=='function')return null;
   const by=id=>{const node=root.querySelector('#'+id);if(!node)throw new Error('Missing deletion screen element');return node;};
   const ui={
-    availability:by('availability'),account:by('account-status'),connect:by('connect-existing'),
+    availability:by('availability'),availabilityDetail:by('availability-detail'),account:by('account-status'),connect:by('connect-existing'),
     password:by('recovery-password'),prepare:by('prepare-recovery'),saved:by('saved-recovery'),
     confirm:by('confirm-deletion'),submit:by('submit-deletion'),
     file:by('recovery-file'),restorePassword:by('restore-password'),restore:by('restore-recovery'),
@@ -66,6 +66,7 @@ export function mountDeletionPage(root,runtime) {
   const listen=(node,event,callback)=>node.addEventListener(event,callback,{signal:events.signal});
   const events=new AbortController();
   ui.availability.textContent='삭제 요청 및 저장된 복구 파일 조회';
+  ui.availabilityDetail.textContent='기존 계정의 인증, 복구 파일 확인 및 직접 승인 후에만 삭제 요청을 제출합니다.';
   listen(ui.connect,'click',()=>run(async()=>{
     connected=await runtime.connectExisting();
     if(disposed)return;
