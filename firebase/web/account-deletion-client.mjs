@@ -82,13 +82,13 @@ function originOf(value) {
 /** Same-origin only, no redirects/cookies/browser persistence or secret-bearing error text. */
 export function createWebDeletionTransport({origin,currentOrigin,appCheck,fetcher=globalThis.fetch}={}) {
   if(originOf(origin)!==currentOrigin||typeof appCheck!=='function'||typeof fetcher!=='function')fail();
-  return async function exchange(route,bearer,body,expected) {
+  return async function exchange(route,bearer,body,expected,stillAuthorized=()=>true) {
     if(!['request','status'].includes(route)||!headerValid(bearer)||!jobValid(expected))fail();
     const controller=new AbortController();
     const timer=setTimeout(()=>controller.abort(),15000);
     try{
       const appToken=await appCheck();
-      if(!headerValid(appToken)||controller.signal.aborted)fail();
+      if(!headerValid(appToken)||controller.signal.aborted||!stillAuthorized())fail();
       const raw=JSON.stringify(body);
       if(encoder.encode(raw).length>2048)fail();
       const response=await fetcher(origin+'/account-deletion/'+route,{
@@ -173,7 +173,8 @@ export function createWebDeletionController({currentAccount,reauthenticate,excha
         seconds-auth.authTimeSeconds>300)return {kind:'NOT_READY'};
       attempted=true;
       const next=await exchange('request',auth.idToken,
-        {confirmation:'DELETE_MY_PETWORLD_ACCOUNT',statusTicket:target.ticket},target.jobId);
+        {confirmation:'DELETE_MY_PETWORLD_ACCOUNT',statusTicket:target.ticket},target.jobId,
+        ()=>valid()&&currentAccount()===uid);
       if(!valid()||currentAccount()!==uid)return {kind:'UNKNOWN'};
       phase=receipt(next,target.jobId,phase);
       return {kind:'CONFIRMED',phase};
@@ -181,7 +182,7 @@ export function createWebDeletionController({currentAccount,reauthenticate,excha
     refresh(){return operation(async valid=>{
       if(anchor===null||!saved)return {kind:'NOT_READY'};
       const target=anchor;
-      const next=await exchange('status',target.ticket,{jobId:target.jobId},target.jobId);
+      const next=await exchange('status',target.ticket,{jobId:target.jobId},target.jobId,valid);
       if(!valid())return {kind:'UNKNOWN'};
       phase=receipt(next,target.jobId,phase);
       return {kind:'CONFIRMED',phase};
