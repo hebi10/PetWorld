@@ -205,6 +205,17 @@ class PetWorldAccountActivity : ComponentActivity() {
                         }
                     },
                 )
+                if (signedIn != null) {
+                    val deletionScope = LocalAccountScope.fromFirebaseUid(signedIn.uid)
+                    if (deletionScope is LocalAccountScope.SignedIn) {
+                        key(deletionScope.key) {
+                            FirebaseDevAccountDeletionSection(
+                                enabled = !waiting,
+                                accountLabel = signedIn.email,
+                            )
+                        }
+                    }
+                }
                 PetSecondaryButton(
                     label = "로그아웃",
                     modifier = Modifier.fillMaxWidth(),
@@ -240,9 +251,9 @@ class PetWorldAccountActivity : ComponentActivity() {
                 onClick = onClose,
             )
             Text(
-                "계정 삭제와 서버 기록 삭제는 이 화면에서 제공하지 않습니다. " +
+                "계정 삭제 안내는 로그인 계정에서 확인할 수 있습니다. 실제 삭제 요청은 서버 검증 후 제공됩니다. " +
                     "개발 환경의 사용자 승인형 최초 보관 외에는 자동 업로드가 없습니다. " +
-                        "계정 삭제와 클라우드 자동 동기화는 아직 지원하지 않습니다.",
+                    "클라우드 자동 동기화는 아직 지원하지 않습니다.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
