@@ -80,7 +80,7 @@ export function mountDeletionPage(root,runtime) {
     if(result.kind==='PREPARED'){
       download(result.file);restored=false;
       ui.saved.checked=false;ui.confirm.checked=false;
-      ui.status.textContent='암호화 복구 파일을 저장했습니다. 아래 복구 파일 확인에서 저장한 파일과 비밀번호를 다시 확인해 주세요.';
+      ui.status.textContent='암호화 복구 파일 다운로드를 요청했습니다. 아래 복구 파일 확인에서 저장한 파일과 비밀번호를 다시 확인해 주세요.';
     }else show(result);
   }));
   listen(ui.saved,'change',()=>{if(!ui.saved.checked)ui.confirm.checked=false;sync();});
