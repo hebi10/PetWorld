@@ -3,6 +3,7 @@ package com.haebi.petworld.data.account
 import android.content.Context
 import android.util.AtomicFile
 import java.io.File
+import java.nio.file.Files
 
 /**
  * Non-secret, account-scoped route reservation outside Android backup.
@@ -10,7 +11,7 @@ import java.io.File
  * automatically. It is not evidence of completed migration or deletion.
  */
 internal class AccountSdkRouteJournal(context: Context) {
-    private val directory = File(context.applicationContext.noBackupFilesDir, "sdk-route-v1")
+    private val directory = File(context.applicationContext.noBackupFilesDir.canonicalFile, "sdk-route-v1")
 
     companion object {
         private val lock = Any()
@@ -18,12 +19,12 @@ internal class AccountSdkRouteJournal(context: Context) {
     }
 
     private fun file(account: LocalAccountScope.SignedIn) = File(directory, account.key + ".route")
-    private fun present(target: File): Boolean = target.exists() ||
-        File(target.path + ".bak").exists() || File(target.path + ".new").exists()
+    private fun present(target: File): Boolean = listOf(target, File(target.path + ".bak"),
+        File(target.path + ".new")).any { it.exists() || Files.isSymbolicLink(it.toPath()) }
 
     fun permitsLegacy(account: LocalAccountScope.SignedIn): Boolean = synchronized(lock) {
         runCatching {
-            check(!directory.exists() || directory.isDirectory)
+            check(!Files.isSymbolicLink(directory.toPath()) && (!directory.exists() || directory.isDirectory))
             !present(file(account))
         }.getOrDefault(false)
     }
@@ -33,8 +34,10 @@ internal class AccountSdkRouteJournal(context: Context) {
         runCatching {
             val target = file(account)
             check(directory.isDirectory || directory.mkdirs())
-            check(directory.canonicalFile == directory.absoluteFile &&
-                target.canonicalFile == target.absoluteFile)
+            check(directory.canonicalFile == directory.absoluteFile && !Files.isSymbolicLink(directory.toPath()) &&
+                listOf(target, File(target.path + ".bak"), File(target.path + ".new")).all {
+                    it.canonicalFile == it.absoluteFile && !Files.isSymbolicLink(it.toPath())
+                })
             if (!present(target)) {
                 val atomic = AtomicFile(target)
                 val output = atomic.startWrite()
