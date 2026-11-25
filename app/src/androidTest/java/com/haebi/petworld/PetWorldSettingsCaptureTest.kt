@@ -42,6 +42,7 @@ class PetWorldSettingsCaptureTest {
                     seen("반려동물 추가")
                     seen("암호화 백업 생성")
                     seen("백업 파일 복원")
+                    scrollTop()
                     capture(folder, "S30-settings-compact")
 
                     tap("프로필 관리")
@@ -111,8 +112,22 @@ class PetWorldSettingsCaptureTest {
 
     private fun seen(text: String) {
         dismissLauncherAnr()
-        checkNotNull(device.wait(Until.findObject(By.textContains(text)), 12_000)) {
-            "UI-04 화면에 해당 문구가 없습니다: $text"
+        if (device.wait(Until.findObject(By.textContains(text)), 1500) != null) return
+        scrollTop()
+        repeat(10) {
+            if (device.wait(Until.findObject(By.textContains(text)), 1500) != null) return
+            device.swipe(device.displayWidth / 2, device.displayHeight * 3 / 4,
+                device.displayWidth / 2, device.displayHeight / 4, 20)
+            device.waitForIdle()
+        }
+        error("UI-04 화면에 해당 문구가 없습니다: $text")
+    }
+
+    private fun scrollTop() {
+        repeat(7) {
+            device.swipe(device.displayWidth / 2, device.displayHeight / 4,
+                device.displayWidth / 2, device.displayHeight * 3 / 4, 20)
+            device.waitForIdle()
         }
     }
 
