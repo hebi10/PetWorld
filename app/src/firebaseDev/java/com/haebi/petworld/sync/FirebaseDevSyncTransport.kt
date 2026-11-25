@@ -7,6 +7,9 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.account.AccountDeletionJournal
+import com.haebi.petworld.auth.awaitTrackedFirebaseTask
+import com.haebi.petworld.auth.FirebaseDevCloudWork
 import com.haebi.petworld.data.sync.SyncCommand
 import com.haebi.petworld.data.sync.SyncCommitOutcome
 import com.haebi.petworld.data.sync.SyncPermission
@@ -15,9 +18,6 @@ import com.haebi.petworld.data.sync.SyncTransport
 import com.haebi.petworld.data.sync.decideSyncCommit
 import com.haebi.petworld.data.migration.FirstImportPayloads
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 /**
  * Development-only server transaction. No caller or scheduling registration exists yet.
@@ -27,6 +27,7 @@ internal class FirebaseDevSyncTransport(
     context: Context,
     private val permission: SyncPermission = SyncPermission { false },
 ) : SyncTransport {
+    private val journal = AccountDeletionJournal(context.applicationContext)
     private val app = FirebaseApp.getInstance()
     private val auth = FirebaseAuth.getInstance(app)
     private val firestore = FirebaseFirestore.getInstance(app)
@@ -56,7 +57,7 @@ internal class FirebaseDevSyncTransport(
             // Require online credential refresh before using the server transaction.
             val user = auth.currentUser ?: return SyncCommitOutcome.Blocked
             if (user.uid != uid) return SyncCommitOutcome.Blocked
-            user.getIdToken(true).awaitSync()
+            sdk(account, command, uid) { user.getIdToken(true) }
             if (currentUid(command) != uid || !permission.permits(account)) {
                 return SyncCommitOutcome.Blocked
             }
@@ -68,8 +69,8 @@ internal class FirebaseDevSyncTransport(
                 else -> return SyncCommitOutcome.Blocked
             }
             val receipt = userRef.collection("syncReceipts").document(command.opId)
-            val outcome = firestore.runTransaction { tx ->
-                if (currentUid(command) != uid) return@runTransaction SyncCommitOutcome.Blocked
+            val outcome = sdk(account, command, uid) { firestore.runTransaction { tx ->
+                if (!stillAllowed(account, command, uid)) return@runTransaction SyncCommitOutcome.Blocked
                 val owner = tx.get(userRef)
                 if (owner.getString("migrationState") != "ready") {
                     return@runTransaction SyncCommitOutcome.Blocked
@@ -95,7 +96,7 @@ internal class FirebaseDevSyncTransport(
                         if (existingManifest != null && !FirstImportPayloads.sameRemote(
                                 requireNotNull(manifest), existingManifest))
                             return@runTransaction SyncCommitOutcome.Conflict
-                        if (currentUid(command) != uid) {
+                        if (!stillAllowed(account, command, uid)) {
                             return@runTransaction SyncCommitOutcome.Blocked
                         }
                         if (manifestRef != null && existingManifest == null)
@@ -105,7 +106,7 @@ internal class FirebaseDevSyncTransport(
                         SyncCommitOutcome.Applied
                     }
                 }
-            }.awaitSync()
+            } }
             if (currentUid(command) != uid || !permission.permits(account)) {
                 // The transaction may already be committed. Keep the same opId replayable.
                 SyncCommitOutcome.Retry
@@ -124,12 +125,12 @@ internal class FirebaseDevSyncTransport(
             SyncCommitOutcome.Retry
         }
     }
-}
+    private fun stillAllowed(account: LocalAccountScope.SignedIn, command: SyncCommand, uid: String): Boolean =
+        currentUid(command) == uid && !journal.blocksCloud(account) && !FirebaseDevCloudWork.tracker.isBlocked(account)
 
-private suspend fun <T> Task<T>.awaitSync(): T = suspendCancellableCoroutine { continuation ->
-    addOnCompleteListener { task ->
-        if (!continuation.isActive) return@addOnCompleteListener
-        if (task.isSuccessful) continuation.resume(task.result)
-        else continuation.resumeWithException(task.exception ?: IllegalStateException("Firebase task failed"))
+    private suspend fun <T> sdk(account: LocalAccountScope.SignedIn, command: SyncCommand, uid: String,
+        start: () -> Task<T>): T {
+        check(permission.permits(account))
+        return awaitTrackedFirebaseTask(account, permitted = { stillAllowed(account, command, uid) }, start = start)
     }
 }
