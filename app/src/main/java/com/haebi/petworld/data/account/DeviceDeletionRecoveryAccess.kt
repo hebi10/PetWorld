@@ -55,16 +55,18 @@ internal class DeviceDeletionRecoveryAccess(
     suspend fun refresh(
         recovery: DeletionRecoveryController,
         verifiedEndpoint: Boolean,
-    ): AccountDeletionStatusView = gate.withLock {
+    ): AccountDeletionStatusView {
         val guest = LocalAccountScope.Guest
-        try {
-            if (!verifiedEndpoint || !allowed(guest) ||
-                !confirmDeviceCredential() || !allowed(guest))
-                return@withLock AccountDeletionStatusView.Unknown
-            val anchor = anchors.read() ?: return@withLock AccountDeletionStatusView.Unknown
-            if (!allowed(guest)) return@withLock AccountDeletionStatusView.Unknown
+        return try {
+            // Release the enrollment mutex before acquiring the controller mutex.
+            // Enrollment is immutable; no other account can replace the selected slot.
+            val anchor = gate.withLock {
+                if (!verifiedEndpoint || !allowed(guest) ||
+                    !confirmDeviceCredential() || !allowed(guest)) return@withLock null
+                anchors.read()?.takeIf { allowed(guest) }
+            } ?: return AccountDeletionStatusView.Unknown
             val result = recovery.refresh(anchor.account, verifiedEndpoint, anchor.jobId) { allowed(guest) }
-            if (!allowed(guest)) return@withLock AccountDeletionStatusView.Unknown
+            if (!allowed(guest)) return AccountDeletionStatusView.Unknown
             if (result is DeletionRecoveryResult.Confirmed)
                 AccountDeletionStatusView.Saved(result.receipt.phase)
             else AccountDeletionStatusView.Unknown
