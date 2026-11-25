@@ -10,6 +10,7 @@ import com.haebi.petworld.data.room.toDomain
 import com.haebi.petworld.data.room.toEntity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
@@ -43,6 +44,17 @@ class PetRepository(
     val profiles = _profiles.asStateFlow()
     private val _loadStatus = MutableStateFlow<PetLoadStatus>(PetLoadStatus.Loading)
     val loadStatus = _loadStatus.asStateFlow()
+
+    // A verified remote Room commit must update the same UI state as a local edit.
+    internal suspend fun observeAccountProfileChanges() {
+        try {
+            database.invalidationTracker.createFlow("pets").collect { refresh() }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            _loadStatus.value = PetLoadStatus.Failed("프로필 변경 내용을 확인하지 못했습니다.")
+        }
+    }
 
     suspend fun refresh() = mutex.withLock {
         try {

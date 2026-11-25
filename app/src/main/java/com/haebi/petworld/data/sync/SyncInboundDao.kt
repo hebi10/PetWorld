@@ -81,6 +81,19 @@ interface SyncInboundDao {
     fun observeReviewCount(account: String): Flow<Int>
 
     @Query("""
+        SELECT COUNT(*) FROM sync_inbound WHERE account_key = :account
+        AND status IN ('CONFLICT', 'DELETE_REVIEW', 'PHOTO_PENDING', 'PARENT_PENDING')
+    """)
+    suspend fun reviewCount(account: String): Int
+
+    @Query("""
+        SELECT * FROM sync_inbound WHERE account_key = :account
+        AND status IN ('CONFLICT', 'DELETE_REVIEW', 'PHOTO_PENDING', 'PARENT_PENDING')
+        ORDER BY sequence DESC LIMIT :limit
+    """)
+    suspend fun reviewEntries(account: String, limit: Int): List<SyncInboundEntry>
+
+    @Query("""
         UPDATE sync_inbound SET status = 'REVIEWED' WHERE account_key = :account
         AND entity_kind = :kind AND pet_id = :pet AND entity_id = :entity
         AND revision <= :revision AND status IN ('CONFLICT', 'PARENT_PENDING')

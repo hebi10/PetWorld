@@ -186,7 +186,8 @@ class MainViewModel(
     )
 
     init {
-        refreshPets()
+        if (accountScope.isGuest) refreshPets()
+        else viewModelScope.launch { pets.observeAccountProfileChanges() }
     }
 
     fun refreshPets() {
