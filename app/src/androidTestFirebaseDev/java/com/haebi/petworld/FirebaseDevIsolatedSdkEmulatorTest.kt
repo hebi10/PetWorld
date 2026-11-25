@@ -9,6 +9,7 @@ import com.google.firebase.FirebaseOptions
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreSettings
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.MemoryCacheSettings
 import com.google.firebase.firestore.PersistentCacheSettings
@@ -63,7 +64,13 @@ class FirebaseDevIsolatedSdkEmulatorTest {
                 app.name != FirebaseApp.DEFAULT_APP_NAME)
             auth.useEmulator(HOST, AUTH_PORT)
             db.useEmulator(HOST, FIRESTORE_PORT)
-            if (memory) db.firestoreSettings = FirebaseDevAccountMemoryCache.settings(db.firestoreSettings)
+            db.firestoreSettings = if (memory) {
+                FirebaseDevAccountMemoryCache.settings(db.firestoreSettings)
+            } else {
+                FirebaseFirestoreSettings.Builder(db.firestoreSettings)
+                    .setLocalCacheSettings(PersistentCacheSettings.newBuilder().build())
+                    .build()
+            }
             check(db.firestoreSettings.host == "$HOST:$FIRESTORE_PORT" && !db.firestoreSettings.isSslEnabled)
             check(if (memory) db.firestoreSettings.cacheSettings is MemoryCacheSettings
                 else db.firestoreSettings.cacheSettings is PersistentCacheSettings)
