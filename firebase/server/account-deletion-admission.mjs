@@ -4,13 +4,24 @@ import {DeletionDenied} from './account-deletion.mjs';
 const routes = new Set(['request','status']);
 const windowMs = 60_000;
 const appIdPattern = /^1:[0-9]+:android:[a-f0-9]+$/;
+const webIdPattern = /^1:[0-9]+:web:[a-f0-9]+$/;
 const validLimit = value => Number.isSafeInteger(value) && value >= 1 && value <= 1000;
 
-function reviewedApps(appIds) {
-  if (!Array.isArray(appIds) || appIds.length < 1 || appIds.length > 10 ||
+function reviewedApps(appIds, webAppIds = []) {
+  if (!Array.isArray(appIds) || appIds.length < 1 || !Array.isArray(webAppIds) ||
+      appIds.length + webAppIds.length > 10 ||
       !appIds.every(id => typeof id === 'string' && appIdPattern.test(id)) ||
-      new Set(appIds).size !== appIds.length) throw new DeletionDenied();
-  return new Set(appIds);
+      !webAppIds.every(id => typeof id === 'string' && webIdPattern.test(id)) ||
+      new Set([...appIds,...webAppIds]).size !== appIds.length + webAppIds.length) throw new DeletionDenied();
+  return new Set([...appIds,...webAppIds]);
+}
+function verifiedWebOrigin(origin) {
+  try {
+    const url=new URL(origin);
+    return url.origin===origin && url.protocol==='https:' && !url.port &&
+      /^(?:[a-z0-9-]+\.)+[a-z][a-z0-9-]*$/.test(url.hostname) &&
+      !url.hostname.endsWith('.localhost') && !url.hostname.endsWith('.local');
+  } catch (_) { return false; }
 }
 
 /**
@@ -20,8 +31,8 @@ function reviewedApps(appIds) {
  * An outage or invalid stored counter is denial, not an in-memory fallback.
  * This is not a replacement for pre-verification ingress abuse controls.
  */
-export function createDeletionRateLimiter({db,appIds,requestLimit,statusLimit,now=Date.now} = {}) {
-  const allowed = reviewedApps(appIds);
+export function createDeletionRateLimiter({db,appIds,webAppIds=[],requestLimit,statusLimit,now=Date.now} = {}) {
+  const allowed = reviewedApps(appIds,webAppIds);
   if (typeof db?.runTransaction !== 'function' || typeof db?.collection !== 'function' ||
       !validLimit(requestLimit) || !validLimit(statusLimit) || typeof now !== 'function')
     throw new DeletionDenied();
@@ -53,8 +64,10 @@ export function createDeletionRateLimiter({db,appIds,requestLimit,statusLimit,no
 }
 
 /** Verify the Firebase-issued App Check token, not client claims or its presence. */
-export function createDevDeletionAdmission({appCheck,appIds,take} = {}) {
-  const allowed = reviewedApps(appIds);
+export function createDevDeletionAdmission({appCheck,appIds,webAppIds=[],webOrigin,take} = {}) {
+  const allowed = reviewedApps(appIds,webAppIds);
+  const webAllowed=new Set(webAppIds);
+  if (webAllowed.size && !verifiedWebOrigin(webOrigin)) throw new DeletionDenied();
   if (typeof appCheck?.verifyToken !== 'function' || typeof take !== 'function')
     throw new DeletionDenied();
   return async ({route,appCheckToken,ingress} = {}) => {
@@ -64,6 +77,8 @@ export function createDevDeletionAdmission({appCheck,appIds,take} = {}) {
     try {
       const verified = await appCheck.verifyToken(appCheckToken);
       if (!allowed.has(verified?.appId)) return 'DENY';
+      // Origin is an additional browser boundary, never a substitute for App Check or Auth.
+      if (webAllowed.has(verified.appId) && ingress.origin !== webOrigin) return 'DENY';
       const admitted = await take({appId:verified.appId,route});
       return admitted === true ? 'ALLOW' : admitted === false ? 'RATE_LIMITED' : 'DENY';
     } catch (_) { return 'DENY'; }

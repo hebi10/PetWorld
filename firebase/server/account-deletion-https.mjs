@@ -7,7 +7,7 @@ const paths = new Set(['/account-deletion/request','/account-deletion/status']);
 const maxBody = 2048;
 const singleHeaders = new Set([
   'host','authorization','x-firebase-appcheck','content-type','content-length',
-  'content-encoding','transfer-encoding','expect',
+  'content-encoding','transfer-encoding','expect','origin',
 ]);
 const securityHeaders = Object.freeze({
   'Content-Type':'application/json; charset=utf-8',
@@ -91,7 +91,7 @@ export function createDeletionTlsListener({origin,handleHttp} = {}) {
       const result = await handleHttp({
         path:req.url,method:req.method,contentType:headers['content-type'],
         authorization:headers.authorization,appCheckToken:headers['x-firebase-appcheck'],
-        ingress:Object.freeze({directTls:true}),rawBody,
+        ingress:Object.freeze({directTls:true,origin:headers.origin}),rawBody,
       });
       if (!res.destroyed) reply(res,result.statusCode,result.body,result.headers);
     } catch (_) {
@@ -110,7 +110,7 @@ export function createDeletionTlsListener({origin,handleHttp} = {}) {
  * Scheduled worker registration stays internal and is a separate step.
  */
 export async function prepareDevDeletionHttpsServer({
-  app,readiness,retentionAudit,origin,appIds,requestLimit,statusLimit,tls,now=Date.now,
+  app,readiness,retentionAudit,origin,appIds,webAppIds=[],requestLimit,statusLimit,tls,now=Date.now,
 } = {}) {
   reviewedHost(origin);
   if (app?.options?.projectId !== 'petworld-dev' ||
@@ -122,11 +122,14 @@ export async function prepareDevDeletionHttpsServer({
       readiness?.appCheckAllowlistVerified !== true || readiness?.rateLimitStoreVerified !== true ||
       readiness?.ingressAbuseLimitsVerified !== true || typeof retentionAudit !== 'function' ||
       !tls?.key || !tls?.cert) throw new DeletionDenied();
+  if (!Array.isArray(webAppIds) || (webAppIds.length && (
+      readiness?.webDeletionVerified !== true || readiness?.webExistingAccountSignInVerified !== true ||
+      readiness?.webSameOriginVerified !== true || readiness?.webRecoveryVerified !== true))) throw new DeletionDenied();
   const [{getAppCheck},{getFirestore}] = await Promise.all([
     import('firebase-admin/app-check'),import('firebase-admin/firestore'),
   ]);
-  const take = createDeletionRateLimiter({db:getFirestore(app),appIds,requestLimit,statusLimit,now});
-  const admit = createDevDeletionAdmission({appCheck:getAppCheck(app),appIds,take});
+  const take = createDeletionRateLimiter({db:getFirestore(app),appIds,webAppIds,requestLimit,statusLimit,now});
+  const admit = createDevDeletionAdmission({appCheck:getAppCheck(app),appIds,webAppIds,webOrigin:origin,take});
   const runtime = await prepareDeletionRuntime({app,readiness,retentionAudit,admit,now});
   const listener = createDeletionTlsListener({origin,handleHttp:runtime.handleHttp});
   const server = createServer({
