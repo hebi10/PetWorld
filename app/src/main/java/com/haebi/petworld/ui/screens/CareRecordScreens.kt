@@ -355,6 +355,17 @@ private fun RecordFilterButton(label: String, onClick: () -> Unit, modifier: Mod
 private fun CareRecordCompactRow(record: CareEntity, onClick: () -> Unit, groupedByDate: Boolean = false) {
     val type = CareType.valueOf(record.type)
     val largeText = LocalDensity.current.fontScale >= 1.3f
+    val value = record.displayValue()
+    // displayValue's final two segments are the actual provided and consumed values.
+    // Keep the product description intact, including any user-entered separators.
+    val foodParts = if (!largeText && type == CareType.FOOD) {
+        val separator = value.lastIndexOf(" · 제공 ")
+        val consumedSeparator = value.lastIndexOf(" · 섭취 ")
+        if (separator >= 0 && consumedSeparator > separator)
+            Triple(value.substring(0, separator), value.substring(separator + 3, consumedSeparator),
+                value.substring(consumedSeparator + 3))
+        else null
+    } else null
     Surface(
         modifier = Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick),
         color = MaterialTheme.colorScheme.surface,
@@ -377,10 +388,20 @@ private fun CareRecordCompactRow(record: CareEntity, onClick: () -> Unit, groupe
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(type.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                    if (largeText) Text(record.displayValue(), style = MaterialTheme.typography.bodyLarge)
+                    if (largeText) Text(value, style = MaterialTheme.typography.bodyLarge)
+                    else foodParts?.let {
+                        Text(it.first, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
-                if (!largeText) Text(record.displayValue(), modifier = Modifier.weight(1.25f),
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold), textAlign = TextAlign.End)
+                if (!largeText) {
+                    if (foodParts != null) {
+                        Column(modifier = Modifier.weight(1.25f), horizontalAlignment = Alignment.End) {
+                            Text(foodParts.second, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold), textAlign = TextAlign.End)
+                            Text(foodParts.third, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.End)
+                        }
+                    } else Text(value, modifier = Modifier.weight(1.25f),
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold), textAlign = TextAlign.End)
+                }
                 Icon(PetIcons.Chevron, contentDescription = null, modifier = Modifier.size(18.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -687,8 +708,10 @@ private fun WeightTrend(weights: List<CareEntity>) {
             }
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = PetSpacing.xSmall),
                 horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(weightAxisDate(first), style = labelStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(weightAxisDate(last), style = labelStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(weightAxisDate(first), modifier = Modifier.weight(1f),
+                    style = labelStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(weightAxisDate(last), modifier = Modifier.weight(1f), textAlign = TextAlign.End,
+                    style = labelStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

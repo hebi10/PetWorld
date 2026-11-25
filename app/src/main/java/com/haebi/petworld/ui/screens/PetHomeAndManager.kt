@@ -110,11 +110,18 @@ private fun PetHomeIntro(
     onSwitchPet: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall)) {
+        // At larger font scales the headline must not compete with the avatar,
+        // chevron and edit action for the same narrow line.
+        if (largeText) {
+            Text("${selected.name}의 하루", modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        }
         Row(modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
             verticalAlignment = Alignment.CenterVertically) {
             Row(
-                modifier = Modifier.weight(1f).clickable(role = Role.Button, onClick = onSwitchPet)
+                modifier = Modifier.weight(1f).heightIn(min = PetSpacing.minTouchTarget)
+                    .clickable(role = Role.Button, onClick = onSwitchPet)
                     .semantics { contentDescription = "반려동물 전환: ${selected.name}" },
                 horizontalArrangement = Arrangement.spacedBy(PetSpacing.medium),
                 verticalAlignment = Alignment.CenterVertically,
@@ -122,10 +129,12 @@ private fun PetHomeIntro(
                 PetAvatar(photoStore, selected.name, selected.photoFile,
                     size = if (largeText) 56.dp else 72.dp, shape = RectangleShape)
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("${selected.name}의 하루", modifier = Modifier.weight(1f),
-                            style = if (largeText) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.headlineLarge,
-                            fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(PetSpacing.xSmall)) {
+                        Text(if (largeText) selected.name else "${selected.name}의 하루",
+                            modifier = Modifier.weight(1f),
+                            style = if (largeText) MaterialTheme.typography.titleMedium else MaterialTheme.typography.headlineLarge,
+                            fontWeight = FontWeight.Bold)
                         Icon(PetIcons.Expand, contentDescription = null, modifier = Modifier.size(20.dp))
                     }
                     Text(todayLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -163,10 +172,21 @@ private fun PetHomeDailySummary(
                 Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
                     Row(modifier = Modifier.fillMaxWidth().padding(start = PetSpacing.medium, end = PetSpacing.xSmall),
                         verticalAlignment = Alignment.CenterVertically) {
-                        Text("오늘의 돌봄", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        TextButton(onClick = onViewToday) {
-                            Text("자세히 보기")
-                            Icon(PetIcons.Chevron, contentDescription = null, modifier = Modifier.size(16.dp))
+                        if (largeText) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Text("오늘의 돌봄", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(top = PetSpacing.small))
+                                TextButton(onClick = onViewToday) {
+                                    Text("자세히 보기")
+                                    Icon(PetIcons.Chevron, contentDescription = null, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        } else {
+                            Text("오늘의 돌봄", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            TextButton(onClick = onViewToday) {
+                                Text("자세히 보기")
+                                Icon(PetIcons.Chevron, contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
                         }
                     }
                 }
