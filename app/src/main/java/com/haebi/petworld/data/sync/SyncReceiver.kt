@@ -85,14 +85,22 @@ internal class SyncReceiver(
         val latest = inbox.latest(key, kind, petId, id)
         if (latest != null && latest.revision > remote.revision) return InboundResult.STALE
         val exact = inbox.exact(key, kind, petId, id, remote.revision, remote.digest)
-        if (exact != null && exact.status != "PARENT_PENDING") return InboundResult.DUPLICATE
+        if (exact != null && exact.status != "PARENT_PENDING" &&
+            !(exact.status == "PHOTO_PENDING" && photos != null)) return InboundResult.DUPLICATE
 
         val localPet = if (kind == "PET") database.petDao().find(id) else null
         val localCare = if (kind == "CARE") database.careDao().find(id) else null
         val local = localPet?.let(FirstImportPayloads::pet) ?: localCare?.let(FirstImportPayloads::record)
         val previous = inbox.baseline(key, kind, petId, id)
         val hasPending = outbox.hasPending(key, kind, petId, id)
-        val localPhoto = local?.get("photoFile")
+        val localPhoto = local?.get("photoFile") as? String
+        val photoReady = if (remote.photoFile == null && localPhoto == null) true
+            else if (photos == null) false
+            else if (remote.photoFile == null) true
+            else if (!validCloudPhotoName(remote.photoFile!!)) false
+            else try {
+                photos.verifiedProofUnderGate(SyncPhotoKey(petId, remote.photoFile!!)) != null
+            } catch (_: SyncPhotoRejected) { false }
         val equalLocal = local != null && sameSyncDomain(local, remote.fields)
         val result = when {
             latest != null && latest.revision == remote.revision &&
@@ -100,8 +108,9 @@ internal class SyncReceiver(
             !remote.tombstone && inbox.hasTombstone(key, kind, petId, id) -> InboundResult.CONFLICT
             localCare != null && localCare.petId != petId -> InboundResult.CONFLICT
             remote.tombstone -> InboundResult.DELETE_REVIEW
-            hasPending || inbox.hasUnresolved(key, kind, petId, id) -> InboundResult.CONFLICT
-            remote.photoFile != null || localPhoto != null -> InboundResult.PHOTO_PENDING
+            hasPending || inbox.hasOtherUnresolved(key, kind, petId, id, exact?.sequence ?: -1L) ->
+                InboundResult.CONFLICT
+            !photoReady -> InboundResult.PHOTO_PENDING
             kind == "CARE" && !parentReady(petId) -> InboundResult.PARENT_PENDING
             equalLocal -> InboundResult.MATCHED
             local == null && previous == null && !outbox.hasHistory(key, kind, petId, id) -> {
@@ -124,6 +133,9 @@ internal class SyncReceiver(
                 }
             }
             else -> InboundResult.CONFLICT
+        }
+        if (result == InboundResult.APPLIED || result == InboundResult.MATCHED) {
+            photos?.recordReferenceChange(petId, localPhoto, remote.photoFile)
         }
         val entry = SyncInboundEntry(
             accountKey = key, entityKind = kind, petId = petId, entityId = id,

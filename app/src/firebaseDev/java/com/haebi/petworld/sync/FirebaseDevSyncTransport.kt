@@ -13,6 +13,7 @@ import com.haebi.petworld.data.sync.SyncPermission
 import com.haebi.petworld.data.sync.SyncRemoteDecision
 import com.haebi.petworld.data.sync.SyncTransport
 import com.haebi.petworld.data.sync.decideSyncCommit
+import com.haebi.petworld.data.migration.FirstImportPayloads
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -47,6 +48,10 @@ internal class FirebaseDevSyncTransport(
         val account = LocalAccountScope.fromFirebaseUid(uid) as? LocalAccountScope.SignedIn
             ?: return SyncCommitOutcome.Blocked
         if (!permission.permits(account)) return SyncCommitOutcome.Blocked
+        val newName = command.newPhotoReference
+        val proof = command.photoProof
+        if ((newName != null && (proof == null || proof.fileName != newName || proof.petId != command.petId)) ||
+            (newName == null && proof != null)) return SyncCommitOutcome.Blocked
         return try {
             // Require online credential refresh before using the server transaction.
             val user = auth.currentUser ?: return SyncCommitOutcome.Blocked
@@ -84,9 +89,17 @@ internal class FirebaseDevSyncTransport(
                 when (val decision = decideSyncCommit(command, null, current)) {
                     is SyncRemoteDecision.Stop -> decision.result
                     is SyncRemoteDecision.Write -> {
+                        val manifestRef = proof?.let { petRef.collection("photoManifests").document(it.fileName) }
+                        val manifest = proof?.manifest()
+                        val existingManifest = manifestRef?.let { tx.get(it).data }
+                        if (existingManifest != null && !FirstImportPayloads.sameRemote(
+                                requireNotNull(manifest), existingManifest))
+                            return@runTransaction SyncCommitOutcome.Conflict
                         if (currentUid(command) != uid) {
                             return@runTransaction SyncCommitOutcome.Blocked
                         }
+                        if (manifestRef != null && existingManifest == null)
+                            tx.set(manifestRef, requireNotNull(manifest))
                         tx.set(target, decision.document)
                         tx.set(receipt, decision.receipt)
                         SyncCommitOutcome.Applied

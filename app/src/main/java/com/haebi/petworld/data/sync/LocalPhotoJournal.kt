@@ -47,6 +47,12 @@ interface SyncPhotoDao {
     @Query("SELECT * FROM sync_photos WHERE account_key = :key ORDER BY pet_id, file_name LIMIT :limit")
     suspend fun list(key: String, limit: Int): List<SyncPhotoEntry>
 
+    @Query("SELECT EXISTS(SELECT 1 FROM sync_photos WHERE account_key = :key AND file_name = :name AND retired = 0)")
+    suspend fun hasActiveFile(key: String, name: String): Boolean
+
+    @Query("SELECT * FROM sync_photos WHERE account_key = :key AND retired = 1 ORDER BY pet_id, file_name LIMIT :limit")
+    suspend fun retired(key: String, limit: Int): List<SyncPhotoEntry>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun save(entry: SyncPhotoEntry)
 }

@@ -20,10 +20,14 @@ internal data class SyncCommand(
     val previous: Map<String, Any?>?,
     val next: Map<String, Any?>,
     val requestDigest: String,
+    val photoProof: SyncPhotoProof? = null,
 ) {
     val resultingRevision: Long get() = expectedRevision + 1
     val changesPhoto: Boolean get() =
         previous?.get("photoFile") != next["photoFile"].takeUnless { operation == "DELETE" }
+    val newPhotoReference: String? get() = if (changesPhoto && operation != "DELETE")
+        next["photoFile"] as? String else null
+
     fun receipt(): Map<String, Any?> = mapOf(
         "opId" to opId, "entityKind" to entityKind, "petId" to petId,
         "entityId" to entityId, "operation" to operation,
@@ -71,6 +75,16 @@ internal object SyncCommands {
 
     fun from(entry: SyncOutboxEntry): SyncCommand = forBaseline(entry).also {
         if (it.changesPhoto) throw SyncPhotoPending()
+    }
+
+    // Only the verified transfer pipeline calls this. Removing a reference does not delete
+    // the underlying object; DELETE preserves the existing photo reference in its tombstone.
+    fun withVerifiedPhoto(command: SyncCommand, proof: SyncPhotoProof?): SyncCommand {
+        if (command.newPhotoReference != null) {
+            requireNotNull(proof)
+            require(proof.fileName == command.newPhotoReference && proof.petId == command.petId)
+        } else require(proof == null)
+        return command.copy(photoProof = proof)
     }
 
     fun forBaseline(entry: SyncOutboxEntry): SyncCommand {
