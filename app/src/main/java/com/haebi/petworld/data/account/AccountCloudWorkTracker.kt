@@ -5,15 +5,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 
-internal enum class CloudWorkKind { SYNC_WORKER, FIRST_IMPORT, SDK_TASK }
+internal enum class CloudWorkKind { SYNC_WORKER, FIRST_IMPORT, SYNC_REVIEW, SDK_TASK }
 
 internal data class AccountCloudWorkSnapshot(
     val blocked: Boolean,
     val workers: Int,
     val imports: Int,
     val sdkTasks: Int,
+    val reviews: Int,
 ) {
-    val drained: Boolean get() = blocked && workers == 0 && imports == 0 && sdkTasks == 0
+    val drained: Boolean get() = blocked && workers == 0 && imports == 0 && sdkTasks == 0 && reviews == 0
 }
 
 /**
@@ -73,7 +74,8 @@ internal class AccountCloudWorkTracker {
         AccountCloudWorkSnapshot(entry?.blocked == true,
             entry?.counts?.get(CloudWorkKind.SYNC_WORKER.ordinal) ?: 0,
             entry?.counts?.get(CloudWorkKind.FIRST_IMPORT.ordinal) ?: 0,
-            entry?.counts?.get(CloudWorkKind.SDK_TASK.ordinal) ?: 0)
+            entry?.counts?.get(CloudWorkKind.SDK_TASK.ordinal) ?: 0,
+            entry?.counts?.get(CloudWorkKind.SYNC_REVIEW.ordinal) ?: 0)
     }
 
     suspend fun awaitDrained(account: LocalAccountScope.SignedIn, timeoutMs: Long): Boolean {
