@@ -27,7 +27,8 @@ internal class FirebaseDevDeletionCoordinator(
         gateway.currentAccount()?.uid?.let(LocalAccountScope::fromFirebaseUid)
 
     suspend fun submit(account: LocalAccountScope.SignedIn, acknowledged: Boolean): DeletionRecoveryResult = gate.withLock {
-        if (!readiness.canRequest(account, acknowledged, true) || currentScope() != account)
+        if (!FirebaseDevDeletionCachePolicy.permitsRequest() ||
+            !readiness.canRequest(account, acknowledged, true) || currentScope() != account)
             return@withLock DeletionRecoveryResult.NotReady
         val uid = gateway.currentAccount()?.uid ?: return@withLock DeletionRecoveryResult.NotReady
         if (LocalAccountScope.fromFirebaseUid(uid) != account) return@withLock DeletionRecoveryResult.NotReady
