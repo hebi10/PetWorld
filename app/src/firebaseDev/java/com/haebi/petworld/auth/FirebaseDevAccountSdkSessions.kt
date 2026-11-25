@@ -14,6 +14,7 @@ import com.haebi.petworld.data.account.AccountSdkRouteGate
 import com.haebi.petworld.data.account.AccountSdkRouteJournal
 import com.haebi.petworld.data.account.LocalAccountScope
 import com.haebi.petworld.data.account.accountMemoryAppName
+import com.haebi.petworld.data.account.drainAndCloseIsolatedSdk
 import com.haebi.petworld.sync.FirebaseDevSyncWork
 import java.util.concurrent.Executor
 import kotlin.coroutines.resume
@@ -95,16 +96,17 @@ internal class FirebaseDevIsolatedSdkSession internal constructor(
         routes.retire(lease)
         try {
             val closed = withTimeoutOrNull(45_000L) {
-                if (!sameAccount()) return@withTimeoutOrNull false
-                if (!FirebaseDevSyncWork.pauseAndDrainForDeletion(context, lease.account, 20_000L) ||
-                    !sameAccount()) return@withTimeoutOrNull false
-                client.waitForPendingWrites().awaitLifecycle()
-                if (!sameAccount() || !FirebaseDevCloudWork.tracker.snapshot(lease.account).drained)
-                    return@withTimeoutOrNull false
-                client.terminate().awaitLifecycle()
-                if (!sameAccount()) return@withTimeoutOrNull false
-                isolatedAuth.signOut()
-                isolatedAuth.currentUser == null && googleUid(primaryAuth) == expectedUid
+                drainAndCloseIsolatedSdk(
+                    sameAccount = ::sameAccount,
+                    drain = { FirebaseDevSyncWork.pauseAndDrainForDeletion(context, lease.account, 20_000L) },
+                    acknowledgeWrites = { client.waitForPendingWrites().awaitLifecycle() },
+                    stillDrained = { FirebaseDevCloudWork.tracker.snapshot(lease.account).drained },
+                    terminate = { client.terminate().awaitLifecycle() },
+                    signOut = {
+                        isolatedAuth.signOut()
+                        isolatedAuth.currentUser == null && googleUid(primaryAuth) == expectedUid
+                    },
+                )
             } == true
             if (closed) closeResult = IsolatedSdkCloseResult.CLOSED
             requireNotNull(closeResult)
