@@ -589,3 +589,21 @@ test('FB-07-A: account deletion lock denies cloud access and stale authenticated
   });
   await assertFails(setDoc(user, userDoc()));
 });
+
+test('FB-07-C2-C2-01: deletion admission counters are Admin-only', async () => {
+  const path = 'accountDeletionAdmission/' + 'a'.repeat(64);
+  const counter = {windowStartMs: now, count: 1};
+  await env.withSecurityRulesDisabled(async admin => {
+    await setDoc(doc(admin.firestore(),path),counter);
+  });
+  for (const db of [env.unauthenticatedContext().firestore(),env.authenticatedContext('alice').firestore()]) {
+    const target=doc(db,path);
+    await assertFails(getDoc(target));
+    await assertFails(updateDoc(target,{count:0}));
+    await assertFails(deleteDoc(target));
+    await assertFails(setDoc(doc(db,'accountDeletionAdmission/'+'b'.repeat(64)),counter));
+  }
+  await env.withSecurityRulesDisabled(async admin => {
+    deepStrictEqual((await getDoc(doc(admin.firestore(),path))).data(),counter);
+  });
+});
