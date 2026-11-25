@@ -30,6 +30,10 @@ class SyncOutboxMigrationTest {
         verifyMigration(4)
     }
 
+    @Test fun versionFiveScanSurvivesAdditivePhotoMigration() = runBlocking {
+        verifyMigration(5)
+    }
+
     private suspend fun verifyMigration(version: Int) {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val name = "petworld_outbox_migration_test.db"
@@ -52,9 +56,13 @@ class SyncOutboxMigrationTest {
                             MIGRATION_2_3.migrate(db)
                             db.execSQL("INSERT INTO sync_outbox (op_id,account_key,entity_kind,pet_id,entity_id,operation,before_json,after_json,created_at,status,attempt) VALUES ('saved-op','qa','CARE','pet','record','CREATE',NULL,'{}',1,'WAITING_BASELINE',0)")
                         }
-                        if (version == 4) {
+                        if (version >= 4) {
                             MIGRATION_3_4.migrate(db)
                             db.execSQL("INSERT INTO sync_inbound (account_key,entity_kind,pet_id,entity_id,revision,payload_digest,remote_json,local_json,tombstone,status) VALUES ('qa','CARE','pet','record',1,'digest','{}',NULL,0,'CONFLICT')")
+                        }
+                        if (version == 5) {
+                            MIGRATION_4_5.migrate(db)
+                            db.execSQL("INSERT INTO sync_scan (account_key,round,pet_cursor,pending_parents_json,record_cursor,root_exhausted) VALUES ('qa',2,'pet','[]',NULL,1)")
                         }
                     }
                     override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -68,7 +76,7 @@ class SyncOutboxMigrationTest {
             helper.close()
         }
         val db = Room.databaseBuilder(context, PetWorldDatabase::class.java, name)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build()
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).build()
         try {
             assertEquals("나비", db.petDao().find("pet")?.name)
             val care = requireNotNull(db.careDao().find("record"))
@@ -79,8 +87,10 @@ class SyncOutboxMigrationTest {
                 db.syncOutboxDao().list("unused", 50))
             assertEquals(if (version >= 3) listOf("saved-op") else emptyList<String>(),
                 db.syncOutboxDao().list("qa", 50).map { it.opId })
-            assertEquals(if (version == 4) 1 else 0, db.syncInboundDao().observeReviewCount("qa").first())
-            assertNull(db.syncScanDao().find("qa"))
+            assertEquals(if (version >= 4) 1 else 0, db.syncInboundDao().observeReviewCount("qa").first())
+            if (version == 5) assertEquals(2L, db.syncScanDao().find("qa")?.round)
+            else assertNull(db.syncScanDao().find("qa"))
+            assertEquals(emptyList<com.haebi.petworld.data.sync.SyncPhotoEntry>(), db.syncPhotoDao().list("qa", 100))
         } finally {
             db.close()
             context.deleteDatabase(name)

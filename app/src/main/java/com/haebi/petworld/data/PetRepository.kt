@@ -2,6 +2,7 @@ package com.haebi.petworld.data
 
 import android.content.Context
 import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.sync.LocalPhotoJournal
 import com.haebi.petworld.data.sync.LocalSyncOutbox
 import androidx.room.withTransaction
 import com.haebi.petworld.data.backup.PetWorldMutationGate
@@ -39,6 +40,7 @@ class PetRepository(
     val photoStore: PetPhotoStore get() = photos
     private val mutex = PetWorldMutationGate.mutex
     private val outbox = LocalSyncOutbox(database, scope)
+    private val photoJournal = LocalPhotoJournal(database, scope, photos)
 
     private val _profiles = MutableStateFlow<List<PetProfile>>(emptyList())
     val profiles = _profiles.asStateFlow()
@@ -102,6 +104,7 @@ class PetRepository(
                     val before = previous?.toEntity()
                     if (before == null) dao.insert(next)
                     else check(dao.update(next) == 1) { "수정할 프로필을 찾을 수 없습니다." }
+                    photoJournal.changed(next.id, before?.photoFile, next.photoFile)
                     outbox.petChanged(before, next)
                     dao.list().map { it.toDomain() }
                 }
@@ -111,7 +114,7 @@ class PetRepository(
             }
             _profiles.value = snapshot
             _loadStatus.value = PetLoadStatus.Ready
-            if (previous?.photoFile != photo) photos.delete(previous?.photoFile)
+            if (previous?.photoFile != photo && scope == LocalAccountScope.Guest) photos.delete(previous?.photoFile)
             value
         }
     }
@@ -141,14 +144,20 @@ class PetRepository(
             val (snapshot, attachments) = database.withTransaction {
                 val originalPet = dao.find(id) ?: error("프로필을 찾을 수 없습니다.")
                 val originalRecords = database.careDao().listForPet(id)
-                originalRecords.forEach { outbox.recordChanged(it, null) }
+                originalRecords.forEach {
+                    photoJournal.changed(id, it.photoFile, null)
+                    outbox.recordChanged(it, null)
+                }
+                photoJournal.changed(id, originalPet.photoFile, null)
                 outbox.petChanged(originalPet, null)
                 check(dao.delete(id) == 1)
                 dao.list().map { it.toDomain() } to originalRecords.mapNotNull { it.photoFile }
             }
             _profiles.value = snapshot
-            photos.delete(target.photoFile)
-            attachments.forEach { photos.delete(it) }
+            if (scope == LocalAccountScope.Guest) {
+                photos.delete(target.photoFile)
+                attachments.forEach { photos.delete(it) }
+            }
         }
     }
 }

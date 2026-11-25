@@ -9,6 +9,8 @@ import com.haebi.petworld.data.sync.SyncInboundDao
 import com.haebi.petworld.data.sync.SyncInboundEntry
 import com.haebi.petworld.data.sync.SyncScanDao
 import com.haebi.petworld.data.sync.SyncScanState
+import com.haebi.petworld.data.sync.SyncPhotoDao
+import com.haebi.petworld.data.sync.SyncPhotoEntry
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
@@ -284,10 +286,29 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS `sync_photos` (
+                `account_key` TEXT NOT NULL,
+                `pet_id` TEXT NOT NULL,
+                `file_name` TEXT NOT NULL,
+                `sha256` TEXT,
+                `size_bytes` INTEGER,
+                `width` INTEGER,
+                `height` INTEGER,
+                `status` TEXT NOT NULL,
+                `retired` INTEGER NOT NULL,
+                PRIMARY KEY(`account_key`, `pet_id`, `file_name`)
+            )""".trimIndent()
+        )
+    }
+}
+
 @Database(
     entities = [PetEntity::class, CareEntity::class, SyncOutboxEntry::class,
-        SyncInboundEntry::class, SyncScanState::class],
-    version = 5,
+        SyncInboundEntry::class, SyncScanState::class, SyncPhotoEntry::class],
+    version = 6,
     exportSchema = false,
 )
 abstract class PetWorldDatabase : RoomDatabase() {
@@ -296,6 +317,7 @@ abstract class PetWorldDatabase : RoomDatabase() {
     abstract fun syncOutboxDao(): SyncOutboxDao
     abstract fun syncInboundDao(): SyncInboundDao
     abstract fun syncScanDao(): SyncScanDao
+    abstract fun syncPhotoDao(): SyncPhotoDao
 
     companion object {
         private val instances = mutableMapOf<String, PetWorldDatabase>()
@@ -311,7 +333,7 @@ abstract class PetWorldDatabase : RoomDatabase() {
                     PetWorldDatabase::class.java,
                     name,
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .build()
             }
         }
