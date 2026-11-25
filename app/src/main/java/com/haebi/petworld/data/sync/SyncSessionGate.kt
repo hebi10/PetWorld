@@ -2,6 +2,8 @@ package com.haebi.petworld.data.sync
 
 import com.haebi.petworld.data.account.LocalAccountScope
 import java.util.UUID
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Only a later, verified baseline/consent controller may open a session.
@@ -17,26 +19,27 @@ internal data class VerifiedSyncSession(
 )
 
 internal class SyncSessionGate {
-    private var active: SyncWorkLease? = null
+    private val active = MutableStateFlow<SyncWorkLease?>(null)
+    val activeLease = active.asStateFlow()
 
     @Synchronized
     fun activate(session: VerifiedSyncSession): SyncWorkLease? {
         if (!session.consentConfirmed || !session.liveServerQaPassed ||
             !session.baselineDigest.matches(Regex("[0-9a-f]{64}"))) return null
-        return SyncWorkLease(session.account.key, UUID.randomUUID().toString()).also { active = it }
+        return SyncWorkLease(session.account.key, UUID.randomUUID().toString()).also { active.value = it }
     }
 
     @Synchronized
     fun permits(lease: SyncWorkLease, account: LocalAccountScope): Boolean =
-        account is LocalAccountScope.SignedIn && lease.accountKey == account.key && active == lease
+        account is LocalAccountScope.SignedIn && lease.accountKey == account.key && active.value == lease
 
     @Synchronized
-    fun revoke(): SyncWorkLease? = active.also { active = null }
+    fun revoke(): SyncWorkLease? = active.value.also { active.value = null }
 
     @Synchronized
     fun revokeUnlessAccount(account: LocalAccountScope): SyncWorkLease? {
         val key = (account as? LocalAccountScope.SignedIn)?.key
-        return if (active != null && active?.accountKey != key) revoke() else null
+        return if (active.value != null && active.value?.accountKey != key) revoke() else null
     }
 }
 

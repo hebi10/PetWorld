@@ -17,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -28,6 +29,8 @@ import androidx.compose.ui.unit.dp
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.haebi.petworld.migration.FirstImportSection
+import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.sync.FirebaseDevSyncStatusSection
 import com.haebi.petworld.ui.components.PetPrimaryButton
 import com.haebi.petworld.ui.components.PetSecondaryButton
 import com.haebi.petworld.ui.components.PetSurfaceCard
@@ -168,6 +171,15 @@ class PetWorldAccountActivity : ComponentActivity() {
                 )
             }
             if (auth != null && currentAccount != null) {
+                val signedIn = currentAccount
+                if (signedIn != null) {
+                    val localScope = LocalAccountScope.fromFirebaseUid(signedIn.uid)
+                    if (localScope is LocalAccountScope.SignedIn) {
+                        key(localScope.key) {
+                            FirebaseDevSyncStatusSection(localScope)
+                        }
+                    }
+                }
                 FirstImportSection(auth)
                 PetSecondaryButton(
                     label = "실제 Firebase 인증 확인",

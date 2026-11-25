@@ -41,6 +41,8 @@ data class SyncOutboxEntry(
     val attempt: Int = 0,
 )
 
+data class SyncStatusCount(val status: String, val count: Int)
+
 @Dao
 interface SyncOutboxDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
@@ -51,6 +53,9 @@ interface SyncOutboxDao {
 
     @Query("SELECT COUNT(*) FROM sync_outbox WHERE account_key = :accountKey")
     fun observeCount(accountKey: String): Flow<Int>
+
+    @Query("SELECT status, COUNT(*) AS count FROM sync_outbox WHERE account_key = :accountKey GROUP BY status")
+    suspend fun statusCounts(accountKey: String): List<SyncStatusCount>
 
     @Query("""
         SELECT EXISTS(SELECT 1 FROM sync_outbox
