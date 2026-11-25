@@ -8,6 +8,7 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.haebi.petworld.data.account.LocalAccountScope
 import com.haebi.petworld.data.account.LocalAccountScopeResolver
+import com.haebi.petworld.sync.FirebaseDevSyncWork
 
 class FirebaseDevAccountScopeProvider : ContentProvider() {
     override fun onCreate(): Boolean {
@@ -22,8 +23,10 @@ class FirebaseDevAccountScopeProvider : ContentProvider() {
                 "Unexpected Firebase project."
             }
             val firebaseUser = FirebaseAuth.getInstance(firebase).currentUser
-            firebaseUser?.uid?.let(LocalAccountScope::fromFirebaseUid)
+            val resolved = firebaseUser?.uid?.let(LocalAccountScope::fromFirebaseUid)
                 ?: LocalAccountScope.Guest
+            FirebaseDevSyncWork.revokeUnlessAccount(appContext, resolved)
+            resolved
         }
         return true
     }

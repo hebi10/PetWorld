@@ -16,6 +16,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
+import com.haebi.petworld.sync.FirebaseDevSyncWork
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellableContinuation
@@ -46,6 +47,7 @@ class FirebaseGoogleAuthGateway(
         if (!requestGate.tryLock()) return GoogleLoginOutcome.Busy
 
         try {
+            FirebaseDevSyncWork.revoke(activity)
             val clientId = webClientId(activity) ?: return GoogleLoginOutcome.MissingConfiguration
             val googleOption = GetSignInWithGoogleOption.Builder(clientId).build()
             val credential = CredentialManager.create(activity).getCredential(
@@ -102,6 +104,7 @@ class FirebaseGoogleAuthGateway(
     }
 
     suspend fun signOut(activity: Activity) {
+        FirebaseDevSyncWork.revoke(activity)
         firebaseAuth.signOut()
         runCatching {
             CredentialManager.create(activity).clearCredentialState(ClearCredentialStateRequest())
