@@ -42,3 +42,21 @@ internal class AccountSdkRouteGate {
     @Synchronized
     fun permitsLegacy(target: LocalAccountScope.SignedIn): Boolean = target !in routes
 }
+
+/** No termination or credential clearing until actual work and pending writes
+ * have been acknowledged. An exception/cancellation is never a completion. */
+internal suspend fun drainAndCloseIsolatedSdk(
+    sameAccount: () -> Boolean,
+    drain: suspend () -> Boolean,
+    acknowledgeWrites: suspend () -> Unit,
+    stillDrained: () -> Boolean,
+    terminate: suspend () -> Unit,
+    signOut: () -> Boolean,
+): Boolean {
+    if (!sameAccount() || !drain() || !sameAccount()) return false
+    acknowledgeWrites()
+    if (!sameAccount() || !stillDrained()) return false
+    terminate()
+    if (!sameAccount()) return false
+    return signOut()
+}
