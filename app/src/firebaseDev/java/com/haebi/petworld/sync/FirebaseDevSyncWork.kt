@@ -13,6 +13,8 @@ import androidx.work.workDataOf
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.account.CloudWorkKind
+import com.haebi.petworld.auth.FirebaseDevCloudWork
 import com.haebi.petworld.data.account.AccountDeletionJournal
 import com.haebi.petworld.data.backup.PetWorldRecoveryJournal
 import com.haebi.petworld.data.room.PetWorldDatabase
@@ -59,6 +61,7 @@ internal object FirebaseDevSyncWork {
         gate.permits(lease, account) &&
             account(context) == account &&
             account is LocalAccountScope.SignedIn &&
+            !FirebaseDevCloudWork.tracker.isBlocked(account) &&
             !AccountDeletionJournal(context.applicationContext).blocksCloud(account) &&
             !PetWorldRecoveryJournal(context.applicationContext).hasPending()
 
@@ -79,6 +82,19 @@ internal object FirebaseDevSyncWork {
             return false
         }
         return true
+    }
+
+    /** Future deletion coordinator only. Process-local drain, not cache erasure.
+     * Do not reopen the account merely because a wait timed out. */
+    internal suspend fun pauseAndDrainForDeletion(
+        context: Context, target: LocalAccountScope.SignedIn, timeoutMs: Long,
+    ): Boolean {
+        require(timeoutMs in 1L..60_000L)
+        if (account(context) != target) return false
+        FirebaseDevCloudWork.tracker.blockNewWork(target)
+        gate.revokeAccount(target)?.let { cancel(context.applicationContext, it) }
+        return FirebaseDevCloudWork.tracker.awaitDrained(target, timeoutMs) &&
+            account(context) == target
     }
 
     fun revoke(context: Context) {
@@ -108,8 +124,11 @@ class FirebaseDevSyncWorker(
         val account = FirebaseDevSyncWork.account(app) ?: return Result.success()
         fun allowed() = !isStopped && FirebaseDevSyncWork.allowed(app, lease, account)
         if (!allowed()) return Result.success()
+        val permit = FirebaseDevCloudWork.tracker.tryBegin(account, CloudWorkKind.SYNC_WORKER)
+            ?: return Result.success()
         val permission = SyncPermission { candidate -> candidate == account && allowed() }
         return try {
+            if (!allowed()) return Result.success()
             val db = PetWorldDatabase.get(app, account)
             val reader = FirebaseDevRemoteReader(app, permission)
             val photos = SyncPhotoTransfer(app, db, account, FirebaseDevPhotoStorage(app, account, permission), permission)
@@ -136,6 +155,8 @@ class FirebaseDevSyncWorker(
         } catch (_: Exception) {
             // Account switch can close the old Room connection. Never touch the new account DB.
             if (allowed()) Result.retry() else Result.success()
+        } finally {
+            permit.close()
         }
     }
 }
