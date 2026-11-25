@@ -1,0 +1,27 @@
+name: FB-04 Device APK offline security regression QA
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/fb04-device-apk.yml'
+      - '.github/workflows/fb04-device-apk-static-qa.yml'
+      - 'scripts/fb04/**'
+
+permissions:
+  contents: read
+
+jobs:
+  static-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact PR source with no retained credentials
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Validate QA workflow YAML syntax without secrets
+        run: ruby -e 'require "yaml"; YAML.load_file(ARGV.fetch(0))' .github/workflows/fb04-device-apk.yml
+      - name: Execute negative security and embedded-script syntax QA
+        run: python3 scripts/fb04/qa_workflow.py
