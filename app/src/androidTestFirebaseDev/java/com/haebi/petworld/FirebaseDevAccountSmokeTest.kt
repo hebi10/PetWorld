@@ -155,7 +155,8 @@ class FirebaseDevAccountSmokeTest {
                 val visible = device.wait(Until.hasObject(By.pkg(appPackage).text(label)), timeout)
                 assertTrue(
                     "$label 표시 필요 (foreground=" + device.currentPackageName +
-                        ", screenOn=" + device.isScreenOn + ", lifecycle=" + scenario.state +\n                        ", focus=" + device.executeShellCommand("dumpsys window | grep mCurrentFocus").take(300) + ")",
+                        ", screenOn=" + device.isScreenOn + ", lifecycle=" + scenario.state +
+                        ", focus=" + device.executeShellCommand("dumpsys window | grep mCurrentFocus").take(300) + ")",
                     visible,
                 )
             }
