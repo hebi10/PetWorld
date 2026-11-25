@@ -9,6 +9,10 @@ import androidx.test.uiautomator.UiScrollable
 import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.Until
 import com.haebi.petworld.auth.PetWorldAccountActivity
+import com.haebi.petworld.auth.FirebaseDevAccountMemoryCache
+import com.google.firebase.firestore.FirebaseFirestoreSettings
+import com.google.firebase.firestore.MemoryCacheSettings
+import com.google.firebase.firestore.PersistentCacheSettings
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
 import com.google.android.gms.tasks.TaskCompletionSource
@@ -25,6 +29,18 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class FirebaseDevAccountSmokeTest {
+    @Test
+    fun isolatedMemorySettingsDoNotModifyLegacyPersistentSettings() {
+        val legacy = FirebaseFirestoreSettings.Builder()
+            .setLocalCacheSettings(PersistentCacheSettings.newBuilder().build())
+            .build()
+        val isolated = FirebaseDevAccountMemoryCache.settings(legacy)
+        assertTrue(legacy.cacheSettings is PersistentCacheSettings)
+        assertTrue(isolated.cacheSettings is MemoryCacheSettings)
+        assertEquals(legacy.host, isolated.host)
+        assertEquals(legacy.isSslEnabled, isolated.isSslEnabled)
+    }
+
     @Test
     fun sdkTaskCompletionNotCoroutineCancellationReleasesDrainPermit() = runBlocking {
         val tracker = AccountCloudWorkTracker()
@@ -96,6 +112,10 @@ class FirebaseDevAccountSmokeTest {
             }
             assertVisibleByScrolling("이 기기의 기록")
             assertVisibleByScrolling("Google 계정으로 시작")
+            assertVisibleByScrolling("삭제 처리 상태 확인")
+            assertVisibleByScrolling("기기 인증 후 상태 확인")
+            assertFalse("명시적인 기기 인증 전 저장 상태를 표시하면 안 됩니다",
+                device.hasObject(By.pkg(appPackage).text("기기에 저장된 마지막 확인 상태")))
             assertVisibleByScrolling("로그인 없이 사용")
             assertFalse("비회원에게 계정 삭제 진입 버튼이 표시되면 안 됩니다",
                 device.hasObject(By.pkg(appPackage).text("계정 삭제")))
