@@ -1,6 +1,13 @@
 package com.haebi.petworld.ui.icons
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.ListAlt
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowBack
@@ -59,8 +66,14 @@ object PetIcons {
     val Home: ImageVector = Icons.Outlined.Home
     val Records: ImageVector = Icons.Outlined.ListAlt
     val Health: ImageVector = Icons.Outlined.FavoriteBorder
-    val Statistics: ImageVector = Icons.Outlined.Insights
+    val Statistics: ImageVector = Icons.Outlined.BarChart
     val More: ImageVector = Icons.Outlined.MoreHoriz
+    val HomeSelected: ImageVector = Icons.Filled.Home
+    val RecordsSelected: ImageVector = Icons.Filled.ListAlt
+    val HealthSelected: ImageVector = Icons.Filled.Favorite
+    val StatisticsSelected: ImageVector = Icons.Filled.BarChart
+    val Expand: ImageVector = Icons.Outlined.KeyboardArrowDown
+    val Chevron: ImageVector = Icons.Outlined.ChevronRight
 
     // Pet-specific records
     val Profile: ImageVector = Icons.Outlined.Pets

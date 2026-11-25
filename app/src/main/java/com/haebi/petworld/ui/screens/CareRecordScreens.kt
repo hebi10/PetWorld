@@ -1,6 +1,11 @@
 package com.haebi.petworld.ui.screens
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +31,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,6 +39,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
@@ -67,6 +77,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.roundToLong
 
 enum class CareRange(val label: String) {
     TODAY("오늘"), SEVEN("7일"), THIRTY("30일"), ALL("전체")
@@ -119,6 +130,7 @@ fun CareRecordList(
     onAdd: () -> Unit,
     onView: (String) -> Unit,
     modifier: Modifier = Modifier,
+    showTitle: Boolean = true,
 ) {
     var showRangePicker by remember { mutableStateOf(false) }
     var showTypePicker by remember { mutableStateOf(false) }
@@ -151,9 +163,11 @@ fun CareRecordList(
     }
     LaunchedEffect(loaded, request) {
         if (loaded?.request == request && page != null && page.entries.size < page.totalCount) {
-            val threshold = (page.entries.size + 3 - 5).coerceAtLeast(0)
-            snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
-                .first { it >= threshold }
+            snapshotFlow {
+                val info = listState.layoutInfo
+                info.totalItemsCount > 0 &&
+                    (info.visibleItemsInfo.lastOrNull()?.index ?: -1) >= (info.totalItemsCount - 5).coerceAtLeast(0)
+            }.first { it }
             limit = minOf(page.totalCount.toLong(), limit.toLong() + CARE_HISTORY_PAGE_SIZE).toInt()
         }
     }
@@ -163,7 +177,7 @@ fun CareRecordList(
         state = listState,
         verticalArrangement = Arrangement.spacedBy(PetSpacing.small),
     ) {
-        item(key = "record-title") {
+        if (showTitle) item(key = "record-title") {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
@@ -222,8 +236,22 @@ fun CareRecordList(
                     )
                 }
             } else {
-                items(page.entries, key = { "care-${it.id}" }) { record ->
-                    CareRecordCompactRow(record = record, onClick = { onView(record.id) })
+                page.entries.forEachIndexed { index, record ->
+                    val date = record.localDate()
+                    if (index == 0 || page.entries[index - 1].localDate() != date) {
+                        item(key = "date-${record.id}") {
+                            Row(modifier = Modifier.fillMaxWidth().padding(top = PetSpacing.small),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(PetSpacing.medium)) {
+                                Text(date.format(DateTimeFormatter.ofPattern("M월 d일 (EEE)", Locale.KOREAN)),
+                                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+                            }
+                        }
+                    }
+                    item(key = "care-${record.id}") {
+                        CareRecordCompactRow(record = record, onClick = { onView(record.id) })
+                    }
                 }
                 if (loaded?.request != request) {
                     item(key = "record-loading-more") { CircularProgressIndicator() }
@@ -290,84 +318,55 @@ fun CareRecordList(
     }
 }
 
+internal fun careGlyph(type: CareType): ImageVector = when (type) {
+    CareType.FOOD -> PetIcons.Food
+    CareType.WATER -> PetIcons.Water
+    CareType.ELIMINATION -> PetIcons.Elimination
+    CareType.ACTIVITY -> PetIcons.Activity
+    CareType.WEIGHT -> PetIcons.Weight
+}
+
 @Composable
 private fun CareRecordCompactRow(record: CareEntity, onClick: () -> Unit) {
     val type = CareType.valueOf(record.type)
-    androidx.compose.material3.Surface(
+    val largeText = LocalDensity.current.fontScale >= 1.3f
+    Surface(
         modifier = Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick),
-        shape = androidx.compose.ui.graphics.RectangleShape,
         color = MaterialTheme.colorScheme.surface,
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp, MaterialTheme.colorScheme.outlineVariant
-        ),
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
+        shape = RectangleShape,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth()
-                .heightIn(min = PetSpacing.minTouchTarget)
-                .padding(horizontal = PetSpacing.medium, vertical = PetSpacing.small),
-            verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-            ) {
-                Text(type.label, style = MaterialTheme.typography.labelLarge)
-                Text(
-                    record.displayDateTime(),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                    maxLines = 1,
-                )
+        Column(modifier = Modifier.fillMaxWidth().padding(PetSpacing.medium),
+            verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall)) {
+            Row(modifier = Modifier.fillMaxWidth().heightIn(min = PetSpacing.minTouchTarget),
+                horizontalArrangement = Arrangement.spacedBy(PetSpacing.medium),
+                verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.size(40.dp).background(MaterialTheme.colorScheme.surfaceContainer),
+                    contentAlignment = Alignment.Center) {
+                    Icon(careGlyph(type), contentDescription = null, modifier = Modifier.size(24.dp))
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(record.displayDateTime(), style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(type.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    if (largeText) Text(record.displayValue(), style = MaterialTheme.typography.bodyLarge)
+                }
+                if (!largeText) Text(record.displayValue(), modifier = Modifier.weight(1.25f),
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold), textAlign = TextAlign.End)
+                Icon(PetIcons.Chevron, contentDescription = null, modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text(
-                record.displayValue(),
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 2,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-            )
-            if (record.note.isNotBlank()) {
-                Text(
-                    record.note,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                )
-            }
+            if (record.note.isNotBlank()) Text(record.note, style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (record.photoFile != null) Text("관찰 사진 있음", style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
 @Composable
-fun CareRecordRow(record: CareEntity, onClick: () -> Unit) {
-    val type = CareType.valueOf(record.type)
-    PetSurfaceCard(
-        modifier = Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick),
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
-            Text(type.label, style = MaterialTheme.typography.labelLarge)
-            Text(
-                record.displayDateTime(),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Text(record.displayValue(), style = MaterialTheme.typography.bodyLarge)
-        if (record.note.isNotBlank()) {
-            Text(
-                record.note,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-            )
-        }
-    }
-}
+fun CareRecordRow(record: CareEntity, onClick: () -> Unit) =
+    CareRecordCompactRow(record, onClick)
 
 @Composable
 fun CareRecordDetail(
@@ -495,24 +494,28 @@ fun CareStatisticsScreen(
     period: CareRange,
     onPeriodChange: (CareRange) -> Unit,
     expandedLayout: Boolean = false,
+    showTitle: Boolean = true,
 ) {
     val selected = records.filter { period.accepts(it) }
     val weights = weightTrendData(selected)
     val summaryTypes = CareType.entries.filter { it != CareType.WEIGHT }
-    val twoColumns = !expandedLayout && LocalConfiguration.current.screenWidthDp >= 360 &&
-        LocalDensity.current.fontScale < 1.3f
-
-    Text("${petName}의 기록 통계", style = MaterialTheme.typography.headlineLarge)
-    Row(
-        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
-    ) {
+    if (showTitle) Text("${petName}의 기록 통계", style = MaterialTheme.typography.headlineLarge)
+    Row(modifier = Modifier.fillMaxWidth()) {
         listOf(CareRange.SEVEN, CareRange.THIRTY, CareRange.ALL).forEach { range ->
-            FilterChip(
-                selected = period == range,
-                onClick = { onPeriodChange(range) },
-                label = { Text(range.label) },
-            )
+            Surface(
+                modifier = Modifier.weight(1f).heightIn(min = PetSpacing.minTouchTarget)
+                    .selectable(selected = period == range, role = Role.RadioButton,
+                        onClick = { onPeriodChange(range) }),
+                shape = RectangleShape,
+                color = if (period == range) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            ) {
+                Box(modifier = Modifier.padding(PetSpacing.small), contentAlignment = Alignment.Center) {
+                    Text(range.label, style = MaterialTheme.typography.titleSmall,
+                        color = if (period == range) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                        fontWeight = if (period == range) FontWeight.Bold else FontWeight.Normal)
+                }
+            }
         }
     }
 
@@ -575,29 +578,8 @@ fun CareStatisticsScreen(
 
     val summarySection: @Composable () -> Unit = {
         Text("생활 기록 요약", style = MaterialTheme.typography.titleLarge)
-        if (twoColumns) {
-            summaryTypes.chunked(2).forEach { pair ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
-                ) {
-                    pair.forEach { type ->
-                        CareStatisticsSummaryCard(
-                            type = type,
-                            records = selected,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                }
-            }
-        } else {
-            summaryTypes.forEach { type ->
-                CareStatisticsSummaryCard(
-                    type = type,
-                    records = selected,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+        summaryTypes.forEach { type ->
+            CareStatisticsSummaryCard(type, selected, Modifier.fillMaxWidth())
         }
         Text(
             "미측정값과 기록이 없는 날짜는 0으로 계산하지 않습니다. 입력된 자료의 요약이며 건강 진단이 아닙니다.",
@@ -611,8 +593,8 @@ fun CareStatisticsScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(PetSpacing.large),
         ) {
-            Column(modifier = Modifier.weight(1.15f)) { weightSection() }
-            Column(modifier = Modifier.weight(1f)) { summarySection() }
+            Column(modifier = Modifier.weight(1.15f), verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) { weightSection() }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) { summarySection() }
         }
     } else {
         weightSection()
@@ -621,19 +603,19 @@ fun CareStatisticsScreen(
 }
 
 @Composable
-private fun CareStatisticsSummaryCard(
-    type: CareType,
-    records: List<CareEntity>,
-    modifier: Modifier,
-) {
-    PetSurfaceCard(modifier = modifier) {
-        Text(type.label, style = MaterialTheme.typography.titleMedium)
-        Text(summarizeCare(type, records), style = MaterialTheme.typography.bodyMedium)
-        Text(
-            "${records.count { it.type == type.name }}건의 기록",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+private fun CareStatisticsSummaryCard(type: CareType, records: List<CareEntity>, modifier: Modifier) {
+    Surface(modifier = modifier, color = MaterialTheme.colorScheme.surfaceContainer, shape = RectangleShape) {
+        Row(modifier = Modifier.fillMaxWidth().heightIn(min = PetSpacing.minTouchTarget).padding(PetSpacing.medium),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(PetSpacing.medium)) {
+            Icon(careGlyph(type), contentDescription = null, modifier = Modifier.size(24.dp))
+            Column(modifier = Modifier.weight(0.85f)) {
+                Text(type.label, style = MaterialTheme.typography.titleSmall)
+                Text("${records.count { it.type == type.name }}건의 기록",
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(summarizeCare(type, records), modifier = Modifier.weight(1.65f),
+                textAlign = TextAlign.End, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold))
+        }
     }
 }
 
@@ -643,29 +625,44 @@ private fun WeightTrend(weights: List<CareEntity>) {
     val last = weights.last()
     val lowest = weights.minOf { it.weightGrams!! }
     val highest = weights.maxOf { it.weightGrams!! }
-    val extent = (highest - lowest).coerceAtLeast(100L).toFloat() * 0.2f
-    val bottom = (lowest.toFloat() - extent).coerceAtLeast(0f)
-    val top = highest.toFloat() + extent
-    val height = (top - bottom).coerceAtLeast(1f)
+    val extent = (highest - lowest).coerceAtLeast(100L).toDouble() * 0.2
+    val bottom = (lowest.toDouble() - extent).coerceAtLeast(0.0)
+    val top = highest.toDouble() + extent
+    val span = (top - bottom).coerceAtLeast(1.0)
     val timeSpan = last.occurredAt - first.occurredAt
     val lineColor = MaterialTheme.colorScheme.onSurface
-
-    Canvas(modifier = Modifier.fillMaxWidth().height(120.dp)) {
-        val vertices = weights.mapIndexed { index, record ->
-            val fraction = if (timeSpan > 0L) {
-                ((record.occurredAt - first.occurredAt).toDouble() / timeSpan).toFloat()
-            } else {
-                index.toFloat() / (weights.size - 1)
+    val gridColor = MaterialTheme.colorScheme.outlineVariant
+    val dotColor = MaterialTheme.colorScheme.surface
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+        verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.height(132.dp), verticalArrangement = Arrangement.SpaceBetween) {
+            listOf(top, bottom + span * 0.5, bottom).forEach { value ->
+                Text("${milliText(value.roundToLong())}kg", style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            val x = fraction.coerceIn(0f, 1f) * size.width
-            val y = size.height - ((record.weightGrams!!.toFloat() - bottom) / height) * size.height
-            Offset(x, y.coerceIn(0f, size.height))
         }
-        vertices.zipWithNext { from, to ->
-            drawLine(lineColor, from, to, strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
-        }
-        vertices.forEach { point ->
-            drawCircle(lineColor, radius = 3.dp.toPx(), center = point)
+        Canvas(modifier = Modifier.weight(1f).height(132.dp)) {
+            val inset = 5.dp.toPx()
+            val plotWidth = (size.width - 2 * inset).coerceAtLeast(1f)
+            val plotHeight = (size.height - 2 * inset).coerceAtLeast(1f)
+            repeat(5) { tick ->
+                val y = inset + plotHeight * tick / 4f
+                drawLine(gridColor, Offset(inset, y), Offset(inset + plotWidth, y), strokeWidth = 1.dp.toPx())
+            }
+            drawLine(gridColor, Offset(inset, inset), Offset(inset, inset + plotHeight), strokeWidth = 1.dp.toPx())
+            val vertices = weights.mapIndexed { index, record ->
+                val fraction = if (timeSpan > 0L) ((record.occurredAt - first.occurredAt).toDouble() / timeSpan).toFloat()
+                    else index.toFloat() / (weights.size - 1)
+                Offset(inset + fraction.coerceIn(0f, 1f) * plotWidth,
+                    inset + plotHeight * (1 - ((record.weightGrams!!.toDouble() - bottom) / span).toFloat().coerceIn(0f, 1f)))
+            }
+            vertices.zipWithNext { from, to ->
+                drawLine(lineColor, from, to, strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
+            }
+            vertices.forEach { point ->
+                drawCircle(lineColor, radius = 4.dp.toPx(), center = point)
+                drawCircle(dotColor, radius = 2.3.dp.toPx(), center = point)
+            }
         }
     }
 }

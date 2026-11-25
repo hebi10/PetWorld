@@ -24,6 +24,8 @@ import com.haebi.petworld.data.backup.PetWorldBackupExporter
 import com.haebi.petworld.ui.components.PetPrimaryButton
 import com.haebi.petworld.ui.components.PetSecondaryButton
 import com.haebi.petworld.ui.components.PetSurfaceCard
+import com.haebi.petworld.ui.components.PetMenuRow
+import com.haebi.petworld.ui.icons.PetIcons
 import com.haebi.petworld.ui.theme.PetSpacing
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -87,22 +89,22 @@ fun PetBackupSection(
         showRestoreConfirmation = false
     }
 
-    PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
-        Text("데이터 관리", style = MaterialTheme.typography.titleMedium)
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
+        Text("데이터 관리", style = MaterialTheme.typography.titleLarge)
         Text(
             "프로필·기록·사진·설정을 암호화해 백업·복원합니다.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        PetPrimaryButton(
+        PetMenuRow(
+            icon = PetIcons.Lock,
             label = if (busy) "처리 중..." else "암호화 백업 생성",
-            modifier = Modifier.fillMaxWidth(),
             enabled = !busy && !restoring,
             onClick = { showPasswordDialog = true },
         )
-        PetSecondaryButton(
+        PetMenuRow(
+            icon = PetIcons.Import,
             label = "백업 파일 복원",
-            modifier = Modifier.fillMaxWidth(),
             enabled = !busy && !restoring,
             onClick = {
                 message = null
