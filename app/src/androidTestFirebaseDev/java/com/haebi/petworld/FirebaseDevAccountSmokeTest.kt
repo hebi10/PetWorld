@@ -73,8 +73,9 @@ class FirebaseDevAccountSmokeTest {
                 context,account,named,AccountCacheTransitionEvidence(account)))
             assertTrue(AccountSdkRouteJournal(context).permitsLegacy(account))
         } finally {
-            // Only the synthetic, unused named SDK fixture; no cloud deletion.
-            named.delete()
+            // Do not delete a named FirebaseApp while Auth internal callbacks can
+            // still resolve it. This unused fixture lives only in the QA process.
+            // No authenticated user or cloud data was created.
         }
     }
 
@@ -135,13 +136,26 @@ class FirebaseDevAccountSmokeTest {
         device.executeShellCommand("wm dismiss-keyguard")
 
         ActivityScenario.launch(PetWorldAccountActivity::class.java).use { scenario ->
+            // Recheck the Android window after Activity launch; boot overlays can
+            // appear between the first keyguard dismissal and the resumed Activity.
+            device.executeShellCommand("wm dismiss-keyguard")
+            device.executeShellCommand("cmd statusbar collapse")
             device.waitForIdle(5_000)
+            val initialTitle = By.pkg(appPackage).text("계정")
+            if (!device.wait(Until.hasObject(initialTitle), 10_000) &&
+                device.currentPackageName in setOf("android", "com.android.systemui") &&
+                scenario.state == androidx.lifecycle.Lifecycle.State.RESUMED) {
+                device.executeShellCommand("wm dismiss-keyguard")
+                device.executeShellCommand("cmd statusbar collapse")
+                scenario.recreate()
+                device.waitForIdle(5_000)
+            }
 
             fun assertVisible(label: String, timeout: Long = 10_000) {
                 val visible = device.wait(Until.hasObject(By.pkg(appPackage).text(label)), timeout)
                 assertTrue(
                     "$label 표시 필요 (foreground=" + device.currentPackageName +
-                        ", screenOn=" + device.isScreenOn + ", lifecycle=" + scenario.state + ")",
+                        ", screenOn=" + device.isScreenOn + ", lifecycle=" + scenario.state +\n                        ", focus=" + device.executeShellCommand("dumpsys window | grep mCurrentFocus").take(300) + ")",
                     visible,
                 )
             }
