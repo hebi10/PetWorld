@@ -1,0 +1,53 @@
+name: PetWorld external deletion browser QA
+
+on:
+  pull_request:
+    paths:
+      - firebase/web/**
+      - firebase/server/**
+      - firebase/test/account-deletion-browser.test.mjs
+      - firebase/package.json
+      - .github/workflows/firebase-deletion-browser-qa.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Confirm synthetic QA only
+        run: |
+          test ! -f .firebaserc
+          test -z "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          node scripts/firebase/check-connection-readiness.mjs
+          node --check firebase/test/account-deletion-browser.test.mjs
+      - name: Install test-only browser runner and existing Firebase test libraries
+        run: |
+          npm install --prefix firebase --no-save --no-audit --no-fund playwright@1.65.1
+          ./firebase/node_modules/.bin/playwright install --with-deps chromium
+      - name: Exercise actual Chromium UI and local synthetic deletion handlers
+        env:
+          PETWORLD_LOCAL_BROWSER_QA: 'true'
+        run: |
+          timeout --kill-after=10s 360s node --test --test-concurrency=1 firebase/test/account-deletion-browser.test.mjs
+          test -s web-qa-evidence/01-disabled-mobile.png
+          test -s web-qa-evidence/02-request-confirmed.png
+          test -s web-qa-evidence/03-recovered-complete.png
+      - name: Upload synthetic screen evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: petworld-external-deletion-browser-qa
+          path: web-qa-evidence/*.png
+          if-no-files-found: warn
