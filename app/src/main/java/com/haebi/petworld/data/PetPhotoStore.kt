@@ -164,6 +164,41 @@ class PetPhotoStore(
         }
     }
 
+    /** Install verified cloud JPEG bytes without decoding/recompressing the original.
+     * Never overwrite an existing file with different content.
+     * Caller serializes file mutations using PetWorldMutationGate.
+     */
+    internal suspend fun installVerifiedJpeg(name: String, bytes: ByteArray, expectedSha256: String): Boolean =
+        withContext(Dispatchers.IO) {
+            require(scope is LocalAccountScope.SignedIn) { "Cloud photo installation requires account storage" }
+            require(com.haebi.petworld.data.sync.validCloudPhotoName(name))
+            require(bytes.size.toLong() in 1L..com.haebi.petworld.data.sync.CLOUD_PHOTO_MAX_BYTES)
+            require(com.haebi.petworld.data.sync.photoSha256(bytes) == expectedSha256)
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+            require(bounds.outMimeType == "image/jpeg" &&
+                bounds.outWidth in 1..MAX_PHOTO_EDGE && bounds.outHeight in 1..MAX_PHOTO_EDGE)
+            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                ?: error("Cloud JPEG is not decodable")
+            bitmap.recycle()
+            val target = requireNotNull(fileFor(name))
+            if (target.exists()) {
+                return@withContext target.isFile && target.length() == bytes.size.toLong() &&
+                    com.haebi.petworld.data.sync.photoSha256(target.readBytes()) == expectedSha256
+            }
+            val pending = File.createTempFile(".pet-download-", ".tmp", directory)
+            try {
+                FileOutputStream(pending).use { stream ->
+                    stream.write(bytes)
+                    stream.fd.sync()
+                }
+                check(!target.exists() && pending.renameTo(target))
+                true
+            } finally {
+                pending.delete()
+            }
+        }
+
     suspend fun delete(name: String?) = withContext(Dispatchers.IO) {
         fileFor(name)?.delete()
         Unit
