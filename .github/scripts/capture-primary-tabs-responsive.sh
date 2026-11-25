@@ -23,6 +23,12 @@ capture() {
   local status=${PIPESTATUS[0]}
   set -e
   adb pull "/sdcard/Android/data/$package/files/design-responsive/$state/." "$dir/" || true
+  cp "/tmp/pw-responsive-$state.log" "$dir/instrumentation.txt"
+  if [ "$status" -ne 0 ] || ! grep -q '^OK (1 test)' "$dir/instrumentation.txt"; then
+    adb exec-out screencap -p > "$dir/failure-after-instrumentation.png" || true
+    adb shell uiautomator dump /sdcard/pw-responsive-failure.xml >/dev/null 2>&1 || true
+    adb pull /sdcard/pw-responsive-failure.xml "$dir/failure-after-instrumentation.xml" >/dev/null 2>&1 || true
+  fi
   test "$status" -eq 0
   grep -q '^OK (1 test)' "/tmp/pw-responsive-$state.log"
   for theme in light dark; do

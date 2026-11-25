@@ -28,6 +28,7 @@ class PetWorldPrimaryResponsiveDesignTest {
     private val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
     private val db = PetWorldDatabase.get(context)
     private val prefs = ThemePreferences(context)
+    private var diagnosticsFolder: File? = null
 
     @Test fun captureResponsivePrimaryTabs() {
         val layoutCase = requireNotNull(InstrumentationRegistry.getArguments().getString("layoutCase"))
@@ -39,6 +40,7 @@ class PetWorldPrimaryResponsiveDesignTest {
             for (mode in listOf(ThemeMode.LIGHT, ThemeMode.DARK)) {
                 seed(mode)
                 val folder = File(root, mode.name.lowercase()).apply { check(mkdirs()) }
+                diagnosticsFolder = folder
                 ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                     scenario.onActivity { activity ->
                         val cfg = activity.resources.configuration
@@ -51,6 +53,7 @@ class PetWorldPrimaryResponsiveDesignTest {
                             "widthDp=${cfg.screenWidthDp}\nheightDp=${cfg.screenHeightDp}\nfontScale=${cfg.fontScale}\n"
                         )
                     }
+                    // Wait for loaded profile rather than accepting a transient startup frame.
                     see("나비의 하루")
                     if (layoutCase == "fold-unfolded") assertPaneOrder("오늘의 돌봄", "최근 기록")
                     capture(folder, "D01-home")
@@ -148,12 +151,24 @@ class PetWorldPrimaryResponsiveDesignTest {
             device.waitForIdle()
         }
     }
-    private fun see(value: String) {
-        repeat(8) {
-            recover()
-            if (device.wait(Until.hasObject(By.textContains(value)), 1800)) return
+
+    private fun failWithEvidence(message: String): Nothing {
+        diagnosticsFolder?.let { folder ->
+            runCatching {
+                device.waitForIdle()
+                device.takeScreenshot(File(folder, "failure.png"))
+                device.dumpWindowHierarchy(File(folder, "failure-hierarchy.xml"))
+                File(folder, "failure.txt").writeText(message)
+            }
         }
-        error("Required visible text missing: $value")
+        error(message)
+    }
+    private fun see(value: String) {
+        repeat(12) {
+            recover()
+            if (device.wait(Until.hasObject(By.textContains(value)), 2000)) return
+        }
+        failWithEvidence("Required visible text missing: $value")
     }
     private fun swipe(down: Boolean) {
         val mid = device.displayWidth / 2
@@ -168,7 +183,7 @@ class PetWorldPrimaryResponsiveDesignTest {
             if (device.wait(Until.hasObject(By.textContains(value)), 800)) return
             swipe(down)
         }
-        error("Required scrollable text missing: $value")
+        failWithEvidence("Required scrollable text missing: $value")
     }
     private fun tap(value: String) {
         for (down in listOf(true, false)) repeat(7) {
@@ -180,7 +195,7 @@ class PetWorldPrimaryResponsiveDesignTest {
             }
             swipe(down)
         }
-        error("Required action unavailable: $value")
+        failWithEvidence("Required action unavailable: $value")
     }
     private fun assertPaneOrder(left: String, right: String) {
         val l = checkNotNull(device.wait(Until.findObject(By.textContains(left)), 5000))

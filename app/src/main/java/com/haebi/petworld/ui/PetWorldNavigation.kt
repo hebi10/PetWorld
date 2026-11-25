@@ -218,7 +218,8 @@ fun PetWorldApp(
                 if (!showTabs || tab == PrimaryTab.HOME || expandedUi) {
                     Row(
                         modifier = Modifier.fillMaxWidth()
-                            .padding(horizontal = PetSpacing.large, vertical = PetSpacing.small),
+                            .padding(horizontal = PetSpacing.large,
+                                vertical = if (showTabs && tab == PrimaryTab.HOME) PetSpacing.xSmall else PetSpacing.small),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
                     ) {
@@ -256,7 +257,7 @@ fun PetWorldApp(
                                 style = MaterialTheme.typography.headlineLarge,
                                 fontWeight = FontWeight.Bold,
                             )
-                            if (tab == PrimaryTab.RECORDS) {
+                            if (tab == PrimaryTab.RECORDS && fontScale < 1.3f) {
                                 PetPrimaryButton("기록 추가", onClick = { choosingCareType = true })
                             }
                         }
@@ -281,6 +282,10 @@ fun PetWorldApp(
                             Icon(PetIcons.Expand, contentDescription = null)
                         }
                     }
+                    if (!expandedUi && tab == PrimaryTab.RECORDS && fontScale >= 1.3f) {
+                        PetPrimaryButton("기록 추가", onClick = { choosingCareType = true },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = PetSpacing.large))
+                    }
                 }
             }
         },
@@ -298,7 +303,8 @@ fun PetWorldApp(
                             },
                             icon = { Icon(if (tab == item) item.selectedVector else item.imageVector,
                                 contentDescription = null, modifier = Modifier.size(24.dp)) },
-                            label = { Text(item.label, style = MaterialTheme.typography.labelLarge,
+                            label = { Text(item.label,
+                                style = if (fontScale >= 1.3f) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge,
                                 fontWeight = if (tab == item) FontWeight.Bold else FontWeight.Normal) },
                             alwaysShowLabel = true,
                             colors = NavigationBarItemDefaults.colors(
@@ -509,7 +515,8 @@ fun PetWorldApp(
                         }
                     } else Column(
                         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-                            .padding(PetSpacing.large),
+                            .padding(horizontal = PetSpacing.large,
+                                vertical = if (tab == PrimaryTab.HOME && fontScale < 1.3f) PetSpacing.small else PetSpacing.large),
                         verticalArrangement = Arrangement.spacedBy(
                             if (tab == PrimaryTab.HOME || tab == PrimaryTab.MORE ||
                                 tab == PrimaryTab.HEALTH || tab == PrimaryTab.INSIGHTS
