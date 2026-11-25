@@ -607,3 +607,50 @@ test('FB-07-C2-C2-01: deletion admission counters are Admin-only', async () => {
     deepStrictEqual((await getDoc(doc(admin.firestore(),path))).data(),counter);
   });
 });
+
+test('FB-07-C2-C2-02: private scheduler checkpoint is inaccessible to clients', async () => {
+  const path='accountDeletionScheduler/v1';
+  const checkpoint={cursor:null,leaseId:null,leaseUntilMs:0,observedAtMs:now};
+  await env.withSecurityRulesDisabled(async admin => {
+    await setDoc(doc(admin.firestore(),path),checkpoint);
+  });
+  for(const db of [env.unauthenticatedContext().firestore(),env.authenticatedContext('alice').firestore()]){
+    const target=doc(db,path);
+    await assertFails(getDoc(target));
+    await assertFails(updateDoc(target,{cursor:'a'.repeat(64)}));
+    await assertFails(deleteDoc(target));
+    await assertFails(setDoc(doc(db,'accountDeletionScheduler/other'),checkpoint));
+  }
+  await env.withSecurityRulesDisabled(async admin => {
+    deepStrictEqual((await getDoc(doc(admin.firestore(),path))).data(),checkpoint);
+  });
+});
+
+test('FB-07-C2-C2-02: Admin emulator scheduler claims and persists cursor across instances', {timeout:60_000}, async () => {
+  if (!/^(127\.0\.0\.1|localhost):8080$/.test(process.env.FIRESTORE_EMULATOR_HOST || '') ||
+      projectId !== 'demo-petworld-fb01') throw Error('Local demo Firestore emulator required');
+  const [{initializeApp,deleteApp},{getFirestore},{createDeletionSchedulerStore}]=await Promise.all([
+    import('firebase-admin/app'),import('firebase-admin/firestore'),
+    import('../server/account-deletion-scheduler.mjs'),
+  ]);
+  const app=initializeApp({projectId},'scheduler-emulator-qa');
+  const db=getFirestore(app);
+  try{
+    const first=createDeletionSchedulerStore({db,now:()=>now});
+    const second=createDeletionSchedulerStore({db,now:()=>now});
+    const claims=await Promise.all([first.claim(),second.claim()]);
+    deepStrictEqual(claims.filter(Boolean).length,1);
+    const winner=claims.find(Boolean);
+    await first.commit(winner,'a'.repeat(64),600_000);
+    const restarted=createDeletionSchedulerStore({db,now:()=>now+1});
+    const next=await restarted.claim();
+    deepStrictEqual(next.cursor,'a'.repeat(64));
+    await rejects(()=>first.commit(winner,'b'.repeat(64),600_000));
+    await restarted.commit(next,null,600_000);
+    const snap=await db.collection('accountDeletionScheduler').doc('v1').get();
+    deepStrictEqual(snap.data(),{cursor:null,leaseId:null,leaseUntilMs:0,observedAtMs:now+1});
+  }finally{
+    await db.terminate();
+    await deleteApp(app);
+  }
+});
