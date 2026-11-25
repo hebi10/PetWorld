@@ -546,3 +546,46 @@ test('FB-06-C: photo evidence cannot authorize another pet or mutate deleted pho
   await assertSucceeds(syncBatch(alice,pet,remove,{...petDoc('pet-1',1),photoFile:name,deletedAtMs:now}));
   deepStrictEqual((await getDocFromServer(pet)).data().photoFile,name);
 });
+
+test('FB-07-A: account deletion lock denies cloud access and stale authenticated writes', async () => {
+  // Use unique identities and paths; no dependence on other Storage test fixtures.
+  const uid = 'deletion-owner';
+  const otherUid = 'deletion-other';
+  const ownerContext = env.authenticatedContext(uid);
+  const otherContext = env.authenticatedContext(otherUid);
+  const alice = ownerContext.firestore();
+  const bob = otherContext.firestore();
+  const user = doc(alice, 'users/' + uid);
+  const pet = doc(alice, user.path + '/pets/pet-1');
+  const lock = doc(alice, 'accountDeletionLocks/' + uid);
+  const name = 'pet_99999999-9999-4999-8999-999999999999.jpg';
+  const photo = ref(ownerContext.storage(bucket), pathFor(uid, 'pet-1', name));
+  const bytes = new Uint8Array([0xff, 0xd8, 1, 0xff, 0xd9]);
+  await assertSucceeds(setDoc(user, userDoc()));
+  await assertSucceeds(setDoc(pet, petDoc()));
+  await assertSucceeds(uploadBytes(photo, bytes, { contentType: 'image/jpeg' }));
+  deepStrictEqual(new Uint8Array(await assertSucceeds(getBytes(photo))), bytes);
+  await assertFails(setDoc(lock, { state: 'LOCKED' }));
+  await env.withSecurityRulesDisabled(async admin => {
+    await setDoc(doc(admin.firestore(), lock.path), { state: 'LOCKED' });
+  });
+  await assertFails(getDoc(lock));
+  await assertFails(getDoc(doc(bob, lock.path)));
+  await assertFails(deleteDoc(lock));
+  await assertFails(getDoc(user));
+  await assertFails(getDoc(pet));
+  await assertFails(updateDoc(pet, { name:'stale device', revision:1 }));
+  await assertFails(setDoc(doc(alice, pet.path + '/records/record-1'), careDoc()));
+  await assertFails(getBytes(photo));
+  const newPhoto = ref(ownerContext.storage(bucket),
+      pathFor(uid, 'pet-1', 'pet_88888888-8888-4888-8888-888888888888.jpg'));
+  await assertFails(uploadBytes(newPhoto, bytes, { contentType:'image/jpeg' }));
+  await assertSucceeds(setDoc(doc(bob, 'users/' + otherUid), userDoc()));
+  await assertSucceeds(setDoc(doc(bob, 'users/' + otherUid + '/pets/pet-1'), petDoc()));
+  await assertSucceeds(uploadBytes(ref(otherContext.storage(bucket), pathFor(otherUid, 'pet-1', name)),
+    bytes, { contentType:'image/jpeg' }));
+  await env.withSecurityRulesDisabled(async admin => {
+    await deleteDoc(doc(admin.firestore(), user.path));
+  });
+  await assertFails(setDoc(user, userDoc()));
+});
