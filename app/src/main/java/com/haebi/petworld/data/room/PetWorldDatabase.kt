@@ -327,12 +327,14 @@ abstract class PetWorldDatabase : RoomDatabase() {
 
     companion object {
         private val instances = mutableMapOf<String, PetWorldDatabase>()
+        private val cleanupReserved = mutableSetOf<String>()
 
         fun get(context: Context): PetWorldDatabase = get(context, LocalAccountScope.Guest)
 
         @Synchronized
         fun get(context: Context, scope: LocalAccountScope): PetWorldDatabase {
             val name = scope.databaseFileName
+            check(name !in cleanupReserved) { "Account database is reserved for local cleanup." }
             return instances.getOrPut(name) {
                 Room.databaseBuilder(
                     context.applicationContext,
@@ -347,6 +349,17 @@ abstract class PetWorldDatabase : RoomDatabase() {
         @Synchronized
         fun closeScope(scope: LocalAccountScope) {
             instances.remove(scope.databaseFileName)?.close()
+        }
+
+        /** Requires the account-switch coordinator to have drained its old holders.
+         * Never close a live instance implicitly. Keep the process reservation across retries.
+         */
+        @Synchronized
+        internal fun reserveClosedAccountForCleanup(scope: LocalAccountScope.SignedIn): Boolean {
+            val name = scope.databaseFileName
+            if (instances.containsKey(name)) return false
+            cleanupReserved.add(name)
+            return true
         }
     }
 }

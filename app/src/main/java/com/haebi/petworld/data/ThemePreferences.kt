@@ -43,6 +43,14 @@ class ThemePreferences(
         }
     }
 
+    /** Called only while the global mutation gate is already held.
+     * Keep the global appearance preference and all other accounts unchanged.
+     */
+    internal suspend fun clearAccountSelectionUnderGate() {
+        check(scope is LocalAccountScope.SignedIn)
+        context.petWorldDataStore.edit { it.remove(selectedPetKey) }
+    }
+
     /** Called only while the global mutation gate is already held. */
     suspend fun applyRestoredSettings(mode: ThemeMode, id: String?) {
         context.petWorldDataStore.edit { preferences ->
