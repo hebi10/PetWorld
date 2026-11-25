@@ -70,7 +70,7 @@ internal class DeviceDeletionRecoveryAccess(
             val result = withContext(Dispatchers.IO) {
                 val anchor = anchors.read() ?: return@withContext AccountDeletionStatusView.Unknown
                 val state = store.read(anchor.account)
-                if (state?.account != anchor.account || state.jobId != anchor.jobId ||
+                if (state == null || state.account != anchor.account || state.jobId != anchor.jobId ||
                     !store.blocksCloud(anchor.account)) return@withContext AccountDeletionStatusView.Unknown
                 state.receipt?.let { AccountDeletionStatusView.Saved(it.phase) }
                     ?: AccountDeletionStatusView.Unknown
