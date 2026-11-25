@@ -1,5 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {DeletionDenied} from './account-deletion.mjs';
+import {prepareDeletionWorkerRuntime} from './account-deletion-runtime.mjs';
 
 // Longer than the existing 20-minute per-job lease. The independently enforced
 // worker hard deadline must terminate the invocation well before either lease expires.
@@ -119,14 +120,15 @@ export function createDeletionScheduledTick({store,runTrustedBatch,workerDeadlin
 
 /** Trusted dev bootstrap only; no actual scheduler registration or network call. */
 export async function prepareDevDeletionScheduler({
-  app,readiness,runTrustedBatch,workerDeadlineMs,now=Date.now,
+  app,readiness,retentionAudit,workerDeadlineMs,now=Date.now,
 } = {}) {
   if (app?.options?.projectId !== 'petworld-dev' ||
       !['petworld-dev.firebasestorage.app','petworld-dev.appspot.com'].includes(app?.options?.storageBucket) ||
       readiness?.approvedDevDeletionTest !== true || readiness?.schedulerVerified !== true ||
       readiness?.schedulerStoreVerified !== true || readiness?.workerIdentityVerified !== true ||
       readiness?.workerHardDeadlineVerified !== true || readiness?.workerClockVerified !== true ||
-      !validDeadline(workerDeadlineMs) || typeof runTrustedBatch !== 'function') throw new DeletionDenied();
+      !validDeadline(workerDeadlineMs) || typeof retentionAudit !== 'function') throw new DeletionDenied();
+  const runTrustedBatch=await prepareDeletionWorkerRuntime({app,readiness,retentionAudit,now});
   const {getFirestore}=await import('firebase-admin/firestore');
   return createDeletionScheduledTick({
     store:createDeletionSchedulerStore({db:getFirestore(app),now}),runTrustedBatch,workerDeadlineMs,now,
