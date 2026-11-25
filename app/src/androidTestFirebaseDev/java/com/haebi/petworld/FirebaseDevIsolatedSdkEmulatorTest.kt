@@ -14,6 +14,9 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.MemoryCacheSettings
 import com.google.firebase.firestore.PersistentCacheSettings
 import com.google.firebase.firestore.Source
+import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.MetadataChanges
 import com.haebi.petworld.auth.FirebaseDevAccountMemoryCache
 import com.haebi.petworld.auth.FirebaseDevAccountSdkSessions
 import com.haebi.petworld.auth.FirebaseDevSdkBinding
@@ -26,6 +29,7 @@ import java.util.concurrent.Executor
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
@@ -164,6 +168,7 @@ class FirebaseDevIsolatedSdkEmulatorTest {
         val named = Fixture(context,"memory-a",true)
         val other = Fixture(context,"legacy-b",false)
         var terminated = false
+        var pinnedA: ListenerRegistration? = null
         try {
             val subject = "qa-" + UUID.randomUUID()
             val a = primary.signIn(subject)
@@ -175,14 +180,16 @@ class FirebaseDevIsolatedSdkEmulatorTest {
             bRef.get(Source.SERVER).awaitQa()
             other.db.disableNetwork().awaitQa()
             val bWrite = bRef.update(mapOf("migrationState" to "paused","revision" to 1L))
-            val bCached = bRef.get(Source.CACHE).awaitQa()
+            val bCached = cached(bRef, "B persistent offline write")
             assertTrue(bCached.metadata.hasPendingWrites())
             assertFalse(bWrite.isComplete)
             val target = named.db.document("users/$a")
-            target.get(Source.SERVER).awaitQa()
+            // The default eager memory GC may evict a document immediately after
+            // a one-shot server read. Keep an active query until A is acknowledged.
+            pinnedA = pinServerDocument(target)
             named.db.disableNetwork().awaitQa()
             val write = target.update(mapOf("migrationState" to "ready","revision" to 1L))
-            val local = target.get(Source.CACHE).awaitQa()
+            val local = cached(target, "A memory offline write")
             assertTrue(local.metadata.hasPendingWrites())
             assertFalse(write.isComplete)
 
@@ -208,6 +215,8 @@ class FirebaseDevIsolatedSdkEmulatorTest {
             val acknowledged = target.get(Source.SERVER).awaitQa()
             assertEquals(1L,acknowledged.getLong("revision"))
             assertFalse(acknowledged.metadata.hasPendingWrites())
+            pinnedA?.remove()
+            pinnedA = null
             val closed = withTimeout(20_000L) {
                 drainAndCloseIsolatedSdk(
                     sameAccount = ::sameAccount,
@@ -221,7 +230,7 @@ class FirebaseDevIsolatedSdkEmulatorTest {
             assertTrue(closed)
             assertEquals(a,primary.auth.currentUser?.uid)
             assertEquals(1L,primary.db.document("users/$a").get(Source.SERVER).awaitQa().getLong("revision"))
-            val preserved = bRef.get(Source.CACHE).awaitQa()
+            val preserved = cached(bRef, "B persistent cache after A shutdown")
             assertEquals(bCached.data,preserved.data)
             assertTrue(preserved.metadata.hasPendingWrites())
             assertFalse(bWrite.isComplete)
@@ -232,9 +241,34 @@ class FirebaseDevIsolatedSdkEmulatorTest {
             assertTrue(primary.db.firestoreSettings.cacheSettings is PersistentCacheSettings)
             assertTrue(other.db.firestoreSettings.cacheSettings is PersistentCacheSettings)
         } finally {
+            pinnedA?.remove()
             named.finish(terminated)
             primary.finish()
             other.finish()
+        }
+    }
+
+    private suspend fun pinServerDocument(ref: DocumentReference): ListenerRegistration {
+        val ready = CompletableDeferred<Unit>()
+        val registration = ref.addSnapshotListener(Executor { it.run() }, MetadataChanges.INCLUDE) { snapshot, failure ->
+            if (failure != null) ready.completeExceptionally(failure)
+            else if (snapshot != null && snapshot.exists() && !snapshot.metadata.isFromCache &&
+                !snapshot.metadata.hasPendingWrites()) ready.complete(Unit)
+        }
+        try {
+            withTimeout(20_000L) { ready.await() }
+            return registration
+        } catch (failure: Throwable) {
+            registration.remove()
+            throw failure
+        }
+    }
+
+    private suspend fun cached(ref: DocumentReference, stage: String) = try {
+        ref.get(Source.CACHE).awaitQa()
+    } catch (failure: FirebaseFirestoreException) {
+        throw AssertionError("Cache verification failed at " + stage + ": " + failure.code).apply {
+            initCause(failure)
         }
     }
 
