@@ -60,13 +60,16 @@ internal class AccountDeletionLocalCleanup(
                     // The exact target must already be detached. No active DB is closed here.
                     if (!PetWorldDatabase.reserveClosedAccountForCleanup(account))
                         return@withLock AccountCacheCleanupResult.NOT_READY
-                    val database = app.getDatabasePath(account.databaseFileName)
+                    // Android may alias /data/user/0 and /data/data. Resolve only the
+                    // trusted application root first; reject aliases below that root.
+                    val dbParent = requireNotNull(app.getDatabasePath(account.databaseFileName).parentFile).canonicalFile
+                    val database = File(dbParent, account.databaseFileName)
                     val dbFiles = listOf("", "-wal", "-shm", "-journal").map { File(database.path + it) }
-                    val photoRoot = File(app.filesDir, "pet_photos_accounts")
+                    val photoRoot = File(app.filesDir.canonicalFile, "pet_photos_accounts")
                     val photos = File(photoRoot, account.key)
                     // Refuse unexpected aliases or symbolic links before making any destructive change.
-                    check(photoRoot.canonicalFile == photoRoot.absoluteFile)
-                    check(photos.canonicalFile == photos.absoluteFile)
+                    check(photoRoot.canonicalFile == photoRoot.absoluteFile && !Files.isSymbolicLink(photoRoot.toPath()))
+                    check(photos.canonicalFile == photos.absoluteFile && !Files.isSymbolicLink(photos.toPath()))
                     dbFiles.forEach { check(it.canonicalFile == it.absoluteFile && !Files.isSymbolicLink(it.toPath())) }
                     validatePhotoTree(photos)
                     check(eligible())

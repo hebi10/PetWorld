@@ -41,3 +41,9 @@ test('FB07-C2B: uncertain status and expired batch budget are not completion',as
   const run=createDeletionBatchRunner({service,readPage:source,now:()=>time});
   assert.deepEqual(await run({limit:3,budgetMs:1000}),{attempted:1,progressed:0,pending:1,retry:0,nextCursor:jobs[0].jobId});
 });
+
+test('FB07-C2B: a regressing worker response is retry, not progress',async()=>{
+  const entry={...jobs[0],phase:'RECORDS_PURGED'};
+  const run=createDeletionBatchRunner({service:{advanceTrusted:async()=>({jobId:entry.jobId,phase:'LOCKED'})},readPage:async()=>[entry]});
+  assert.deepEqual(await run(),{attempted:1,progressed:0,pending:0,retry:1,nextCursor:null});
+});

@@ -2,8 +2,9 @@ import { deletionJobId, DeletionDenied } from './account-deletion.mjs';
 import { createFirebaseDeletionService } from './account-deletion-service.mjs';
 import { createAccountDeletionHttpHandler } from './account-deletion-http.mjs';
 
-const PHASES = new Set(['LOCKED','AUTH_REVOKED','RECORDS_PURGED','PHOTOS_PURGED','AUTH_DELETED','VERIFIED']);
-const knownReceipt = phase => PHASES.has(phase) || phase === 'COMPLETE';
+const PHASE_ORDER = ['LOCKED','AUTH_REVOKED','RECORDS_PURGED','PHOTOS_PURGED','AUTH_DELETED','VERIFIED','COMPLETE'];
+const PHASES = new Set(PHASE_ORDER.slice(0,-1));
+const knownReceipt = phase => PHASE_ORDER.includes(phase);
 const jobKey = v => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
 
 /**
@@ -34,7 +35,8 @@ export function createDeletionBatchRunner({service, readPage, now = Date.now} = 
       attempted++;
       try {
         const result = await service.advanceTrusted({uid:entry.uid,jobId:entry.jobId});
-        if (result?.jobId !== entry.jobId || !knownReceipt(result?.phase)) throw new DeletionDenied();
+        if (result?.jobId !== entry.jobId || !knownReceipt(result?.phase) ||
+            PHASE_ORDER.indexOf(result.phase) < PHASE_ORDER.indexOf(entry.phase)) throw new DeletionDenied();
         if (result.pendingVerification === true || result.phase === entry.phase) pending++;
         else progressed++;
       } catch (_) { retry++; }
@@ -55,7 +57,7 @@ export async function prepareDeletionRuntime({app,readiness,retentionAudit,admit
   if (readiness?.httpAdmissionVerified !== true || readiness?.schedulerVerified !== true ||
       readiness?.sdkCachePolicyVerified !== true || typeof admit !== 'function') throw new DeletionDenied();
   const service=await createFirebaseDeletionService({app,readiness,retentionAudit,now});
-  const [{getFirestore},{FieldPath}]=await Promise.all([import('firebase-admin/firestore'),import('firebase-admin/firestore')]);
+  const {getFirestore,FieldPath}=await import('firebase-admin/firestore');
   const db=getFirestore(app);
   const readPage=async ({after,limit})=>{
     let query=db.collection('accountDeletionJobs').where('phase','in',[...PHASES])
