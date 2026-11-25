@@ -108,9 +108,13 @@ internal fun FirebaseDevSyncStatusSection(account: LocalAccountScope.SignedIn) {
         PetPrimaryButton("동기화 다시 시도", enabled = authorized && !applying,
             onClick = {
                 val current = lease
-                feedback = if (current != null && FirebaseDevSyncWork.enqueue(app, current))
-                    "동기화 작업을 요청했습니다. 전송 결과는 이후 상태에서 확인해 주세요."
-                else "검증된 동기화 세션이 필요합니다."
+                feedback = try {
+                    if (current != null && FirebaseDevSyncWork.enqueue(app, current))
+                        "동기화 작업을 요청했습니다. 전송 결과는 이후 상태에서 확인해 주세요."
+                    else "검증된 동기화 세션이 필요합니다."
+                } catch (_: Exception) {
+                    "동기화 작업을 요청하지 못했습니다. 상태를 확인한 후 다시 시도해 주세요."
+                }
             }, modifier = Modifier.fillMaxWidth())
         feedback?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
     }
@@ -182,7 +186,7 @@ internal fun FirebaseDevSyncStatusSection(account: LocalAccountScope.SignedIn) {
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (_: Exception) {
-                            feedback = "서버 기록을 확인하지 못했습니다. 현재 기록을 변경하지 않았습니다."
+                            feedback = "서버 기록 적용 결과를 확인하지 못했습니다. 상태를 새로고침해 주세요."
                             selected = null
                         } finally {
                             applying = false

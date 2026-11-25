@@ -95,22 +95,35 @@ private fun displayValue(key: String, fields: Map<String, Any?>?): String {
         Instant.ofEpochMilli(value.toLong()).atZone(zone)
             .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss XXX"))
     }.getOrDefault("확인 필요")
-    return when (value) {
-        true -> "예"
-        false -> "아니요"
-        "CAT" -> "고양이"
-        "DOG" -> "강아지"
-        "FOOD" -> "식사"
-        "WATER" -> "음수"
-        "ELIMINATION" -> "배변"
-        "ACTIVITY" -> "활동"
-        "WEIGHT" -> "체중"
-        "FEMALE" -> "암컷"
-        "MALE" -> "수컷"
-        "UNKNOWN" -> "모름"
-        "YES" -> "완료"
-        "NO" -> "하지 않음"
-        else -> value.toString()
+    return when (key) {
+        "isArchived" -> if (value == true) "보관됨" else "활성"
+        "species" -> when (value) {
+            "CAT" -> "고양이"
+            "DOG" -> "강아지"
+            "OTHER" -> "기타"
+            else -> value.toString()
+        }
+        "type" -> when (value) {
+            "FOOD" -> "식사"
+            "WATER" -> "음수"
+            "ELIMINATION" -> "배변"
+            "ACTIVITY" -> "활동"
+            "WEIGHT" -> "체중"
+            else -> value.toString()
+        }
+        "sex" -> when (value) {
+            "FEMALE" -> "암컷"
+            "MALE" -> "수컷"
+            "UNKNOWN" -> "모름"
+            else -> value.toString()
+        }
+        "neuterStatus" -> when (value) {
+            "YES" -> "완료"
+            "NO" -> "하지 않음"
+            "UNKNOWN" -> "모름"
+            else -> value.toString()
+        }
+        else -> value.toString().ifEmpty { "빈 값" }
     }
 }
 

@@ -78,6 +78,12 @@ class SyncStatusReaderTest {
         val measurement = reviewComparison(item).single { it.label == "음수량 (mL)" }
         assertEquals("미입력", measurement.local)
         assertEquals("0", measurement.remote)
+        val freeText = reviewComparison(item.copy(
+            remoteJson = """{"note":"WATER","type":"WATER"}""",
+            localJson = """{"note":"CAT","type":"WATER"}""",
+        )).single { it.label == "메모" }
+        assertEquals("CAT", freeText.local)
+        assertEquals("WATER", freeText.remote)
         assertFalse(canOfferRemoteReview(item, false))
         assertTrue(canOfferRemoteReview(item, true))
         assertFalse(canOfferRemoteReview(item.copy(tombstone = true), true))
