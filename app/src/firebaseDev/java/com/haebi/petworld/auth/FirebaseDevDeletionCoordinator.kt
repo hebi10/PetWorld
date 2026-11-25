@@ -44,8 +44,11 @@ internal class FirebaseDevDeletionCoordinator(
     suspend fun refresh(account: LocalAccountScope.SignedIn): DeletionRecoveryResult = gate.withLock {
         if (!readiness.verifiedEndpoint || !readiness.secureStatusTicket || currentScope() != account)
             return@withLock DeletionRecoveryResult.NotReady
-        val result = recovery.refresh(account, verifiedEndpoint = true, expectedJobId =
-            gateway.currentAccount()?.uid?.let(::deletionJobId)) { currentScope() == account }
+        val uid = gateway.currentAccount()?.uid ?: return@withLock DeletionRecoveryResult.NotReady
+        if (LocalAccountScope.fromFirebaseUid(uid) != account) return@withLock DeletionRecoveryResult.NotReady
+        val result = recovery.refresh(account, verifiedEndpoint = true, expectedJobId = deletionJobId(uid)) {
+            gateway.currentAccount()?.uid == uid
+        }
         if (currentScope() != account) DeletionRecoveryResult.StateUnknown else result
     }
 }
