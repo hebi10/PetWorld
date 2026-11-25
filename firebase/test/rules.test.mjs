@@ -20,6 +20,7 @@ import {
 import {
   deleteObject,
   getBytes,
+  getMetadata,
   ref,
   uploadBytes,
 } from 'firebase/storage';
@@ -183,6 +184,32 @@ test('Storage: account owner can upload and download a valid JPEG', async () => 
     contentType: 'image/jpeg',
   }));
   await assertSucceeds(getBytes(file));
+});
+
+test('FB-06-B: private photo SHA-256 metadata survives readback and cannot be overwritten', async () => {
+  const alice = env.authenticatedContext('alice').storage(bucket);
+  const bob = env.authenticatedContext('bob').storage(bucket);
+  const path = pathFor('alice', 'pet-fb06-b');
+  const photo = ref(alice, path);
+  const bytes = new Uint8Array([0xff, 0xd8, 0x11, 0xff, 0xd9]);
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+
+  await assertSucceeds(uploadBytes(photo, bytes, {
+    contentType: 'image/jpeg',
+    customMetadata: { sha256 },
+  }));
+  const metadata = await assertSucceeds(getMetadata(photo));
+  deepStrictEqual(metadata.size, bytes.byteLength);
+  deepStrictEqual(metadata.contentType, 'image/jpeg');
+  deepStrictEqual(metadata.customMetadata.sha256, sha256);
+  const downloaded = await assertSucceeds(getBytes(photo));
+  deepStrictEqual(createHash('sha256').update(Buffer.from(downloaded)).digest('hex'), sha256);
+
+  await assertFails(getMetadata(ref(bob, path)));
+  await assertFails(uploadBytes(photo, bytes, {
+    contentType: 'image/jpeg',
+    customMetadata: { sha256: '0'.repeat(64) },
+  }));
 });
 
 test('Storage: guest and different UID cannot access a private image', async () => {

@@ -16,6 +16,7 @@ internal class SyncBaselinePreparer(
     private val account: LocalAccountScope.SignedIn,
     private val source: SyncDocumentSource,
     private val permission: SyncPermission = SyncPermission { false },
+    private val photos: SyncPhotoTransfer? = null,
 ) {
     private val outbox = db.syncOutboxDao()
     private val inbox = db.syncInboundDao()
@@ -39,7 +40,7 @@ internal class SyncBaselinePreparer(
             validateRemoteDocument(it)
         }
         val revision = remote?.revision ?: -1L
-        val command = try { SyncCommands.from(row.copy(expectedRevision = revision)) }
+        val command = try { SyncCommands.forBaseline(row.copy(expectedRevision = revision)) }
             catch (_: IllegalArgumentException) { null }
             catch (_: IllegalStateException) { null }
         val exactMatch = command != null && ! (remote?.tombstone ?: false) &&
@@ -70,10 +71,21 @@ internal class SyncBaselinePreparer(
                             remote.fields - setOf("lastSyncOpId", "deletedAtMs"))
                 }
                 if (!verified) return@withTransaction SyncDispatch.WaitingBaseline
+                if (command?.changesPhoto == true) return@withTransaction SyncDispatch.WaitingPhoto
                 requirePermission()
                 check(outbox.readyAfterVerifiedBaseline(account.key, row.opId, revision) == 1)
                 requirePermission()
                 SyncDispatch.Acknowledged
+            }
+        }
+        if (canPromote == SyncDispatch.WaitingPhoto && row.operation != "DELETE") {
+            val fileName = command?.next?.get("photoFile") as? String
+            if (fileName != null) {
+                try {
+                    photos?.upload(row, fileName)
+                } catch (_: SyncPhotoRejected) {
+                    // Leave the existing record and its queued snapshot available for review.
+                }
             }
         }
         if (canPromote != SyncDispatch.Conflict) return canPromote

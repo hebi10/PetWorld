@@ -21,6 +21,7 @@ internal class SyncReceiver(
     private val database: PetWorldDatabase,
     private val account: LocalAccountScope.SignedIn,
     private val permission: SyncPermission = SyncPermission { false },
+    private val photos: SyncPhotoTransfer? = null,
 ) {
     private val inbox = database.syncInboundDao()
     private val outbox = database.syncOutboxDao()
@@ -43,6 +44,25 @@ internal class SyncReceiver(
         require(page.nextCursor == page.documents.lastOrNull()?.entityId)
         // Validate the entire page before mutating anything; invalid pages cannot be advanced.
         val decoded = page.documents.map(::validateRemoteDocument)
+        photos?.let { transfer ->
+            val prepared = mutableSetOf<SyncPhotoKey>()
+            for (remote in decoded) {
+                val name = remote.photoFile ?: continue
+                if (remote.tombstone || !validCloudPhotoName(name)) continue
+                val latest = inbox.latest(key, remote.kind, remote.petId, remote.entityId)
+                if (latest != null && (latest.revision > remote.revision ||
+                        latest.revision == remote.revision && latest.payloadDigest != remote.digest)) continue
+                if (outbox.hasPending(key, remote.kind, remote.petId, remote.entityId)) continue
+                val photo = SyncPhotoKey(remote.petId, name)
+                if (prepared.add(photo)) {
+                    try {
+                        transfer.download(photo)
+                    } catch (_: SyncPhotoRejected) {
+                        // The reference remains pending. A transport failure instead retries the page.
+                    }
+                }
+            }
+        }
         return PetWorldMutationGate.mutex.withLock {
             requirePermission()
             database.withTransaction {

@@ -19,6 +19,7 @@ internal fun interface SyncPermission {
 internal sealed interface SyncDispatch {
     data object Idle : SyncDispatch
     data object WaitingBaseline : SyncDispatch
+    data object WaitingPhoto : SyncDispatch
     data object Paused : SyncDispatch
     data object Conflict : SyncDispatch
     data object Blocked : SyncDispatch
