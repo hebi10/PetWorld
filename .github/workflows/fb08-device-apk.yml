@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       confirmation:
-        description: 'Type FB08-DEVICE-APK-ONLY after reviewing development client artifact access and Firebase API restrictions; no Firebase writes or Play publishing'
+        description: 'Type FB08-DEVICE-APK-ONLY after reviewing encrypted artifact access and Firebase API restrictions; no Firebase writes or Play publishing'
         required: true
         type: string
 
@@ -76,6 +76,7 @@ jobs:
               '.github/workflows/fb08-device-apk.yml',
               '.github/workflows/fb08-device-apk-static-qa.yml',
               'scripts/fb08/qa_device_apk_workflow.py',
+              'scripts/fb08/qa_device_artifact_cipher.mjs',
               'docs/qa/FB-08-B_보호개발APK_검증경로.md',
           }
           if 'files' not in comparison or len(comparison['files']) > len(allowed_main_only):
@@ -135,12 +136,20 @@ jobs:
           print('No Play publishing or Firebase server modification will occur.')
           PY
 
-  public-config:
+  protected-config:
     needs: preflight
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: petworld-dev-signing
     steps:
+      - name: Checkout the reviewed main artifact helper
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: qa-trusted
+          sparse-checkout: scripts/fb08/qa_device_artifact_cipher.mjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Extract only public Firebase Android client fields from protected configuration
         env:
           FIREBASE_CONFIG_B64: ${{ secrets.PETWORLD_DEV_GOOGLE_SERVICES_JSON_BASE64 }}
@@ -198,18 +207,29 @@ jobs:
           path.chmod(0o600)
           print('Sanitized Android client configuration prepared; no values printed')
           PY
-      - name: Transfer public-only Android client config to unprivileged builder
+      - name: Encrypt the configuration before artifact upload
+        env:
+          QA_ARTIFACT_KEY: ${{ secrets.PETWORLD_FB08_TRANSIT_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          trap 'rm -f -- public-config/google-services.json' EXIT
+          node qa-trusted/scripts/fb08/qa_device_artifact_cipher.mjs encrypt firebase-config \
+            public-config/google-services.json public-config/google-services.json.encrypted
+      - name: Transfer encrypted Android client configuration
         uses: actions/upload-artifact@v4
         with:
-          name: petworld-fb08-public-config-${{ github.run_id }}-${{ github.run_attempt }}
-          path: public-config/google-services.json
+          name: petworld-fb08-encrypted-config-${{ github.run_id }}-${{ github.run_attempt }}
+          path: public-config/google-services.json.encrypted
           retention-days: 1
           if-no-files-found: error
 
   build:
-    needs: [preflight, public-config]
+    needs: [preflight, protected-config]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    # This environment holds only the disposable transit key. Never use the signing environment for candidate source.
+    environment: petworld-dev-qa-artifact-transfer
     permissions:
       contents: read
     env:
@@ -220,21 +240,35 @@ jobs:
         with:
           ref: ${{ needs.preflight.outputs.reviewed_sha }}
           persist-credentials: false
+      - name: Checkout the reviewed main artifact helper
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: qa-trusted
+          sparse-checkout: scripts/fb08/qa_device_artifact_cipher.mjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Confirm exact Git source
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$REVIEWED_SHA"
           echo "PR code executes only in this unprivileged build job."
-      - name: Download sanitized public Firebase Android config
+      - name: Download encrypted Android client configuration
         uses: actions/download-artifact@v4
         with:
-          name: petworld-fb08-public-config-${{ github.run_id }}-${{ github.run_attempt }}
+          name: petworld-fb08-encrypted-config-${{ github.run_id }}-${{ github.run_attempt }}
           path: public-config
-      - name: Validate public-only config and install it in development variant
+      - name: Decrypt and validate configuration for the development variant
+        env:
+          QA_ARTIFACT_KEY: ${{ secrets.PETWORLD_FB08_TRANSIT_KEY }}
         shell: bash
         run: |
           set -euo pipefail
+          trap 'rm -f -- public-config/google-services.json public-config/google-services.json.encrypted' EXIT
+          node qa-trusted/scripts/fb08/qa_device_artifact_cipher.mjs decrypt firebase-config \
+            public-config/google-services.json.encrypted public-config/google-services.json
+          unset QA_ARTIFACT_KEY
           python3 - <<'PY'
           import json
           from pathlib import Path
@@ -248,7 +282,6 @@ jobs:
           destination.parent.mkdir(parents=True, exist_ok=True)
           destination.write_text(json.dumps(value), encoding='utf-8')
           PY
-          rm -rf public-config
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -299,16 +332,27 @@ jobs:
           Path('qa-build/provenance.json').write_text(json.dumps(info, indent=2), encoding='utf-8')
           print('Development APK build verified at source: ' + info['source_sha'])
           PY
-      - name: Hand immutable APK bytes to trusted signer, not signing keys to PR
+      - name: Encrypt the unsigned APK for the isolated signer
+        env:
+          QA_ARTIFACT_KEY: ${{ secrets.PETWORLD_FB08_TRANSIT_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          trap 'rm -f -- qa-build/input.apk' EXIT
+          node qa-trusted/scripts/fb08/qa_device_artifact_cipher.mjs encrypt unsigned-apk \
+            qa-build/input.apk qa-build/input.apk.encrypted
+      - name: Hand encrypted APK and provenance to the trusted signer
         uses: actions/upload-artifact@v4
         with:
-          name: petworld-fb08-build-${{ github.run_id }}-${{ github.run_attempt }}
-          path: qa-build/
+          name: petworld-fb08-encrypted-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            qa-build/input.apk.encrypted
+            qa-build/provenance.json
           retention-days: 3
           if-no-files-found: error
 
   sign:
-    needs: [preflight, public-config, build]
+    needs: [preflight, build]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: petworld-dev-signing
@@ -318,11 +362,33 @@ jobs:
     env:
       REVIEWED_SHA: ${{ needs.preflight.outputs.reviewed_sha }}
     steps:
-      - name: Download built APK only; never checkout or execute PR code in signer
+      - name: Checkout only the reviewed main artifact helper
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: qa-trusted
+          sparse-checkout: scripts/fb08/qa_device_artifact_cipher.mjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Download encrypted build for the isolated signer
         uses: actions/download-artifact@v4
         with:
-          name: petworld-fb08-build-${{ github.run_id }}-${{ github.run_attempt }}
+          name: petworld-fb08-encrypted-build-${{ github.run_id }}-${{ github.run_attempt }}
           path: qa-build
+      - name: Verify key separation and decrypt the unsigned APK
+        env:
+          QA_ARTIFACT_KEY: ${{ secrets.PETWORLD_FB08_TRANSIT_KEY }}
+          HANDOFF_KEY: ${{ secrets.PETWORLD_FB08_HANDOFF_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$HANDOFF_KEY" =~ ^[0-9a-f]{64}$ || "$HANDOFF_KEY" == "$QA_ARTIFACT_KEY" ]]; then
+            echo 'A separate disposable signing handoff key is required.' >&2
+            exit 1
+          fi
+          unset HANDOFF_KEY
+          node qa-trusted/scripts/fb08/qa_device_artifact_cipher.mjs decrypt unsigned-apk \
+            qa-build/input.apk.encrypted qa-build/input.apk
       - name: Verify immutable build evidence, current PR and current trusted main
         env:
           GH_TOKEN: ${{ github.token }}
@@ -458,14 +524,25 @@ jobs:
               summary.write('Certificate SHA-256: ' + expected + '\n\n')
               summary.write('No Play upload, Firebase write, or live Google login was performed.\n')
           PY
+      - name: Encrypt the signed APK with the independent tester handoff key
+        env:
+          QA_ARTIFACT_KEY: ${{ secrets.PETWORLD_FB08_HANDOFF_KEY }}
+        shell: bash
+        run: |
+          node qa-trusted/scripts/fb08/qa_device_artifact_cipher.mjs encrypt signed-apk \
+            qa-signed/PetWorld-fb08-device-qa.apk qa-signed/PetWorld-fb08-device-qa.apk.encrypted
       - name: Remove private signer and inspection data on every outcome
         if: always()
         shell: bash
-        run: rm -f "$RUNNER_TEMP/petworld-fb08-dev.jks" "$RUNNER_TEMP/key-cert.der" "$RUNNER_TEMP/apk-cert.txt"
-      - name: Publish installable QA APK and sanitized provenance only
+        run: |
+          rm -f -- "$RUNNER_TEMP/petworld-fb08-dev.jks" "$RUNNER_TEMP/key-cert.der" "$RUNNER_TEMP/apk-cert.txt" \
+            qa-build/input.apk qa-signed/PetWorld-fb08-device-qa.apk
+      - name: Publish encrypted QA APK and sanitized provenance only
         uses: actions/upload-artifact@v4
         with:
-          name: petworld-fb08-signed-device-qa-${{ github.run_id }}-${{ github.run_attempt }}
-          path: qa-signed/
-          retention-days: 7
+          name: petworld-fb08-encrypted-device-qa-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            qa-signed/PetWorld-fb08-device-qa.apk.encrypted
+            qa-signed/verification.json
+          retention-days: 3
           if-no-files-found: error
