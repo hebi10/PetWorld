@@ -57,6 +57,33 @@ class Ops04SafetyTests(unittest.TestCase):
                     internal.guard()
                 api.assert_not_called()
 
+    def test_current_actions_run_id_keeps_exact_provenance_checks(self):
+        data = self.environment(mode="check")
+        run_id = "45734600513"
+        workflow = ".github/workflows/play-internal.yml"
+        data.update(BUILD_RUN_ID=run_id, BUILD_WORKFLOW_FILE=workflow)
+        results = [
+            {"object": {"sha": data["GITHUB_SHA"]}},
+            {"id": int(run_id), "head_sha": data["GITHUB_SHA"], "head_branch": "main",
+             "event": "workflow_dispatch", "status": "completed", "conclusion": "success",
+             "repository": {"full_name": data["GITHUB_REPOSITORY"]}, "path": workflow},
+            {"total_count": 1, "artifacts": [{"name": data["ARTIFACT_NAME"],
+                                              "expired": False, "size_in_bytes": 12}]},
+        ]
+        with patch.dict(os.environ, data, clear=True), patch.object(internal, "github", side_effect=results) as api:
+            internal.guard()
+            self.assertTrue(api.call_args_list[1].args[0].endswith("/actions/runs/" + run_id))
+
+    def test_invalid_run_id_rejected_before_network(self):
+        for run_id in ("0", "01", "7/../../", "9223372036854775808"):
+            data = self.environment(mode="check")
+            data["BUILD_RUN_ID"] = run_id
+            with self.subTest(run_id=run_id), patch.dict(os.environ, data, clear=True):
+                with patch.object(internal, "github") as api:
+                    with self.assertRaisesRegex(internal.GateError, "Invalid source run ID"):
+                        internal.guard()
+                    api.assert_not_called()
+
     def test_missing_bundle_fails_closed(self):
         with tempfile.TemporaryDirectory() as folder:
             with patch.object(internal, "BUNDLE_PATH", Path(folder)):
