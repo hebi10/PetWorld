@@ -10,10 +10,13 @@ adb pull /sdcard/Android/data/com.haebi.petworld/files/record-list-qa qa/record-
 for mode in light dark; do
     count=$(find "qa/record-list/screenshots/$mode" -maxdepth 1 -type f -name '*.png' 2>/dev/null | wc -l)
     echo "$mode record list PNG: $count"
-    if [ "$count" -ne 5 ]; then
-        echo "Expected 5 record-list states in $mode"
+    if [ "$count" -ne 7 ]; then
+        echo "Expected 7 record-list/detail states in $mode"
         exit 1
     fi
+    for state in S11-record-list S13-range-picker S13-type-picker S11-water-filtered S11-filter-reset S12-record-detail S33-record-delete-dialog; do
+        test -s "qa/record-list/screenshots/$mode/$state.png" || { echo "Missing $mode/$state.png"; exit 1; }
+    done
 done
 grep -q '^OK (1 test)' qa/record-list/instrumentation.log || exit 1
 exit "$status"
