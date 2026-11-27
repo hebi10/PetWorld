@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,6 +25,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -104,9 +106,11 @@ internal fun filterCareRecords(
     (selectedType == null || it.type == selectedType.name) && selectedRange.accepts(it, today)
 }
 
+internal fun CareEntity.displayRecordZone(): ZoneId =
+    runCatching { ZoneId.of(timezoneId) }.getOrDefault(ZoneId.systemDefault())
+
 internal fun CareEntity.displayRecordTime(instantMillis: Long): String {
-    val zone = runCatching { ZoneId.of(timezoneId) }.getOrDefault(ZoneId.systemDefault())
-    return Instant.ofEpochMilli(instantMillis).atZone(zone)
+    return Instant.ofEpochMilli(instantMillis).atZone(displayRecordZone())
         .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.KOREAN))
 }
 
@@ -430,14 +434,25 @@ fun CareRecordDetail(
     var deleting by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    Text("${CareType.valueOf(record.type).label} 기록", style = MaterialTheme.typography.headlineMedium)
+    val type = CareType.valueOf(record.type)
+    Text("${type.label} 기록", style = MaterialTheme.typography.headlineMedium)
     PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            record.displayValue(),
+            style = if (type == CareType.FOOD) MaterialTheme.typography.titleLarge
+                else MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
         Text(
             "발생 시각 · ${record.displayDateTime()}",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Text(record.displayValue(), style = MaterialTheme.typography.titleLarge)
+        Text(
+            "시간대 · ${record.displayRecordZone().id}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         if (record.photoFile != null) {
             Text("관찰 사진", style = MaterialTheme.typography.labelLarge)
             PetAvatar(photoStore, "관찰 사진", record.photoFile, size = 112.dp)
@@ -479,10 +494,23 @@ fun CareRecordDetail(
         AlertDialog(
             onDismissRequest = { if (!deleting) confirmDelete = false },
             title = { Text("이 기록을 삭제할까요?") },
-            text = { Text("삭제한 기록은 복구할 수 없으며, 홈 집계에서도 제외됩니다.") },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(PetSpacing.small),
+                ) {
+                    Text("삭제 대상 · ${type.label} 기록", style = MaterialTheme.typography.titleMedium)
+                    Text("기록 값 · ${record.displayValue()}")
+                    Text("발생 시각 · ${record.displayDateTime()}")
+                    Text("시간대 · ${record.displayRecordZone().id}", style = MaterialTheme.typography.bodyMedium)
+                    HorizontalDivider()
+                    Text("삭제한 기록은 복구할 수 없으며, 홈 집계에서도 제외됩니다.")
+                }
+            },
             confirmButton = {
                 TextButton(
                     enabled = !deleting,
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
                     onClick = {
                         deleting = true
                         scope.launch {

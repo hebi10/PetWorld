@@ -67,10 +67,28 @@ class PetWorldRecordListCaptureTest {
                     tap("전체 유형")
                     seen("기록 6건")
                     capture(folder, "S11-filter-reset")
+
+                    tap("120mL")
+                    seen("음수 기록")
+                    seen("발생 시각")
+                    seen("시간대 · ${ZoneId.systemDefault().id}")
+                    capture(folder, "S12-record-detail")
+                    tap("기록 삭제")
+                    seen("이 기록을 삭제할까요?")
+                    seen("삭제 대상 · 음수 기록")
+                    seen("기록 값 · 120mL")
+                    seen("삭제한 기록은 복구할 수 없으며")
+                    capture(folder, "S33-record-delete-dialog")
+                    tap("취소")
+                    seen("120mL")
+                    tap("목록으로")
+                    seen("기록 6건")
                 }
                 assertTrue(File(folder, "S11-record-list.png").isFile)
                 assertTrue(File(folder, "S13-range-picker.png").isFile)
                 assertTrue(File(folder, "S13-type-picker.png").isFile)
+                assertTrue(File(folder, "S12-record-detail.png").isFile)
+                assertTrue(File(folder, "S33-record-delete-dialog.png").isFile)
             }
         } finally {
             runBlocking {
