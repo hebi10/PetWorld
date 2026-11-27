@@ -76,6 +76,7 @@ class PetWorldScreenCaptureTest {
                 check(!device.hasObject(By.text("이름을 입력해 주세요."))) {
                     "입력 이전에 필수값 오류 문구가 나타났습니다."
                 }
+                mustSee("등록 완료")
                 shot(folder, "S02-profile-create")
                 tap("등록 완료")
                 mustSee("이름을 입력해 주세요.")
@@ -102,8 +103,12 @@ class PetWorldScreenCaptureTest {
                 }
                 openPetSwitcher(folder, "S03-home")
                 mustSee("반려동물 선택")
+                mustSee("닫기")
                 shot(folder, "S04-pet-switcher")
-                device.pressBack()
+                tap("닫기")
+                check(device.wait(Until.gone(By.text("반려동물 선택")), 10_000)) {
+                    "반려동물 선택 시트가 닫히지 않았습니다."
+                }
 
                 tap("빠른 기록 추가")
                 mustSee("나비의 기록 추가")
@@ -219,6 +224,7 @@ class PetWorldScreenCaptureTest {
                 tap("홈")
                 tap("수정")
                 mustSee("프로필 수정")
+                mustSee("변경 사항 저장")
                 shot(folder, "S02-profile-edit")
                 tap("닫기")
                 openPetSwitcher(folder, "S02-profile-edit")
