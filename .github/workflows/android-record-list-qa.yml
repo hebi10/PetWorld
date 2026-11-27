@@ -40,7 +40,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref || github.ref_name }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact source and record provenance
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          mkdir -p qa/record-list/provenance
+          printf '%s\n' "$EXPECTED_SHA" > qa/record-list/provenance/source-sha.txt
       - name: Set up Java
         uses: actions/setup-java@v4
         with:

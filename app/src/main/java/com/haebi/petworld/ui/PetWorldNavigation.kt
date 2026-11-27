@@ -211,7 +211,8 @@ fun PetWorldApp(
 
     val showTabs = ready && current != null && !showEditor && !showManager &&
         careEditorType == null && (careDetailId == null || (expandedUi && tab == PrimaryTab.RECORDS))
-    val hasPageHeader = ready && (showEditor || showManager || careEditorType != null)
+    val hasPageHeader = ready && (showEditor || showManager || careEditorType != null ||
+        (careDetailId != null && !(expandedUi && tab == PrimaryTab.RECORDS)))
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
