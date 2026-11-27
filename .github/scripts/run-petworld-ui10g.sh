@@ -45,13 +45,25 @@ status=0
 run_instrumentation "record-list" "${PACKAGE}.PetWorldRecordListCaptureTest" 1 || status=1
 adb pull "/sdcard/Android/data/${PACKAGE}/files/record-list-qa" "$OUTPUT/record-list-captures" || status=1
 
+expected_record_screens=(
+  S11-record-list S13-range-picker S13-type-picker S11-water-filtered
+  S11-filter-reset S12-record-detail S12-record-edit S33-record-delete-dialog
+)
+shopt -s nullglob
 for mode in light dark; do
-  png_count=$(find "$OUTPUT/record-list-captures/$mode" -maxdepth 1 -name '*.png' -type f 2>/dev/null | wc -l | tr -d ' ')
-  echo "$mode record-list PNG count: $png_count"
-  if [ "$png_count" -ne 5 ]; then
-    echo "Expected five record-list screenshots in $mode on API $API_LEVEL" >&2
+  capture_dir="$OUTPUT/record-list-captures/$mode"
+  captures=("$capture_dir"/*.png)
+  echo "$mode record-list PNG count: ${#captures[@]}"
+  if [ "${#captures[@]}" -ne "${#expected_record_screens[@]}" ]; then
+    echo "Expected ${#expected_record_screens[@]} record-list screenshots in $mode on API $API_LEVEL" >&2
     status=1
   fi
+  for screen in "${expected_record_screens[@]}"; do
+    if [ ! -s "$capture_dir/$screen.png" ]; then
+      echo "Missing or empty record-list screenshot in $mode on API $API_LEVEL: $screen.png" >&2
+      status=1
+    fi
+  done
 done
 
 run_instrumentation "backup-restore" "${PACKAGE}.BackupRestoreDeviceTest" 3 || status=1

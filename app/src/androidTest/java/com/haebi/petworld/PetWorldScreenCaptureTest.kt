@@ -2,6 +2,7 @@ package com.haebi.petworld
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Rect
 import androidx.room.Room
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -161,29 +162,33 @@ class PetWorldScreenCaptureTest {
                 mustSee("기록 6건")
                 val row = device.wait(Until.findObject(By.text("120mL")), 3000)
                 checkNotNull(row) { "음수 기록 카드를 찾지 못했습니다." }.click()
-                ensureVisible("기록 삭제")
-                scrollToTop()
+                mustSee("음수 기록")
+                val detailScrollArea = checkNotNull(device.findObject(
+                    By.scrollable(true).hasDescendant(By.text("음수 기록")),
+                )) { "음수 기록 상세 스크롤 영역을 찾지 못했습니다." }.visibleBounds
+                ensureVisible("기록 삭제", detailScrollArea)
+                scrollToTop(scrollArea = detailScrollArea)
                 mustSee("발생 시각")
-                ensureVisible("시간대")
-                scrollToTop()
+                ensureVisible("시간대", detailScrollArea)
+                scrollToTop(scrollArea = detailScrollArea)
                 shot(folder, "S12-record-detail")
                 assertExpandedPaneOrder("나비의 생활 기록", "음수 기록", folder, "UI10D-record-detail-wide")
-                ensureVisible("작성 시각")
-                ensureVisible("수정 내역 없음")
+                ensureVisible("작성 시각", detailScrollArea)
+                ensureVisible("수정 내역 없음", detailScrollArea)
                 shot(folder, "UI10E-record-detail-metadata")
-                scrollToTop()
-                tap("수정")
+                scrollToTop(scrollArea = detailScrollArea)
+                tap("수정", detailScrollArea)
                 shot(folder, "S12-record-edit")
                 assertCareFormMaxWidth(folder, "S12-record-edit", "음수", edit = true)
                 tap("닫기")
-                tap("기록 삭제")
+                tap("기록 삭제", detailScrollArea)
                 mustSee("이 기록을 삭제할까요?")
                 mustSee("삭제 대상 · 음수 기록")
                 mustSee("기록 값")
                 mustSee("120mL")
                 shot(folder, "S33-record-delete-dialog")
                 tap("취소")
-                tap("목록으로")
+                tap("목록으로", detailScrollArea)
 
                 tap("건강")
                 mustSee("나비의 체중·건강")
@@ -361,24 +366,15 @@ class PetWorldScreenCaptureTest {
         mustSee("나비의 생활 기록")
     }
 
-    private fun ensureVisible(text: String): Boolean {
+    private fun ensureVisible(text: String, scrollArea: Rect? = null): Boolean {
         dismissSystemAnr()
         if (device.wait(Until.findObject(By.textContains(text)), 700) != null) {
             return false
         }
-        val middle = device.displayWidth / 2
-        val high = device.displayHeight * 3 / 4
-        val low = device.displayHeight / 4
         for (scrollDown in listOf(true, false)) {
             repeat(14) {
                 dismissSystemAnr()
-                device.swipe(
-                    middle,
-                    if (scrollDown) high else low,
-                    middle,
-                    if (scrollDown) low else high,
-                    22,
-                )
+                swipeContent(scrollDown, scrollArea, steps = 22)
                 device.waitForIdle()
                 if (device.wait(Until.findObject(By.textContains(text)), 700) != null) {
                     return true
@@ -392,16 +388,23 @@ class PetWorldScreenCaptureTest {
         throw IllegalStateException("스크롤 후에도 화면 텍스트가 없습니다: $text (diagnostics/$id)")
     }
 
-    private fun scrollToTop(scenario: ActivityScenario<MainActivity>? = null) {
-        val middle = if (scenario == null) device.displayWidth / 2 else careScrollX()
-        val high = device.displayHeight * 3 / 4
-        val low = device.displayHeight / 4
+    private fun scrollToTop(scenario: ActivityScenario<MainActivity>? = null, scrollArea: Rect? = null) {
         repeat(8) {
             scenario?.let(::hideImeForCapture)
-            device.swipe(middle, low, middle, high, 16)
+            swipeContent(false, scrollArea, steps = 16, x = scenario?.let { careScrollX() })
             device.waitForIdle()
         }
         scenario?.let(::hideImeForCapture)
+    }
+
+    private fun swipeContent(scrollDown: Boolean, area: Rect?, steps: Int, x: Int? = null) {
+        val middle = x ?: area?.centerX() ?: device.displayWidth / 2
+        val top = area?.top ?: 0
+        val height = area?.height() ?: device.displayHeight
+        val upper = top + height / 4
+        val lower = top + height * 3 / 4
+        device.swipe(middle, if (scrollDown) lower else upper, middle,
+            if (scrollDown) upper else lower, steps)
     }
 
     private fun assertCareFormMaxWidth(
@@ -652,7 +655,7 @@ class PetWorldScreenCaptureTest {
         throw IllegalStateException("화면 텍스트가 없습니다: $text (diagnostics/$id)")
     }
 
-    private fun tap(text: String) {
+    private fun tap(text: String, scrollArea: Rect? = null) {
         var lastError: StaleObjectException? = null
         for (attempt in 0 until 12) {
             dismissSystemAnr()
@@ -668,14 +671,7 @@ class PetWorldScreenCaptureTest {
                     Thread.sleep(200)
                 }
             }
-            val middle = device.displayWidth / 2
-            val high = device.displayHeight * 3 / 4
-            val low = device.displayHeight / 4
-            if (attempt < 6) {
-                device.swipe(middle, high, middle, low, 16)
-            } else {
-                device.swipe(middle, low, middle, high, 16)
-            }
+            swipeContent(attempt < 6, scrollArea, steps = 16)
         }
         throw IllegalStateException("버튼/항목을 찾지 못했습니다: $text", lastError)
     }
