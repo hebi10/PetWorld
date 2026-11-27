@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,7 +21,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -58,6 +56,7 @@ import com.haebi.petworld.data.WeightUnit
 import com.haebi.petworld.data.room.CareEntity
 import com.haebi.petworld.data.toDraft
 import com.haebi.petworld.ui.components.PetPrimaryButton
+import com.haebi.petworld.ui.components.PetFormOptions
 import com.haebi.petworld.ui.theme.PetSpacing
 import kotlinx.coroutines.launch
 import java.time.ZoneId
@@ -70,22 +69,7 @@ private fun <T> ChoiceRow(
     text: (T) -> String,
     onSelect: (T) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall)) {
-        Text(label, style = MaterialTheme.typography.labelLarge)
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
-            verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall),
-        ) {
-            options.forEach { option ->
-                FilterChip(
-                    selected = selected == option,
-                    onClick = { onSelect(option) },
-                    label = { Text(text(option), style = MaterialTheme.typography.bodyMedium) },
-                    shape = RectangleShape,
-                )
-            }
-        }
-    }
+    PetFormOptions(title = label, selected = selected, options = options, label = text, onSelect = onSelect)
 }
 
 @Composable
@@ -343,6 +327,13 @@ fun CareRecordEditor(
                                 label = "음수량 (mL) · 필수",
                                 supportingText = "직접 확인한 0mL는 미측정과 구분됩니다.",
                                 keyboardType = KeyboardType.Number,
+                                suffixText = "mL",
+                            )
+                        } else {
+                            Text(
+                                "측정하지 않은 음수량은 미측정으로 기록됩니다.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
@@ -354,6 +345,7 @@ fun CareRecordEditor(
                             onValueChange = { amount = it.take(3) },
                             label = "횟수 (회)",
                             keyboardType = KeyboardType.Number,
+                            suffixText = "회",
                         )
                         CareEliminationPhotoField(
                             photoStore = photoStore,
@@ -376,6 +368,7 @@ fun CareRecordEditor(
                             onValueChange = { amount = it.take(4) },
                             label = "지속시간 (분)",
                             keyboardType = KeyboardType.Number,
+                            suffixText = "분",
                         )
                     }
                     CareType.WEIGHT -> {
@@ -386,6 +379,7 @@ fun CareRecordEditor(
                             onValueChange = { amount = it.take(20) },
                             label = "체중 (${weightUnit.label})",
                             keyboardType = KeyboardType.Decimal,
+                            suffixText = weightUnit.label,
                         )
                     }
                 }

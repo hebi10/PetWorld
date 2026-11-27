@@ -8,17 +8,17 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -47,6 +47,7 @@ import com.haebi.petworld.data.PetSpecies
 import com.haebi.petworld.data.PetValidation
 import com.haebi.petworld.data.birthMode
 import com.haebi.petworld.ui.components.PetAvatar
+import com.haebi.petworld.ui.components.PetFormOptions
 import com.haebi.petworld.ui.components.PetPrimaryButton
 import com.haebi.petworld.ui.components.PetSecondaryButton
 import com.haebi.petworld.ui.components.PetSurfaceCard
@@ -74,6 +75,11 @@ fun PetWelcomeScreen(
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        PetPrimaryButton(
+            label = "반려동물 등록",
+            onClick = onStart,
+            modifier = Modifier.fillMaxWidth(),
+        )
         PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
             Text("먼저 반려동물을 등록해 주세요", style = MaterialTheme.typography.titleLarge)
             Text(
@@ -86,11 +92,6 @@ fun PetWelcomeScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        PetPrimaryButton(
-            label = "반려동물 등록",
-            onClick = onStart,
-            modifier = Modifier.fillMaxWidth(),
-        )
         if (archivedCount > 0) {
             PetSecondaryButton(
                 label = "보관한 프로필 보기 (${archivedCount})",
@@ -99,28 +100,6 @@ fun PetWelcomeScreen(
             )
         }
         PetBackupSection(restoring = restoring, onRestore = onRestore)
-    }
-}
-
-@Composable
-private fun <T> SelectOptions(
-    title: String,
-    options: List<T>,
-    selected: T,
-    label: (T) -> String,
-    onSelect: (T) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
-        Text(title, style = MaterialTheme.typography.labelLarge)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
-            options.forEach { option ->
-                FilterChip(
-                    selected = selected == option,
-                    onClick = { onSelect(option) },
-                    label = { Text(label(option)) },
-                )
-            }
-        }
     }
 }
 
@@ -199,157 +178,174 @@ fun PetProfileEditor(
     BackHandler { requestBack() }
 
     Column(
-        modifier = Modifier.fillMaxSize().imePadding()
-            .verticalScroll(formScrollState).padding(PetSpacing.large),
-        verticalArrangement = Arrangement.spacedBy(PetSpacing.large),
+        modifier = Modifier.fillMaxSize().imePadding(),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+        Column(
+            modifier = Modifier.weight(1f)
+                .widthIn(max = PetSpacing.careFormMaxWidth)
+                .fillMaxWidth()
+                .verticalScroll(formScrollState)
+                .padding(PetSpacing.large),
+            verticalArrangement = Arrangement.spacedBy(PetSpacing.medium),
         ) {
-            Text(
-                if (existing == null) "반려동물 등록" else "프로필 수정",
-                style = MaterialTheme.typography.headlineMedium,
-            )
-            TextButton(onClick = ::requestBack, enabled = !isSaving) { Text("닫기") }
-        }
-
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(PetSpacing.large)) {
-            PetAvatar(
-                photoStore = photoStore,
-                name = name.ifBlank { "반려동물" },
-                photoFile = existing?.photoFile.takeUnless { removePhoto },
-                previewUri = photoUri,
-                size = 84.dp,
-            )
-            Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
-                PetSecondaryButton(
-                    label = "사진 선택",
-                    enabled = !isSaving,
-                    onClick = {
-                        picker.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
-                    },
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    if (existing == null) "반려동물 등록" else "프로필 수정",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.headlineMedium,
                 )
-                if (photoUri != null || (existing?.photoFile != null && !removePhoto)) {
-                    TextButton(onClick = {
-                        photoUri = null
-                        removePhoto = true
-                    }, enabled = !isSaving) { Text("사진 제거") }
+                TextButton(onClick = ::requestBack, enabled = !isSaving) { Text("닫기") }
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(PetSpacing.large)) {
+                PetAvatar(
+                    photoStore = photoStore,
+                    name = name.ifBlank { "반려동물" },
+                    photoFile = existing?.photoFile.takeUnless { removePhoto },
+                    previewUri = photoUri,
+                    size = 64.dp,
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.small)) {
+                    PetSecondaryButton(
+                        label = "사진 선택",
+                        enabled = !isSaving,
+                        onClick = {
+                            picker.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        },
+                    )
+                    if (photoUri != null || (existing?.photoFile != null && !removePhoto)) {
+                        TextButton(onClick = {
+                            photoUri = null
+                            removePhoto = true
+                        }, enabled = !isSaving) { Text("사진 제거") }
+                    }
                 }
             }
-        }
 
-        OutlinedTextField(
-            value = name, onValueChange = { name = it.take(41) },
-            label = { Text("이름 (필수)") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth().onFocusChanged { focus ->
-                if (nameWasFocused && !focus.isFocused) nameWasBlurred = true
-                nameWasFocused = focus.isFocused
-            },
-            isError = nameError != null,
-            supportingText = if (nameError != null) {
-                { Text(nameError, color = MaterialTheme.colorScheme.error) }
-            } else null,
-            enabled = !isSaving,
-        )
-        SelectOptions(
-            title = "종류 (필수)", options = PetSpecies.entries,
-            selected = species, label = { it.label }, onSelect = { species = it },
-        )
-        OutlinedTextField(
-            value = breed, onValueChange = { breed = it.take(81) },
-            label = { Text("품종 (선택)") },
-            singleLine = true, enabled = !isSaving,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        SelectOptions(
-            title = "나이 정보", options = BirthMode.entries,
-            selected = birthMode, label = { it.label }, onSelect = { birthMode = it },
-        )
-        when (birthMode) {
-            BirthMode.EXACT -> {
-                PetSecondaryButton(
-                    label = if (birthday.isBlank()) "생일 선택" else "생일: $birthday",
-                    onClick = {
-                        val initial = runCatching { LocalDate.parse(birthday) }
-                            .getOrDefault(LocalDate.now())
-                        DatePickerDialog(
-                            context,
-                            { _, y, m, d ->
-                                birthday = LocalDate.of(y, m + 1, d)
-                                    .format(DateTimeFormatter.ISO_LOCAL_DATE)
-                            },
-                            initial.year, initial.monthValue - 1, initial.dayOfMonth,
-                        ).apply { datePicker.maxDate = System.currentTimeMillis() }.show()
-                    },
-                    enabled = !isSaving,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            BirthMode.ESTIMATED -> OutlinedTextField(
-                value = ageYears,
-                onValueChange = { ageYears = it.filter(Char::isDigit).take(3) },
-                label = { Text("추정 나이 (세)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            OutlinedTextField(
+                value = name, onValueChange = { name = it.take(41) },
+                label = { Text("이름 (필수)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().onFocusChanged { focus ->
+                    if (nameWasFocused && !focus.isFocused) nameWasBlurred = true
+                    nameWasFocused = focus.isFocused
+                },
+                isError = nameError != null,
+                supportingText = if (nameError != null) {
+                    { Text(nameError, color = MaterialTheme.colorScheme.error) }
+                } else null,
+                enabled = !isSaving,
+            )
+            PetFormOptions(
+                title = "종류 (필수)", options = PetSpecies.entries,
+                selected = species, label = { it.label }, enabled = !isSaving, onSelect = { species = it },
+            )
+            OutlinedTextField(
+                value = breed, onValueChange = { breed = it.take(81) },
+                label = { Text("품종 (선택)") },
                 singleLine = true, enabled = !isSaving,
                 modifier = Modifier.fillMaxWidth(),
             )
-            BirthMode.UNKNOWN -> Unit
-        }
-        SelectOptions(
-            title = "성별", options = PetSex.entries,
-            selected = sex, label = { it.label }, onSelect = { sex = it },
-        )
-        SelectOptions(
-            title = "중성화 여부", options = NeuterStatus.entries,
-            selected = neuter, label = { it.label }, onSelect = { neuter = it },
-        )
-        OutlinedTextField(
-            value = notes, onValueChange = { notes = it.take(2001) },
-            label = { Text("주의사항·메모 (선택)") },
-            minLines = 3, maxLines = 6,
-            enabled = !isSaving, modifier = Modifier.fillMaxWidth(),
-        )
-        if (error != null) {
-            Text(error.orEmpty(), style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.error)
-        }
-        PetPrimaryButton(
-            label = if (isSaving) "저장 중..." else if (existing == null) "등록 완료" else "변경 사항 저장",
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !isSaving,
-            onClick = {
-                attemptedSave = true
-                val validation = PetValidation.error(draft)
-                if (validation != null) {
-                    val invalidName = validation == PetValidation.nameError(name)
-                    error = validation.takeUnless { invalidName }
-                    if (invalidName) {
-                        scope.launch { formScrollState.scrollTo(0) }
-                    }
-                } else {
-                    error = null
-                    isSaving = true
-                    scope.launch {
-                        val result = onSave(draft)
-                        isSaving = false
-                        result.fold(
-                            onSuccess = { onSaved() },
-                            onFailure = { error = it.message ?: "프로필을 저장하지 못했습니다." },
-                        )
-                    }
+            PetFormOptions(
+                title = "나이 정보", options = BirthMode.entries,
+                selected = birthMode, label = { it.label }, enabled = !isSaving, onSelect = { birthMode = it },
+            )
+            when (birthMode) {
+                BirthMode.EXACT -> {
+                    PetSecondaryButton(
+                        label = if (birthday.isBlank()) "생일 선택" else "생일: $birthday",
+                        onClick = {
+                            val initial = runCatching { LocalDate.parse(birthday) }
+                                .getOrDefault(LocalDate.now())
+                            DatePickerDialog(
+                                context,
+                                { _, y, m, d ->
+                                    birthday = LocalDate.of(y, m + 1, d)
+                                        .format(DateTimeFormatter.ISO_LOCAL_DATE)
+                                },
+                                initial.year, initial.monthValue - 1, initial.dayOfMonth,
+                            ).apply { datePicker.maxDate = System.currentTimeMillis() }.show()
+                        },
+                        enabled = !isSaving,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
-            },
-        )
-        Text(
-            "프로필과 일상 기록은 기기에 저장됩니다. 알림 기능은 아직 제공되지 않습니다.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+                BirthMode.ESTIMATED -> OutlinedTextField(
+                    value = ageYears,
+                    onValueChange = { ageYears = it.filter(Char::isDigit).take(3) },
+                    label = { Text("추정 나이 (세)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true, enabled = !isSaving,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                BirthMode.UNKNOWN -> Unit
+            }
+            PetFormOptions(
+                title = "성별", options = PetSex.entries,
+                selected = sex, label = { it.label }, enabled = !isSaving, onSelect = { sex = it },
+            )
+            PetFormOptions(
+                title = "중성화 여부", options = NeuterStatus.entries,
+                selected = neuter, label = { it.label }, enabled = !isSaving, onSelect = { neuter = it },
+            )
+            OutlinedTextField(
+                value = notes, onValueChange = { notes = it.take(2001) },
+                label = { Text("주의사항·메모 (선택)") },
+                minLines = 3, maxLines = 6,
+                enabled = !isSaving, modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                "프로필과 일상 기록은 기기에 저장됩니다. 알림 기능은 아직 제공되지 않습니다.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Column(
+            modifier = Modifier.widthIn(max = PetSpacing.careFormMaxWidth)
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(horizontal = PetSpacing.large, vertical = PetSpacing.small),
+            verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall),
+        ) {
+            if (error != null) {
+                Text(error.orEmpty(), style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error)
+            }
+            PetPrimaryButton(
+                label = if (isSaving) "저장 중..." else if (existing == null) "등록 완료" else "변경 사항 저장",
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isSaving,
+                onClick = {
+                    attemptedSave = true
+                    val validation = PetValidation.error(draft)
+                    if (validation != null) {
+                        val invalidName = validation == PetValidation.nameError(name)
+                        error = validation.takeUnless { invalidName }
+                        if (invalidName) {
+                            scope.launch { formScrollState.scrollTo(0) }
+                        }
+                    } else {
+                        error = null
+                        isSaving = true
+                        scope.launch {
+                            val result = onSave(draft)
+                            isSaving = false
+                            result.fold(
+                                onSuccess = { onSaved() },
+                                onFailure = { error = it.message ?: "프로필을 저장하지 못했습니다." },
+                            )
+                        }
+                    }
+                },
+            )
+        }
     }
 
     if (confirmExit) {

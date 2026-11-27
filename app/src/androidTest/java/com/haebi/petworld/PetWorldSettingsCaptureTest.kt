@@ -48,6 +48,7 @@ class PetWorldSettingsCaptureTest {
                     seen("나비")
                     seen("초코")
                     seen("프로필 보관")
+                    seen("활성 프로필 (2)")
                     capture(folder, "S16-manager-compact")
 
                     tap("영구 삭제")

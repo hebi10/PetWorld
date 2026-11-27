@@ -188,23 +188,27 @@ fun PetWorldApp(
 
     val showTabs = ready && current != null && !showEditor && !showManager &&
         careEditorType == null && (careDetailId == null || (expandedUi && tab == PrimaryTab.RECORDS))
+    val hasPageHeader = ready && (showEditor || showManager || careEditorType != null ||
+        (careDetailId != null && !(expandedUi && tab == PrimaryTab.RECORDS)))
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             Column(modifier = Modifier.statusBarsPadding()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth()
-                        .padding(horizontal = PetSpacing.large, vertical = PetSpacing.small),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
-                ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.petworld_brand_mark),
-                        contentDescription = null,
-                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
-                        modifier = Modifier.size(width = 48.dp, height = 40.dp),
-                    )
-                    Text("PetWorld", style = MaterialTheme.typography.titleLarge)
+                if (!hasPageHeader) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .padding(horizontal = PetSpacing.large, vertical = PetSpacing.small),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.petworld_brand_mark),
+                            contentDescription = null,
+                            colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
+                            modifier = Modifier.size(width = 48.dp, height = 40.dp),
+                        )
+                        Text("PetWorld", style = MaterialTheme.typography.titleLarge)
+                    }
                 }
                 if (showTabs && current != null) {
                     Row(
@@ -225,7 +229,7 @@ fun PetWorldApp(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                if (!hasPageHeader) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
         },
         bottomBar = {

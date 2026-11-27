@@ -76,6 +76,7 @@ class PetWorldScreenCaptureTest {
                 check(!device.hasObject(By.text("이름을 입력해 주세요."))) {
                     "입력 이전에 필수값 오류 문구가 나타났습니다."
                 }
+                mustSee("등록 완료")
                 shot(folder, "S02-profile-create")
                 tap("등록 완료")
                 mustSee("이름을 입력해 주세요.")
@@ -102,8 +103,12 @@ class PetWorldScreenCaptureTest {
                 }
                 openPetSwitcher(folder, "S03-home")
                 mustSee("반려동물 선택")
+                mustSee("닫기")
                 shot(folder, "S04-pet-switcher")
-                device.pressBack()
+                tap("닫기")
+                check(device.wait(Until.gone(By.text("반려동물 선택")), 10_000)) {
+                    "반려동물 선택 시트가 닫히지 않았습니다."
+                }
 
                 tap("빠른 기록 추가")
                 mustSee("나비의 기록 추가")
@@ -127,9 +132,9 @@ class PetWorldScreenCaptureTest {
                     mustSee("닫기")
                     shot(folder, name)
                     assertCareFormMaxWidth(folder, name, label)
-                    if (label == "식사") assertFoodPortionLayout(folder)
-                    if (label == "배변") assertEliminationPhotoLayout(folder)
-                    assertCareDateTimeRow(folder, name)
+                    if (label == "식사") assertFoodPortionLayout(folder, it)
+                    if (label == "배변") assertEliminationPhotoLayout(folder, it)
+                    assertCareDateTimeRow(folder, name, it)
                     tap("닫기")
                     mustSee("빠른 기록 추가")
                 }
@@ -159,10 +164,12 @@ class PetWorldScreenCaptureTest {
                 ensureVisible("기록 삭제")
                 scrollToTop()
                 mustSee("발생 시각")
+                ensureVisible("시간대")
+                scrollToTop()
                 shot(folder, "S12-record-detail")
                 assertExpandedPaneOrder("나비의 생활 기록", "음수 기록", folder, "UI10D-record-detail-wide")
                 ensureVisible("작성 시각")
-                ensureVisible("수정 시각 · 수정 내역 없음")
+                ensureVisible("수정 내역 없음")
                 shot(folder, "UI10E-record-detail-metadata")
                 scrollToTop()
                 tap("수정")
@@ -171,6 +178,9 @@ class PetWorldScreenCaptureTest {
                 tap("닫기")
                 tap("기록 삭제")
                 mustSee("이 기록을 삭제할까요?")
+                mustSee("삭제 대상 · 음수 기록")
+                mustSee("기록 값")
+                mustSee("120mL")
                 shot(folder, "S33-record-delete-dialog")
                 tap("취소")
                 tap("목록으로")
@@ -211,6 +221,7 @@ class PetWorldScreenCaptureTest {
                 tap("홈")
                 tap("수정")
                 mustSee("프로필 수정")
+                mustSee("변경 사항 저장")
                 shot(folder, "S02-profile-edit")
                 tap("닫기")
                 openPetSwitcher(folder, "S02-profile-edit")
@@ -381,14 +392,16 @@ class PetWorldScreenCaptureTest {
         throw IllegalStateException("스크롤 후에도 화면 텍스트가 없습니다: $text (diagnostics/$id)")
     }
 
-    private fun scrollToTop() {
-        val middle = device.displayWidth / 2
+    private fun scrollToTop(scenario: ActivityScenario<MainActivity>? = null) {
+        val middle = if (scenario == null) device.displayWidth / 2 else careScrollX()
         val high = device.displayHeight * 3 / 4
         val low = device.displayHeight / 4
         repeat(8) {
+            scenario?.let(::hideImeForCapture)
             device.swipe(middle, low, middle, high, 16)
             device.waitForIdle()
         }
+        scenario?.let(::hideImeForCapture)
     }
 
     private fun assertCareFormMaxWidth(
@@ -451,7 +464,8 @@ class PetWorldScreenCaptureTest {
         shot(folder, "UI09-$screenId-form-width")
     }
 
-    private fun assertEliminationPhotoLayout(folder: File) {
+    private fun assertEliminationPhotoLayout(folder: File, scenario: ActivityScenario<MainActivity>) {
+        hideImeForCapture(scenario)
         ensureVisible("사진 선택")
         val preview = device.wait(Until.findObject(By.desc("관찰 사진 없음")), 2_000)
         val state = device.wait(Until.findObject(By.text("사진 없음")), 2_000)
@@ -472,19 +486,20 @@ class PetWorldScreenCaptureTest {
             "배변 사진 썸네일과 선택 버튼이 가로로 정렬되지 않았습니다."
         }
         shot(folder, "UI06D-elimination-photo")
-        scrollToTop()
+        scrollToTop(scenario)
     }
 
-    private fun assertFoodPortionLayout(folder: File) {
+    private fun assertFoodPortionLayout(folder: File, scenario: ActivityScenario<MainActivity>) {
         val servedSelector = By.textContains("제공량 (")
         val consumedSelector = By.textContains("섭취량 (")
-        val centerX = device.displayWidth / 2
+        val centerX = careScrollX()
         val high = device.displayHeight * 3 / 4
         val low = device.displayHeight / 4
         var bounds: Pair<android.graphics.Rect, android.graphics.Rect>? = null
 
         for (attempt in 0 until 12) {
             dismissSystemAnr()
+            hideImeForCapture(scenario)
             bounds = try {
                 val served = device.findObject(servedSelector)?.visibleBounds
                 val consumed = device.findObject(consumedSelector)?.visibleBounds
@@ -517,13 +532,36 @@ class PetWorldScreenCaptureTest {
             "식사 수치 필드의 반응형 배치가 올바르지 않습니다. stacked=$stackExpected"
         }
         shot(folder, "UI06C-food-portions")
-        scrollToTop()
+        scrollToTop(scenario)
     }
 
-    private fun assertCareDateTimeRow(folder: File, screenId: String) {
+    private fun careScrollX(): Int {
+        val density = context.resources.displayMetrics.density
+        val formWidth = minOf(device.displayWidth, (PetSpacing.careFormMaxWidth.value * density).toInt())
+        return (device.displayWidth - formWidth) / 2 + (8 * density).toInt()
+    }
+
+    private fun hideImeForCapture(scenario: ActivityScenario<MainActivity>) {
+        repeat(30) {
+            var visible = false
+            scenario.onActivity { activity ->
+                val root = activity.window.decorView
+                visible = ViewCompat.getRootWindowInsets(root)?.isVisible(WindowInsetsCompat.Type.ime()) == true
+                if (visible) {
+                    activity.currentFocus?.clearFocus()
+                    WindowCompat.getInsetsController(activity.window, root).hide(WindowInsetsCompat.Type.ime())
+                }
+            }
+            if (!visible) return
+            Thread.sleep(100)
+        }
+        error("화면 비교 전 키보드를 닫지 못했습니다.")
+    }
+
+    private fun assertCareDateTimeRow(folder: File, screenId: String, scenario: ActivityScenario<MainActivity>) {
         val dateSelector = By.descContains("관찰 날짜")
         val timeSelector = By.descContains("관찰 시간")
-        val middle = device.displayWidth / 2
+        val middle = careScrollX()
         val high = device.displayHeight * 3 / 4
         val low = device.displayHeight / 4
         val safeBottom = (device.displayHeight * 0.86f).toInt()
@@ -532,6 +570,7 @@ class PetWorldScreenCaptureTest {
 
         for (attempt in 0 until 12) {
             dismissSystemAnr()
+            hideImeForCapture(scenario)
             val bounds = try {
                 val date = device.findObject(dateSelector)?.visibleBounds
                 val time = device.findObject(timeSelector)?.visibleBounds
@@ -562,7 +601,7 @@ class PetWorldScreenCaptureTest {
             "$screenId: 날짜·시간 버튼이 가로로 정렬되고 화면 안에 완전히 표시되어야 합니다."
         }
         shot(folder, "UI06B-$screenId-observation")
-        scrollToTop()
+        scrollToTop(scenario)
     }
 
     private fun openPetSwitcher(folder: File, stage: String) {
