@@ -3,6 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+from urllib.error import HTTPError
 
 from internal_release_pipeline import CONFIG, MANUAL_NAME, Orchestrator, initial_settings
 
@@ -80,6 +81,71 @@ class InternalReleaseSafetyTests(unittest.TestCase):
                 pipe.api = lambda path, payload=None: {}
                 with self.assertRaisesRegex(RuntimeError, "no exact run ID"):
                     pipe.dispatch("emulator-smoke.yml", {"expected_main_sha": SHA})
+
+    def test_just_dispatched_run_can_become_visible_after_a_404(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.dict(os.environ, GITHUB_STEP_SUMMARY=str(Path(tmp) / "summary")):
+            pipe = Orchestrator(settings())
+            run_id = 45734600513
+            run = {
+                "id": run_id, "head_sha": SHA, "head_branch": "main",
+                "event": "workflow_dispatch", "repository": {"full_name": pipe.repo},
+                "path": ".github/workflows/emulator-smoke.yml",
+                "status": "completed", "conclusion": "success",
+            }
+            with patch.object(pipe, "api", side_effect=[None, run]) as api, \
+                    patch.object(pipe, "current_main") as current_main, \
+                    patch("internal_release_pipeline.time.sleep") as sleep:
+                self.assertEqual(pipe.wait("emulator-smoke.yml", run_id), run)
+                self.assertEqual(api.call_count, 2)
+                self.assertEqual(api.call_args.args[0], f"/repos/{pipe.repo}/actions/runs/{run_id}")
+                self.assertTrue(api.call_args.kwargs["allow_not_found"])
+                sleep.assert_called_once_with(5)
+                current_main.assert_called_once_with()
+
+    def test_run_visibility_404_is_fatal_after_metadata_was_seen(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.dict(os.environ, GITHUB_STEP_SUMMARY=str(Path(tmp) / "summary")):
+            pipe = Orchestrator(settings())
+            run_id = 45734600513
+            run = {
+                "id": run_id, "head_sha": SHA, "head_branch": "main",
+                "event": "workflow_dispatch", "repository": {"full_name": pipe.repo},
+                "path": ".github/workflows/emulator-smoke.yml", "status": "in_progress",
+            }
+            with patch.object(pipe, "api", side_effect=[run, RuntimeError("HTTP 404")]) as api, \
+                    patch("internal_release_pipeline.time.sleep"):
+                with self.assertRaisesRegex(RuntimeError, "HTTP 404"):
+                    pipe.wait("emulator-smoke.yml", run_id)
+                self.assertFalse(api.call_args.kwargs["allow_not_found"])
+
+    def test_wait_for_run_visibility_expires_after_one_minute(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.dict(os.environ, GITHUB_STEP_SUMMARY=str(Path(tmp) / "summary")):
+            pipe = Orchestrator(settings())
+            pipe.deadline = 1000
+            with patch.object(pipe, "api", side_effect=[None, RuntimeError("HTTP 404")]) as api, \
+                    patch("internal_release_pipeline.time.sleep"), \
+                    patch("internal_release_pipeline.time.monotonic", side_effect=[0, 0, 0, 61, 61]):
+                with self.assertRaisesRegex(RuntimeError, "HTTP 404"):
+                    pipe.wait("emulator-smoke.yml", 45734600513)
+                self.assertEqual(api.call_count, 2)
+                self.assertFalse(api.call_args.kwargs["allow_not_found"])
+
+    def test_optional_not_found_does_not_apply_to_mutations_or_other_errors(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.dict(os.environ, GITHUB_STEP_SUMMARY=str(Path(tmp) / "summary")):
+            pipe = Orchestrator(settings())
+            path = f"/repos/{pipe.repo}/actions/runs/45734600513"
+            with patch("internal_release_pipeline.urllib.request.urlopen",
+                       side_effect=HTTPError("", 404, "Not Found", {}, None)):
+                self.assertIsNone(pipe.api(path, allow_not_found=True))
+                with self.assertRaisesRegex(RuntimeError, "HTTP 404"):
+                    pipe.api(path, payload={}, allow_not_found=True)
+            with patch("internal_release_pipeline.urllib.request.urlopen",
+                       side_effect=HTTPError("", 403, "Forbidden", {}, None)):
+                with self.assertRaisesRegex(RuntimeError, "HTTP 403"):
+                    pipe.api(path, allow_not_found=True)
 
     def test_only_successful_qa_and_signed_aab_allow_publisher_dispatch(self):
         with tempfile.TemporaryDirectory() as tmp:
