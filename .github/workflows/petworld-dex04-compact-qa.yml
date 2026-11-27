@@ -1,0 +1,84 @@
+name: DEX-04 PetWorld folded and compact QA
+
+on:
+  push:
+    branches: [qa/petworld-dex04-compact-regression]
+
+permissions:
+  contents: read
+
+jobs:
+  device:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: Folded Pixel Fold, profile: pixel_fold}
+          - {name: Compact phone 360dp 160% font, profile: pixel_6}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 420637bc4dc7f957a6824d9a28827392347a5b62
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.5.0"
+      - name: Install Android SDK 37 and build the exact candidate
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "420637bc4dc7f957a6824d9a28827392347a5b62"
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -path '*/bin/sdkmanager' -type f | head -n 1)"
+          test -n "$SDK_MANAGER"
+          "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install 'platforms;android-37.0' 'build-tools;36.0.0'
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+      - name: Enable KVM
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Validate the Pixel Fold cover display
+        if: ${{ matrix.profile == 'pixel_fold' }}
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_fold
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: |
+            adb shell settings put system font_scale 1.0
+            adb emu fold
+            sleep 4
+            adb shell wm size | tee "$RUNNER_TEMP/petworld-folded-size.txt"
+            grep -q '1080x2092' "$RUNNER_TEMP/petworld-folded-size.txt"
+            bash -o pipefail -c 'sed "s/capture_state \"compact-360dp-font160\"/capture_state \"foldable-folded\"/" .github/scripts/capture-petworld-responsive.sh | bash -s -- compact'
+      - name: Validate the 360dp phone at 160% font scale
+        if: ${{ matrix.profile == 'pixel_6' }}
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: |
+            adb shell wm size 720x1600
+            adb shell wm density 320
+            adb shell settings put system font_scale 1.6
+            bash .github/scripts/capture-petworld-responsive.sh compact
+      - name: Preserve output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: petworld-dex04-compact-${{ matrix.profile }}
+          path: qa/responsive/
+          if-no-files-found: warn
+          retention-days: 7
