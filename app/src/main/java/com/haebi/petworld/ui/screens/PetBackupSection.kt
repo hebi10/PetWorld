@@ -6,11 +6,15 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -20,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
 import com.haebi.petworld.data.backup.PetWorldBackupExporter
 import com.haebi.petworld.ui.components.PetPrimaryButton
 import com.haebi.petworld.ui.components.PetSecondaryButton
@@ -132,13 +137,18 @@ fun PetBackupSection(
             },
             title = { Text("백업 암호 설정") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.medium)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(PetSpacing.medium),
+                ) {
                     Text("백업 복원에 사용할 암호를 입력하세요. 암호는 기기에 저장되지 않습니다.")
                     OutlinedTextField(
                         value = password,
                         onValueChange = { password = it },
                         visualTransformation = PasswordVisualTransformation(),
                         label = { Text("암호") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        supportingText = { Text("8자 이상 입력해 주세요.") },
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !busy,
                         singleLine = true,
@@ -148,6 +158,10 @@ fun PetBackupSection(
                         onValueChange = { confirmation = it },
                         visualTransformation = PasswordVisualTransformation(),
                         label = { Text("암호 확인") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        supportingText = {
+                            Text(if (confirmation.isNotEmpty() && password != confirmation) "암호가 일치하지 않습니다." else "암호와 확인 값이 일치해야 합니다.")
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !busy,
                         singleLine = true,
@@ -182,13 +196,17 @@ fun PetBackupSection(
             onDismissRequest = ::clearRestore,
             title = { Text("백업 암호 입력") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.medium)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(PetSpacing.medium),
+                ) {
                     Text("선택한 PetWorld 백업 파일의 암호를 입력해 주세요.")
                     OutlinedTextField(
                         value = restorePassword,
                         onValueChange = { restorePassword = it },
                         visualTransformation = PasswordVisualTransformation(),
                         label = { Text("백업 암호") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -211,13 +229,24 @@ fun PetBackupSection(
             onDismissRequest = { showRestoreConfirmation = false },
             title = { Text("기존 데이터를 교체할까요?") },
             text = {
-                Text(
-                    "현재 반려동물 프로필, 생활 기록, 사진 연결 및 화면 설정이 백업 데이터로 교체됩니다. " +
-                        "기존 기록은 앱에서 다시 볼 수 없게 될 수 있으므로 필요한 경우 먼저 백업해 주세요."
-                )
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(PetSpacing.medium),
+                ) {
+                    Text(
+                        "복원하면 현재 데이터가 백업 내용으로 교체됩니다.",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    Text("교체 범위", style = MaterialTheme.typography.titleSmall)
+                    Text("반려동물 프로필\n생활 기록\n사진 연결\n화면 설정")
+                    Text("기존 기록은 앱에서 다시 볼 수 없게 될 수 있으므로 필요한 경우 먼저 백업해 주세요.")
+                }
             },
             confirmButton = {
-                TextButton(onClick = {
+                TextButton(
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    onClick = {
                     val source = selectedRestoreFile ?: return@TextButton
                     val secret = restorePassword.toCharArray()
                     clearRestore()

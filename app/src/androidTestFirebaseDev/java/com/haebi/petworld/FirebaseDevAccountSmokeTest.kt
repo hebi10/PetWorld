@@ -164,6 +164,11 @@ class FirebaseDevAccountSmokeTest {
             assertVisible("계정", 30_000)
             assertVisible("계정 상태")
             assertVisible("로그인하지 않음")
+            val screenshotRoot = checkNotNull(instrumentation.targetContext.getExternalFilesDir(null))
+            val screenshotFolder = java.io.File(screenshotRoot, "audit-d-account").apply { mkdirs() }
+            device.waitForIdle()
+            assertTrue("비회원 계정 화면 캡처 실패", device.takeScreenshot(java.io.File(screenshotFolder, "D23-guest-account.png")))
+            device.dumpWindowHierarchy(java.io.File(screenshotFolder, "D23-guest-account.xml"))
             assertFalse("비회원에게 계정 삭제 진입 버튼이 표시되면 안 됩니다",
                 device.hasObject(By.pkg(appPackage).text("계정 삭제")))
 

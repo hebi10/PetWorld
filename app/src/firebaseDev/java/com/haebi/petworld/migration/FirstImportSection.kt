@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
@@ -24,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
 import com.haebi.petworld.data.migration.FirstImportBackupEvidence
 import com.google.firebase.auth.FirebaseAuth
 import com.haebi.petworld.ui.components.PetPrimaryButton
@@ -133,7 +135,13 @@ fun FirstImportSection(auth: FirebaseAuth) {
                     verticalArrangement = Arrangement.spacedBy(PetSpacing.medium),
                 ) {
                     Text("대상: 현재 로그인한 개발 Firebase 계정")
-                    Text("프로필 ${candidate.petCount}개 · 기록 ${candidate.recordCount}개 · 사진 참조 ${candidate.photoCount}개")
+                    PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
+                        Text("복사 대상", style = MaterialTheme.typography.titleSmall)
+                        Text("프로필 ${candidate.petCount}개 · 기록 ${candidate.recordCount}개",
+                            style = MaterialTheme.typography.titleMedium)
+                        Text("사진 참조 ${candidate.photoCount}개",
+                            style = MaterialTheme.typography.bodyMedium)
+                    }
                     Text(
                         "기존 비회원 기록은 그대로 유지합니다. 서버에 이미 있는 항목은 동일한 " +
                             "내용일 때만 건너뛰고, 다른 내용이면 중단합니다."
@@ -161,6 +169,7 @@ fun FirstImportSection(auth: FirebaseAuth) {
                             },
                             visualTransformation = PasswordVisualTransformation(),
                             label = { Text("백업 파일 암호") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                             singleLine = true,
                             enabled = !working,
                             modifier = Modifier.fillMaxWidth(),

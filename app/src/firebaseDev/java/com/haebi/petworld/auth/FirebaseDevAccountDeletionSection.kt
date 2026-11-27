@@ -56,6 +56,10 @@ internal fun FirebaseDevAccountDeletionSection(enabled: Boolean, accountLabel: S
             text = {
                 Column(modifier = Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(PetSpacing.medium)) {
+                    PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
+                        PetStatusLabel("실제 삭제 요청 비활성", PetStatus.WARNING)
+                        Text("안내 확인만 가능합니다.", style = MaterialTheme.typography.bodyMedium)
+                    }
                     Text("삭제 대상", style = MaterialTheme.typography.titleMedium)
                     accountLabel?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
                     Text("현재 연결된 Google 계정의 PetWorld 인증 정보, 클라우드 반려동물 프로필, 생활 기록, 사진 및 동기화 관련 자료입니다. Google 계정 자체는 삭제하지 않습니다.")
@@ -66,7 +70,6 @@ internal fun FirebaseDevAccountDeletionSection(enabled: Boolean, accountLabel: S
                     Text("처리 절차", style = MaterialTheme.typography.titleMedium)
                     Text("Google 재인증 → 요청 확인 → 클라우드 접근 차단 → 기록·사진·인증 삭제 → 잔존 데이터 검증")
                     Text("현재 상태", style = MaterialTheme.typography.titleMedium)
-                    PetStatusLabel("실제 삭제 요청 비활성", PetStatus.WARNING)
                     Text("삭제 서버, 보존 정책, 상태 추적 및 기기 캐시 정리 검증 전에는 삭제를 요청할 수 없습니다. 이 안내를 확인해도 계정이나 기록은 변경되지 않습니다.")
                     Row(modifier = Modifier.fillMaxWidth().heightIn(min = PetSpacing.minTouchTarget)
                         .clickable(role = Role.Checkbox) { acknowledged = !acknowledged }

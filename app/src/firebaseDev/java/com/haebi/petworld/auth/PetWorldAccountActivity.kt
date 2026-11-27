@@ -43,6 +43,8 @@ import com.haebi.petworld.sync.FirebaseDevSyncStatusSection
 import com.haebi.petworld.ui.components.PetPrimaryButton
 import com.haebi.petworld.ui.components.PetSecondaryButton
 import com.haebi.petworld.ui.components.PetSurfaceCard
+import com.haebi.petworld.ui.components.PetStatus
+import com.haebi.petworld.ui.components.PetStatusLabel
 import com.haebi.petworld.ui.theme.PetSpacing
 import com.haebi.petworld.ui.theme.PetWorldTheme
 import kotlinx.coroutines.launch
@@ -123,6 +125,7 @@ class PetWorldAccountActivity : ComponentActivity() {
             verticalArrangement = Arrangement.spacedBy(PetSpacing.large),
         ) {
             Text("계정", style = MaterialTheme.typography.headlineLarge)
+            PetStatusLabel("개발 전용 · 자동 동기화 미지원", PetStatus.NEUTRAL)
             Text(
                 "Google 계정 연결은 선택 사항입니다. 로그인 없이도 반려동물 기록을 사용할 수 있습니다.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -137,11 +140,11 @@ class PetWorldAccountActivity : ComponentActivity() {
                         Text("개발 프로젝트와 앱 패키지 설정을 확인해 주세요.")
                     }
                     currentAccount == null -> {
-                        Text("로그인하지 않음", style = MaterialTheme.typography.bodyLarge)
+                        Text("로그인하지 않음", style = MaterialTheme.typography.headlineSmall)
                         Text("현재는 로그인 없이 사용 중입니다.")
                     }
                     else -> {
-                        Text("Google 계정 연결됨", style = MaterialTheme.typography.bodyLarge)
+                        Text("Google 계정 연결됨", style = MaterialTheme.typography.headlineSmall)
                         currentAccount?.email?.let { email ->
                             Text(email, style = MaterialTheme.typography.bodyMedium)
                         }
