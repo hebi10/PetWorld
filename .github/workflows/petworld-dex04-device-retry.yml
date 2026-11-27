@@ -1,0 +1,58 @@
+name: DEX-04 PetWorld exact main device retry
+
+on:
+  push:
+    branches: [qa/petworld-dex04-main-device-retry]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  release-upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - uses: actions/download-artifact@v4
+        with:
+          name: petworld-dex04-main-release
+          run-id: 45971458919
+          github-token: ${{ github.token }}
+          path: dex-qa-output
+      - name: Verify the saved release pair is from frozen main
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "5998675a550b2c39f066ce9fba7a4e47cd1393e9"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "5998675a550b2c39f066ce9fba7a4e47cd1393e9"
+          test "$(jq -r .candidate_sha dex-qa-output/dex.json)" = "5998675a550b2c39f066ce9fba7a4e47cd1393e9"
+          test "$(jq -r .baseline_sha dex-qa-output/dex.json)" = "5b9e4d6d0fe1f2282d33b42c7f659bfae24f19e6"
+          test -s dex-qa-output/baseline.apk
+          test -s dex-qa-output/candidate.apk
+      - name: Enable KVM
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Verify offline release update using the saved APKs on API 35 AOSP
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: default
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: python3 .github/scripts/petworld-dex04-qa-retry.py dex-qa-output
+      - name: Preserve device proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: petworld-dex04-main-device-retry
+          path: |
+            dex-qa-output/*.png
+            dex-qa-output/*.xml
+            dex-qa-output/logcat.txt
+          if-no-files-found: warn
+          retention-days: 7
