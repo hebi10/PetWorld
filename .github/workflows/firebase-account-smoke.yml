@@ -72,7 +72,8 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-boot-timeout: 600
-          script: ./gradlew :app:connectedFirebaseDevAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.haebi.petworld.FirebaseDevAccountSmokeTest --no-daemon --stacktrace
+          script: |
+            bash .github/scripts/capture-petworld-guest-account.sh
 
       - name: Upload account UI QA reports
         if: always()
@@ -82,4 +83,5 @@ jobs:
           path: |
             app/build/reports/androidTests/connected/
             app/build/outputs/androidTest-results/connected/
+            qa/audit-d-account/
           if-no-files-found: warn

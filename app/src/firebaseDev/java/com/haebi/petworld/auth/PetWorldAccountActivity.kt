@@ -1,8 +1,17 @@
 package com.haebi.petworld.auth
 
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.SideEffect
+import androidx.compose.material3.Surface
+import androidx.core.view.WindowCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.haebi.petworld.data.ThemePreferences
+import com.haebi.petworld.ui.theme.ThemeMode
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.foundation.layout.Arrangement
@@ -27,6 +36,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
@@ -43,6 +53,8 @@ import com.haebi.petworld.sync.FirebaseDevSyncStatusSection
 import com.haebi.petworld.ui.components.PetPrimaryButton
 import com.haebi.petworld.ui.components.PetSecondaryButton
 import com.haebi.petworld.ui.components.PetSurfaceCard
+import com.haebi.petworld.ui.components.PetStatus
+import com.haebi.petworld.ui.components.PetStatusLabel
 import com.haebi.petworld.ui.theme.PetSpacing
 import com.haebi.petworld.ui.theme.PetWorldTheme
 import kotlinx.coroutines.launch
@@ -50,6 +62,8 @@ import kotlinx.coroutines.launch
 class PetWorldAccountActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        val themePreferences = ThemePreferences(applicationContext)
 
         val verifiedDevProject = packageName == "com.haebi.petworld.dev" &&
             FirebaseApp.getApps(this).any {
@@ -67,12 +81,25 @@ class PetWorldAccountActivity : ComponentActivity() {
         } else null
 
         setContent {
-            PetWorldTheme {
-                AccountContent(
-                    auth = firebaseAuth,
-                    recoveryAccess = recoveryAccess,
-                    onClose = ::finish,
-                )
+            val mode by themePreferences.themeMode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
+            val dark = mode.shouldUseDark(isSystemInDarkTheme())
+            PetWorldTheme(themeMode = mode) {
+                val background = MaterialTheme.colorScheme.background
+                val windowBackground = remember(background) { ColorDrawable(background.toArgb()) }
+                SideEffect {
+                    // Keep the background behind the transparent system bars in the app theme.
+                    window.setBackgroundDrawable(windowBackground)
+                    val controller = WindowCompat.getInsetsController(window, window.decorView)
+                    controller.isAppearanceLightStatusBars = !dark
+                    controller.isAppearanceLightNavigationBars = !dark
+                }
+                Surface(modifier = Modifier.fillMaxSize(), color = background) {
+                    AccountContent(
+                        auth = firebaseAuth,
+                        recoveryAccess = recoveryAccess,
+                        onClose = ::finish,
+                    )
+                }
             }
         }
     }
@@ -123,6 +150,7 @@ class PetWorldAccountActivity : ComponentActivity() {
             verticalArrangement = Arrangement.spacedBy(PetSpacing.large),
         ) {
             Text("계정", style = MaterialTheme.typography.headlineLarge)
+            PetStatusLabel("개발 전용 · 자동 동기화 미지원", PetStatus.NEUTRAL)
             Text(
                 "Google 계정 연결은 선택 사항입니다. 로그인 없이도 반려동물 기록을 사용할 수 있습니다.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -137,11 +165,11 @@ class PetWorldAccountActivity : ComponentActivity() {
                         Text("개발 프로젝트와 앱 패키지 설정을 확인해 주세요.")
                     }
                     currentAccount == null -> {
-                        Text("로그인하지 않음", style = MaterialTheme.typography.bodyLarge)
+                        Text("로그인하지 않음", style = MaterialTheme.typography.headlineSmall)
                         Text("현재는 로그인 없이 사용 중입니다.")
                     }
                     else -> {
-                        Text("Google 계정 연결됨", style = MaterialTheme.typography.bodyLarge)
+                        Text("Google 계정 연결됨", style = MaterialTheme.typography.headlineSmall)
                         currentAccount?.email?.let { email ->
                             Text(email, style = MaterialTheme.typography.bodyMedium)
                         }

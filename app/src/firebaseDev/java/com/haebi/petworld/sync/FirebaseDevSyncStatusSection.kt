@@ -2,6 +2,8 @@ package com.haebi.petworld.sync
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
@@ -18,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -93,12 +96,12 @@ internal fun FirebaseDevSyncStatusSection(account: LocalAccountScope.SignedIn) {
                 val value = state.value
                 PetStatusLabel(value.summary(authorized),
                     if (value.reviewCount > 0 || value.blocked > 0) PetStatus.WARNING else PetStatus.NEUTRAL)
-                Text("전송 대기 및 미확정 ${value.pending}건")
-                Text("전송 확인 완료 ${value.acknowledged}건")
-                Text("재시도 또는 결과 확인 ${value.retry}건")
-                Text("서버 기준 확인 대기 ${value.waitingBaseline}건")
-                Text("전송 차단·충돌 ${value.blocked}건")
-                Text("원격 검토 항목 ${value.reviewCount}건")
+                SyncCountRow("전송 대기 및 미확정", "${value.pending}건")
+                SyncCountRow("전송 확인 완료", "${value.acknowledged}건")
+                SyncCountRow("재시도 또는 결과 확인", "${value.retry}건")
+                SyncCountRow("서버 기준 확인 대기", "${value.waitingBaseline}건")
+                SyncCountRow("전송 차단·충돌", "${value.blocked}건")
+                SyncCountRow("원격 검토 항목", "${value.reviewCount}건")
                 Text(when {
                     value.scan == null -> "서버 조회: 시작 전"
                     value.scan.complete() -> "서버 조회: 마지막 저장 라운드 완료"
@@ -154,10 +157,15 @@ internal fun FirebaseDevSyncStatusSection(account: LocalAccountScope.SignedIn) {
                     Text("서버 리비전 ${entry.revision} · 검토용으로 저장된 값")
                     if (comparisons == null) Text("비교 데이터를 읽을 수 없습니다.")
                     else comparisons.forEach { field ->
-                        Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall)) {
+                        PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
                             Text(field.label, style = MaterialTheme.typography.titleSmall)
-                            Text("이 기기: ${field.local}", style = MaterialTheme.typography.bodyMedium)
-                            Text("서버: ${field.remote}", style = MaterialTheme.typography.bodyMedium)
+                            Text("이 기기", style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(field.local, style = MaterialTheme.typography.bodyMedium)
+                            HorizontalDivider()
+                            Text("서버", style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(field.remote, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                     Text(if (eligible)
@@ -208,4 +216,18 @@ internal fun FirebaseDevSyncStatusSection(account: LocalAccountScope.SignedIn) {
             },
         )
     }
+}
+
+@Composable
+private fun SyncCountRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = PetSpacing.xSmall),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(PetSpacing.small),
+    ) {
+        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.titleSmall)
+    }
+    HorizontalDivider()
 }
