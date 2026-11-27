@@ -1,0 +1,80 @@
+name: PetWorld PR93 exact design audit B/D evidence
+
+on:
+  push:
+    branches: [qa/pw-audit-01-d-exact-capture-20261127]
+    paths: ['.github/workflows/pw-audit-d-exact-capture.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pw-audit-d-exact-capture
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    if: github.repository == 'hebi10/PetWorld' && github.ref == 'refs/heads/qa/pw-audit-01-d-exact-capture-20261127'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout exact PR93 product source
+        uses: actions/checkout@v4
+        with:
+          ref: 220f73f4594644c70cca1c2c64dda9e90503a9fb
+          persist-credentials: false
+      - name: Verify and record source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "220f73f4594644c70cca1c2c64dda9e90503a9fb"
+          mkdir -p qa/captures/provenance
+          printf '%s\n' "220f73f4594644c70cca1c2c64dda9e90503a9fb" > qa/captures/provenance/source-sha.txt
+          printf '%s\n' 'PR93 exact debug source; API35 Pixel 6 emulator; synthetic data; no signing or deployment' > qa/captures/provenance/scope.txt
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - name: Install Android platform
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -path '*/bin/sdkmanager' -type f | head -n 1)"
+          test -n "$SDK_MANAGER"
+          "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install "platforms;android-37.0" "build-tools;36.0.0"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+      - name: Build app and screenshot test APK
+        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+      - name: Enable KVM
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Capture actual UI screens
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: bash .github/scripts/capture-petworld-ui.sh
+      - name: Verify requested D06-D16 and backup images and record hashes
+        if: success()
+        run: |
+          set -euo pipefail
+          for theme in light dark; do
+            for screen in S00-onboarding S02-profile-create S02-profile-edit S04-pet-switcher S16-profile-manager S05-quick-record-sheet S06-food-form S07-water-form S08-elimination-form S09-activity-form S10-weight-form S31-backup-password-dialog S31-restore-file-picker; do
+              test -s "qa/captures/screenshots/$theme/$screen.png"
+            done
+          done
+          (cd qa/captures && find screenshots -type f -name '*.png' -print0 | sort -z | xargs -0 sha256sum > provenance/png-sha256.txt)
+      - name: Upload captured screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: petworld-pr93-exact-design-audit-bd-${{ github.run_id }}-${{ github.run_attempt }}
+          path: qa/captures/
+          if-no-files-found: error
