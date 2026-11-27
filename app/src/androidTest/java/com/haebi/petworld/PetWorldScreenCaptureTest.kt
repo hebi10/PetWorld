@@ -163,9 +163,15 @@ class PetWorldScreenCaptureTest {
                 val row = device.wait(Until.findObject(By.text("120mL")), 3000)
                 checkNotNull(row) { "음수 기록 카드를 찾지 못했습니다." }.click()
                 mustSee("음수 기록")
-                val detailScrollArea = checkNotNull(device.findObject(
-                    By.scrollable(true).hasDescendant(By.text("음수 기록")),
-                )) { "음수 기록 상세 스크롤 영역을 찾지 못했습니다." }.visibleBounds
+                val layout = context.resources.configuration
+                val detailScrollArea = if (useExpandedPetLayout(layout.screenWidthDp, layout.fontScale)) {
+                    val detail = By.scrollable(true).hasDescendant(By.text("음수 기록"))
+                    checkNotNull(device.wait(Until.findObject(detail), 3_000)) {
+                        "음수 기록 상세 스크롤 영역을 찾지 못했습니다."
+                    }.visibleBounds
+                } else {
+                    null
+                }
                 ensureVisible("기록 삭제", detailScrollArea)
                 scrollToTop(scrollArea = detailScrollArea)
                 mustSee("발생 시각")
