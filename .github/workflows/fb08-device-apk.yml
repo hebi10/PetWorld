@@ -71,32 +71,29 @@ jobs:
                   pr['head']['ref'] == 'feature/fb08-integrated-qa-20261125' and
                   pr['base']['repo']['full_name'] == repo and pr['base']['ref'] == 'main'):
               refuse('Requested SHA is not the current Draft PR #86 head')
+          # Pin this specifically reviewed, main-synchronized candidate. Updating
+          # the pin requires a separate trusted-main review; never accept a
+          # different PR head simply because it shares an ancestor.
+          reviewed_sha = 'e9f8f988731123065f87a81940a0ca8041dcb549'
+          if sha != reviewed_sha:
+              refuse('Candidate changed since trusted QA review')
           comparison = github('repos/' + repo + '/compare/' + sha + '...' + current_main)
-          reviewed_base = '45ba20d7601dde5338b82a5f2b153d3a06c359bd'
+          reviewed_base = '8e67ce4d3fa143524556e65076d92a6134d245a5'
           if comparison.get('merge_base_commit', {}).get('sha') != reviewed_base:
-              refuse('Main and candidate no longer share the reviewed FB-08 baseline')
-          qa_only_paths = {
-              '.github/workflows/fb08-device-apk.yml',
-              'scripts/fb08/qa_device_artifact_cipher.mjs',
-              'docs/qa/FB-08-B_보호개발APK_검증경로.md',
-          }
-          # The reviewed #88 CI maintenance did not change the candidate application tree.
-          reviewed_ops_blobs = {
-              'scripts/ops04/internal.py': '8e165f31b6828cefc41ed778c59217933671c7f0',
-              'scripts/ops04/test_internal.py': '23f135f3fd2d6ded69ea0e5ecd95101a2729d427',
-              'scripts/ops09/internal_release_pipeline.py': '75ca96b7aacb93fadac590b68917415963a6dfe2',
-              'scripts/ops09/test_internal_release_pipeline.py': '460c3e5db8a4b90873264d112354fe3719d83fcb',
+              refuse('Main and candidate no longer share the reviewed synchronized baseline')
+          # The synchronized candidate already contains the reviewed #87/#88/#89
+          # main changes. Only this preflight correction and its offline review
+          # documentation/test may now differ on trusted main.
+          expected_main_changes = {
+              '.github/workflows/fb08-device-apk.yml': 'modified',
+              'docs/qa/FB-08-B_보호개발APK_검증경로.md': 'modified',
+              'scripts/ops08/test_fb08_device_preflight.py': 'added',
           }
           files = comparison.get('files')
-          if not isinstance(files, list) or len(files) > len(qa_only_paths) + len(reviewed_ops_blobs):
-              refuse('Main-only changes could not be completely verified')
-          for change in files:
-              path = change.get('filename')
-              if path in qa_only_paths and change.get('status') == 'added':
-                  continue
-              if (path in reviewed_ops_blobs and change.get('status') == 'modified' and
-                      change.get('sha') == reviewed_ops_blobs[path]):
-                  continue
+          if not isinstance(files, list) or len(files) != len(expected_main_changes):
+              refuse('Main-only QA correction changes could not be completely verified')
+          actual_main_changes = {change.get('filename'): change.get('status') for change in files}
+          if actual_main_changes != expected_main_changes:
               refuse('Trusted main contains unreviewed application or policy changes')
           runs = github('repos/' + repo + '/actions/runs?head_sha=' + sha +
                         '&event=pull_request&per_page=100')['workflow_runs']
