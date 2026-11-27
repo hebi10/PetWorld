@@ -8,6 +8,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
+import java.time.ZoneId
 
 class CareRecordMetadataTest {
     private val occurred = Instant.parse("2026-11-09T23:30:00Z").toEpochMilli()
@@ -31,6 +32,22 @@ class CareRecordMetadataTest {
             "2026-11-10 01:00",
             record.copy(timezoneId = "UTC").displayRecordTime(record.createdAt),
         )
+    }
+
+    @Test fun displayedTimeZoneMatchesOccurrenceFormattingAndFallback() {
+        val record = CareDraft(
+            petId = "cat",
+            type = CareType.WATER,
+            amount = "120",
+            occurredAt = occurred,
+            timezoneId = "Asia/Seoul",
+        ).toEntity(now = created)
+
+        assertEquals("Asia/Seoul", record.displayRecordZone().id)
+        assertEquals("UTC", record.copy(timezoneId = "UTC").displayRecordZone().id)
+        val invalidZone = record.copy(timezoneId = "invalid-zone")
+        assertEquals(ZoneId.systemDefault(), invalidZone.displayRecordZone())
+        assertEquals(record.copy(timezoneId = ZoneId.systemDefault().id).displayDateTime(), invalidZone.displayDateTime())
     }
 
     @Test fun editedRecordPreservesCreationTimeAndExposesUpdatedTime() {

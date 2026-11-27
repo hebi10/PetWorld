@@ -1,8 +1,11 @@
 package com.haebi.petworld.ui.screens
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,26 +22,31 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.haebi.petworld.data.CARE_HISTORY_PAGE_SIZE
 import com.haebi.petworld.data.CareHistoryPage
@@ -55,7 +63,6 @@ import com.haebi.petworld.ui.components.PetEmptyState
 import com.haebi.petworld.ui.components.PetPrimaryButton
 import com.haebi.petworld.ui.components.PetSecondaryButton
 import com.haebi.petworld.ui.components.PetSurfaceCard
-import com.haebi.petworld.ui.icons.PetIcons
 import com.haebi.petworld.ui.theme.PetSpacing
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
@@ -91,9 +98,11 @@ internal fun filterCareRecords(
     (selectedType == null || it.type == selectedType.name) && selectedRange.accepts(it, today)
 }
 
+internal fun CareEntity.displayRecordZone(): ZoneId =
+    runCatching { ZoneId.of(timezoneId) }.getOrDefault(ZoneId.systemDefault())
+
 internal fun CareEntity.displayRecordTime(instantMillis: Long): String {
-    val zone = runCatching { ZoneId.of(timezoneId) }.getOrDefault(ZoneId.systemDefault())
-    return Instant.ofEpochMilli(instantMillis).atZone(zone)
+    return Instant.ofEpochMilli(instantMillis).atZone(displayRecordZone())
         .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.KOREAN))
 }
 
@@ -233,61 +242,90 @@ fun CareRecordList(
     }
 
     if (showRangePicker) {
-        AlertDialog(
-            onDismissRequest = { showRangePicker = false },
-            title = { Text("조회 기간") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall)) {
-                    CareRange.entries.forEach { range ->
-                        TextButton(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = {
-                                onRangeChange(range)
-                                showRangePicker = false
-                            },
-                        ) {
-                            Text(
-                                if (selectedRange == range) "${range.label} · 선택됨" else range.label,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showRangePicker = false }) { Text("닫기") }
+        RecordFilterPicker(
+            title = "조회 기간",
+            options = CareRange.entries,
+            selected = selectedRange,
+            label = { it.label },
+            onDismiss = { showRangePicker = false },
+            onSelect = { range ->
+                onRangeChange(range)
+                showRangePicker = false
             },
         )
     }
 
     if (showTypePicker) {
-        AlertDialog(
-            onDismissRequest = { showTypePicker = false },
-            title = { Text("기록 유형") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall)) {
-                    (listOf<CareType?>(null) + CareType.entries).forEach { type ->
-                        TextButton(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = {
-                                onTypeChange(type)
-                                showTypePicker = false
-                            },
-                        ) {
-                            val label = type?.label ?: "전체 유형"
-                            Text(
-                                if (selectedType == type) "$label · 선택됨" else label,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showTypePicker = false }) { Text("닫기") }
+        RecordFilterPicker(
+            title = "기록 유형",
+            options = listOf<CareType?>(null) + CareType.entries,
+            selected = selectedType,
+            label = { it?.label ?: "전체 유형" },
+            onDismiss = { showTypePicker = false },
+            onSelect = { type ->
+                onTypeChange(type)
+                showTypePicker = false
             },
         )
     }
+}
+
+@Composable
+private fun <T> RecordFilterPicker(
+    title: String,
+    options: List<T>,
+    selected: T,
+    label: (T) -> String,
+    onDismiss: () -> Unit,
+    onSelect: (T) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RectangleShape,
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .selectableGroup(),
+            ) {
+                options.forEachIndexed { index, option ->
+                    val isSelected = option == selected
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .heightIn(min = PetSpacing.minTouchTarget)
+                            .selectable(
+                                selected = isSelected,
+                                onClick = { onSelect(option) },
+                                role = Role.RadioButton,
+                            )
+                            .padding(vertical = PetSpacing.small),
+                        horizontalArrangement = Arrangement.spacedBy(PetSpacing.medium),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = isSelected, onClick = null)
+                        Text(
+                            if (isSelected) "${label(option)} · 선택됨" else label(option),
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                        )
+                    }
+                    if (index != options.lastIndex) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            PetSecondaryButton(
+                label = "닫기",
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+    )
 }
 
 @Composable
@@ -382,35 +420,48 @@ fun CareRecordDetail(
     var deleting by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    Text("${CareType.valueOf(record.type).label} 기록", style = MaterialTheme.typography.headlineMedium)
+    val type = CareType.valueOf(record.type)
+    Text("${type.label} 기록", style = MaterialTheme.typography.headlineMedium)
     PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
         Text(
-            "발생 시각 · ${record.displayDateTime()}",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(record.displayValue(), style = MaterialTheme.typography.titleLarge)
-        if (record.photoFile != null) {
-            Text("관찰 사진", style = MaterialTheme.typography.labelLarge)
-            PetAvatar(photoStore, "관찰 사진", record.photoFile, size = 112.dp)
-        }
-        if (record.note.isNotBlank()) {
-            HorizontalDivider()
-            Text("관찰 메모", style = MaterialTheme.typography.labelLarge)
-            Text(record.note, style = MaterialTheme.typography.bodyLarge)
-        }
-        HorizontalDivider()
-        Text(
-            "작성 시각 · ${record.displayRecordTime(record.createdAt)}",
-            style = MaterialTheme.typography.bodyMedium,
+            if (type == CareType.WATER) "음수량" else "기록 값",
+            style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-            if (record.hasBeenEdited())
-                "수정 시각 · ${record.displayRecordTime(record.updatedAt)}"
-            else "수정 시각 · 수정 내역 없음",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            record.displayValue(),
+            style = if (type == CareType.FOOD) MaterialTheme.typography.titleLarge
+                else MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+    PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
+        RecordMetadataField("발생 시각", record.displayDateTime())
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        RecordMetadataField("시간대", record.displayRecordZone().id)
+    }
+    if (record.photoFile != null || record.note.isNotBlank()) {
+        PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
+            if (record.photoFile != null) {
+                Text("관찰 사진", style = MaterialTheme.typography.labelLarge)
+                PetAvatar(photoStore, "관찰 사진", record.photoFile, size = 112.dp)
+            }
+            if (record.photoFile != null && record.note.isNotBlank()) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
+            if (record.note.isNotBlank()) {
+                Text("관찰 메모", style = MaterialTheme.typography.labelLarge)
+                Text(record.note, style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+    }
+    PetSurfaceCard(modifier = Modifier.fillMaxWidth()) {
+        RecordMetadataField("작성 시각", record.displayRecordTime(record.createdAt))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        RecordMetadataField(
+            "수정 시각",
+            if (record.hasBeenEdited()) record.displayRecordTime(record.updatedAt)
+            else "수정 내역 없음",
         )
     }
     if (error != null) {
@@ -425,16 +476,50 @@ fun CareRecordDetail(
         label = "기록 삭제", enabled = !deleting,
         onClick = { confirmDelete = true }, modifier = Modifier.fillMaxWidth(),
     )
-    TextButton(onClick = onBack, enabled = !deleting) { Text("목록으로") }
+    PetSecondaryButton(label = "목록으로", onClick = onBack,
+        enabled = !deleting, modifier = Modifier.fillMaxWidth())
 
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { if (!deleting) confirmDelete = false },
             title = { Text("이 기록을 삭제할까요?") },
-            text = { Text("삭제한 기록은 복구할 수 없으며, 홈 집계에서도 제외됩니다.") },
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = RectangleShape,
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(PetSpacing.small),
+                ) {
+                    Text("삭제 대상 · ${type.label} 기록", style = MaterialTheme.typography.titleMedium)
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                        shape = RectangleShape,
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(PetSpacing.medium),
+                            verticalArrangement = Arrangement.spacedBy(PetSpacing.xSmall),
+                        ) {
+                            Text("기록 값", style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(record.displayValue(), style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.SemiBold)
+                            Text("발생 시각 · ${record.displayDateTime()}", style = MaterialTheme.typography.bodyMedium)
+                            Text("시간대 · ${record.displayRecordZone().id}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    HorizontalDivider()
+                    Text("삭제한 기록은 복구할 수 없으며, 홈 집계에서도 제외됩니다.")
+                }
+            },
             confirmButton = {
-                TextButton(
+                OutlinedButton(
+                    modifier = Modifier.heightIn(min = PetSpacing.minTouchTarget),
+                    shape = RectangleShape,
                     enabled = !deleting,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
                     onClick = {
                         deleting = true
                         scope.launch {
@@ -451,12 +536,17 @@ fun CareRecordDetail(
                 ) { Text(if (deleting) "삭제 중" else "삭제") }
             },
             dismissButton = {
-                TextButton(onClick = { confirmDelete = false }, enabled = !deleting) {
-                    Text("취소")
-                }
+                PetSecondaryButton(label = "취소", onClick = { confirmDelete = false }, enabled = !deleting)
             },
         )
     }
+}
+
+@Composable
+private fun RecordMetadataField(label: String, value: String) {
+    Text(label, style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(value, style = MaterialTheme.typography.bodyLarge)
 }
 
 internal data class WeightTrendData(
