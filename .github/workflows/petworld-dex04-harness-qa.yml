@@ -1,0 +1,60 @@
+name: DEX-04 PetWorld focused harness QA
+
+on:
+  push:
+    branches: [qa/petworld-dex04-harness]
+
+permissions:
+  contents: read
+
+jobs:
+  device:
+    name: ${{ matrix.profile }} · API ${{ matrix.api }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {api: 29, profile: pixel_6}
+          - {api: 35, profile: pixel_6}
+          - {api: 36, profile: pixel_6}
+          - {api: 35, profile: pixel_fold}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 5cc1bed8000e9492002afb3cb288e20d20be7500
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.5.0"
+      - name: Install Android SDK 37
+        run: |
+          set -euo pipefail
+          sdkmanager --install 'platforms;android-37.0' 'build-tools;36.0.0'
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+      - name: Enable KVM
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Run the existing device regression
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          target: google_apis
+          profile: ${{ matrix.profile }}
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: ${{ matrix.profile == 'pixel_fold' && 'bash .github/scripts/capture-petworld-responsive.sh foldable' || format('bash .github/scripts/run-petworld-ui10g.sh {0}', matrix.api) }}
+      - name: Preserve output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: petworld-dex04-harness-${{ matrix.profile }}-${{ matrix.api }}
+          path: qa/
+          if-no-files-found: warn
+          retention-days: 7
