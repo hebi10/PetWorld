@@ -1,0 +1,130 @@
+name: DEX-03 PetWorld release QA
+
+on:
+  push:
+    branches:
+      - qa/petworld-dex-03
+
+permissions:
+  contents: read
+
+jobs:
+  release-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - name: Install Android platform 37
+        run: |
+          SDK_MANAGER="$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | head -n 1)"
+          test -n "$SDK_MANAGER"
+          "$SDK_MANAGER" --sdk_root="$ANDROID_HOME" --install "platforms;android-37.0" "build-tools;36.0.0"
+      - name: Compare baseline and R8 builds with a disposable QA key
+        env:
+          BASE_SHA: 5b9e4d6d0fe1f2282d33b42c7f659bfae24f19e6
+          CANDIDATE_SHA: 30eabd478b82c6892c93203272379ff5cdbe88c0
+        run: |
+          set -euo pipefail
+          git diff --quiet "$CANDIDATE_SHA" HEAD -- app gradle gradlew build.gradle.kts settings.gradle.kts gradle.properties
+          evidence="$GITHUB_WORKSPACE/dex-qa-output"
+          mkdir -p "$evidence"
+          base="$RUNNER_TEMP/petworld-baseline"
+          git worktree add --detach "$base" "$BASE_SHA"
+          export ANDROID_RELEASE_KEYSTORE_PATH="$RUNNER_TEMP/petworld-qa.p12"
+          export ANDROID_RELEASE_STORE_PASSWORD="$(openssl rand -hex 24)"
+          export ANDROID_RELEASE_KEY_PASSWORD="$ANDROID_RELEASE_STORE_PASSWORD"
+          export ANDROID_RELEASE_KEY_ALIAS=petworld-qa
+          export ANDROID_VERSION_NAME=0.1.0
+          keytool -genkeypair -keystore "$ANDROID_RELEASE_KEYSTORE_PATH" -storetype PKCS12 \
+            -alias "$ANDROID_RELEASE_KEY_ALIAS" -storepass:env ANDROID_RELEASE_STORE_PASSWORD \
+            -keyalg RSA -keysize 2048 -validity 7 -dname 'CN=PetWorld DEX-03 disposable QA'
+          build_pair() {
+            local root="$1" name="$2" code="$3"
+            (cd "$root" && ANDROID_VERSION_CODE="$code" ./gradlew --no-daemon :app:assembleRelease :app:bundleRelease)
+            cp "$root/app/build/outputs/apk/release/app-release.apk" "$evidence/$name.apk"
+            cp "$root/app/build/outputs/bundle/release/app-release.aab" "$evidence/$name.aab"
+          }
+          build_pair "$base" baseline 7
+          build_pair "$GITHUB_WORKSPACE" candidate 8
+          cp app/build/outputs/mapping/release/mapping.txt "$evidence/mapping.txt"
+          python3 - "$evidence" "$BASE_SHA" "$CANDIDATE_SHA" <<'PY'
+          import hashlib
+          import json
+          import re
+          import sys
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          folder = Path(sys.argv[1])
+          def measure(path):
+              with ZipFile(path) as bundle:
+                  dex = [entry for entry in bundle.infolist()
+                         if re.search(r'/dex/classes(?:\d+)?\.dex$', entry.filename)]
+                  assert dex, f'No DEX entries in {path.name}'
+                  markers = set()
+                  for entry in dex:
+                      contents = bundle.read(entry)
+                      for marker in re.findall(rb'~~(?:D8|R8)\{[^\x00]+?\}', contents):
+                          markers.add(marker.decode('utf-8'))
+                  return {'dex_bytes': sum(entry.file_size for entry in dex), 'dex_files': len(dex),
+                          'compiler_markers': sorted(markers),
+                          'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
+
+          before = measure(folder / 'baseline.aab')
+          after = measure(folder / 'candidate.aab')
+          report = {'baseline_sha': sys.argv[2], 'candidate_sha': sys.argv[3],
+                    'baseline': before, 'candidate': after,
+                    'mapping_bytes': (folder / 'mapping.txt').stat().st_size,
+                    'reduction_pct': round((1 - after['dex_bytes'] / before['dex_bytes']) * 100, 2)}
+          output = json.dumps(report, indent=2) + '\n'
+          print(output)
+          (folder / 'dex.json').write_text(output)
+          assert report['mapping_bytes'] > 0
+          assert any(marker.startswith('~~R8') for marker in after['compiler_markers'])
+          assert after['dex_bytes'] < before['dex_bytes']
+          PY
+      - name: Preserve release build evidence for emulator retry
+        uses: actions/upload-artifact@v4
+        with:
+          name: petworld-dex03-release
+          path: |
+            dex-qa-output/dex.json
+            dex-qa-output/mapping.txt
+            dex-qa-output/baseline.apk
+            dex-qa-output/candidate.apk
+          if-no-files-found: error
+          retention-days: 7
+      - name: Enable KVM on the Actions runner
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Verify offline local profile and record survive optimized update
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: python3 .github/scripts/petworld-dex03-qa.py dex-qa-output
+      - name: Preserve device proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: petworld-dex03-device
+          path: |
+            dex-qa-output/*.png
+            dex-qa-output/*.xml
+            dex-qa-output/logcat.txt
+          if-no-files-found: warn
+          retention-days: 7
