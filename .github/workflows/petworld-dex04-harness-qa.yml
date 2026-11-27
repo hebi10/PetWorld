@@ -35,7 +35,10 @@ jobs:
       - name: Install Android SDK 37
         run: |
           set -euo pipefail
-          sdkmanager --install 'platforms;android-37.0' 'build-tools;36.0.0'
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -path '*/bin/sdkmanager' -type f | head -n 1)"
+          test -n "$SDK_MANAGER"
+          "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install 'platforms;android-37.0' 'build-tools;36.0.0'
           ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
       - name: Enable KVM
         run: |
