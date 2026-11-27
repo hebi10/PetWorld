@@ -22,6 +22,8 @@ adb logcat -d -t 1500 > "$out/logcat.txt" || true
 adb pull /sdcard/Android/data/com.haebi.petworld.dev/files/audit-d-account/. "$out/" || true
 test "$status" -eq 0
 grep -Eq '^OK \(6 tests\)\s*$' "$out/instrumentation.log"
-test -s "$out/D23-guest-account.png"
-test -s "$out/D23-guest-account.xml"
-(cd "$out" && sha256sum D23-guest-account.png > png-sha256.txt)
+for screen in D23-guest-account D23-guest-account-dark; do
+  test -s "$out/$screen.png"
+  test -s "$out/$screen.xml"
+done
+(cd "$out" && sha256sum D23-guest-account.png D23-guest-account-dark.png > png-sha256.txt)

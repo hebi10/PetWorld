@@ -3,6 +3,14 @@ package com.haebi.petworld.auth
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.SideEffect
+import androidx.compose.material3.Surface
+import androidx.core.view.WindowCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.haebi.petworld.data.ThemePreferences
+import com.haebi.petworld.ui.theme.ThemeMode
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.foundation.layout.Arrangement
@@ -52,6 +60,8 @@ import kotlinx.coroutines.launch
 class PetWorldAccountActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        val themePreferences = ThemePreferences(applicationContext)
 
         val verifiedDevProject = packageName == "com.haebi.petworld.dev" &&
             FirebaseApp.getApps(this).any {
@@ -69,12 +79,21 @@ class PetWorldAccountActivity : ComponentActivity() {
         } else null
 
         setContent {
-            PetWorldTheme {
-                AccountContent(
-                    auth = firebaseAuth,
-                    recoveryAccess = recoveryAccess,
-                    onClose = ::finish,
-                )
+            val mode by themePreferences.themeMode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
+            val dark = mode.shouldUseDark(isSystemInDarkTheme())
+            PetWorldTheme(themeMode = mode) {
+                SideEffect {
+                    val controller = WindowCompat.getInsetsController(window, window.decorView)
+                    controller.isAppearanceLightStatusBars = !dark
+                    controller.isAppearanceLightNavigationBars = !dark
+                }
+                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                    AccountContent(
+                        auth = firebaseAuth,
+                        recoveryAccess = recoveryAccess,
+                        onClose = ::finish,
+                    )
+                }
             }
         }
     }

@@ -1,6 +1,10 @@
 package com.haebi.petworld
 
 import androidx.test.core.app.ActivityScenario
+import androidx.core.view.WindowCompat
+import com.haebi.petworld.data.ThemePreferences
+import com.haebi.petworld.ui.theme.ThemeMode
+import kotlinx.coroutines.flow.first
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
@@ -135,60 +139,91 @@ class FirebaseDevAccountSmokeTest {
         device.wakeUp()
         device.executeShellCommand("wm dismiss-keyguard")
 
-        ActivityScenario.launch(PetWorldAccountActivity::class.java).use { scenario ->
-            // Recheck the Android window after Activity launch; boot overlays can
-            // appear between the first keyguard dismissal and the resumed Activity.
-            device.executeShellCommand("wm dismiss-keyguard")
-            device.executeShellCommand("cmd statusbar collapse")
-            device.waitForIdle(5_000)
-            val initialTitle = By.pkg(appPackage).text("계정")
-            if (!device.wait(Until.hasObject(initialTitle), 10_000) &&
-                device.currentPackageName in setOf("android", "com.android.systemui") &&
-                scenario.state == androidx.lifecycle.Lifecycle.State.RESUMED) {
+        val preferences = ThemePreferences(instrumentation.targetContext)
+        val oldTheme = runBlocking { preferences.themeMode.first() }
+        runBlocking { preferences.setThemeMode(ThemeMode.LIGHT) }
+        try {
+            ActivityScenario.launch(PetWorldAccountActivity::class.java).use { scenario ->
+                // Recheck the Android window after Activity launch; boot overlays can
+                // appear between the first keyguard dismissal and the resumed Activity.
                 device.executeShellCommand("wm dismiss-keyguard")
                 device.executeShellCommand("cmd statusbar collapse")
-                scenario.recreate()
                 device.waitForIdle(5_000)
-            }
-
-            fun assertVisible(label: String, timeout: Long = 10_000) {
-                val visible = device.wait(Until.hasObject(By.pkg(appPackage).text(label)), timeout)
-                assertTrue(
-                    "$label 표시 필요 (foreground=" + device.currentPackageName +
-                        ", screenOn=" + device.isScreenOn + ", lifecycle=" + scenario.state +
-                        ", focus=" + device.executeShellCommand("dumpsys window | grep mCurrentFocus").take(300) + ")",
-                    visible,
-                )
-            }
-
-            assertVisible("계정", 30_000)
-            assertVisible("계정 상태")
-            assertVisible("로그인하지 않음")
-            val screenshotRoot = checkNotNull(instrumentation.targetContext.getExternalFilesDir(null))
-            val screenshotFolder = java.io.File(screenshotRoot, "audit-d-account").apply { mkdirs() }
-            device.waitForIdle()
-            assertTrue("비회원 계정 화면 캡처 실패", device.takeScreenshot(java.io.File(screenshotFolder, "D23-guest-account.png")))
-            device.dumpWindowHierarchy(java.io.File(screenshotFolder, "D23-guest-account.xml"))
-            assertFalse("비회원에게 계정 삭제 진입 버튼이 표시되면 안 됩니다",
-                device.hasObject(By.pkg(appPackage).text("계정 삭제")))
-
-            fun assertVisibleByScrolling(label: String) {
-                if (!device.hasObject(By.pkg(appPackage).text(label))) {
-                    UiScrollable(UiSelector().packageName(appPackage).scrollable(true))
-                        .setMaxSearchSwipes(6)
-                        .scrollIntoView(UiSelector().packageName(appPackage).text(label))
+                val initialTitle = By.pkg(appPackage).text("계정")
+                if (!device.wait(Until.hasObject(initialTitle), 10_000) &&
+                    device.currentPackageName in setOf("android", "com.android.systemui") &&
+                    scenario.state == androidx.lifecycle.Lifecycle.State.RESUMED) {
+                    device.executeShellCommand("wm dismiss-keyguard")
+                    device.executeShellCommand("cmd statusbar collapse")
+                    scenario.recreate()
+                    device.waitForIdle(5_000)
                 }
-                assertVisible(label)
+
+                fun assertVisible(label: String, timeout: Long = 10_000) {
+                    val visible = device.wait(Until.hasObject(By.pkg(appPackage).text(label)), timeout)
+                    assertTrue(
+                        "$label 표시 필요 (foreground=" + device.currentPackageName +
+                            ", screenOn=" + device.isScreenOn + ", lifecycle=" + scenario.state +
+                            ", focus=" + device.executeShellCommand("dumpsys window | grep mCurrentFocus").take(300) + ")",
+                        visible,
+                    )
+                }
+
+                assertVisible("계정", 30_000)
+                assertVisible("계정 상태")
+                assertVisible("로그인하지 않음")
+                val screenshotRoot = checkNotNull(instrumentation.targetContext.getExternalFilesDir(null))
+                val screenshotFolder = java.io.File(screenshotRoot, "audit-d-account").apply { mkdirs() }
+                fun captureTheme(light: Boolean, fileName: String) {
+                    var matches = false
+                    repeat(40) {
+                        scenario.onActivity { activity ->
+                            val controller = WindowCompat.getInsetsController(activity.window, activity.window.decorView)
+                            matches = controller.isAppearanceLightStatusBars == light &&
+                                controller.isAppearanceLightNavigationBars == light
+                        }
+                        if (matches) return@repeat
+                        Thread.sleep(100)
+                    }
+                    assertTrue("계정 시스템 바 명도 불일치: light=$light", matches)
+                    device.waitForIdle()
+                    val png = java.io.File(screenshotFolder, "$fileName.png")
+                    assertTrue("비회원 계정 화면 캡처 실패", device.takeScreenshot(png) && png.length() > 10_000)
+                    device.dumpWindowHierarchy(java.io.File(screenshotFolder, "$fileName.xml"))
+                }
+                captureTheme(true, "D23-guest-account")
+                assertFalse("비회원에게 계정 삭제 진입 버튼이 표시되면 안 됩니다",
+                    device.hasObject(By.pkg(appPackage).text("계정 삭제")))
+
+                fun assertVisibleByScrolling(label: String) {
+                    if (!device.hasObject(By.pkg(appPackage).text(label))) {
+                        UiScrollable(UiSelector().packageName(appPackage).scrollable(true))
+                            .setMaxSearchSwipes(6)
+                            .scrollIntoView(UiSelector().packageName(appPackage).text(label))
+                    }
+                    assertVisible(label)
+                }
+                assertVisibleByScrolling("이 기기의 기록")
+                assertVisibleByScrolling("Google 계정으로 시작")
+                assertVisibleByScrolling("삭제 처리 상태 확인")
+                assertVisibleByScrolling("기기 인증 후 상태 확인")
+                assertFalse("명시적인 기기 인증 전 저장 상태를 표시하면 안 됩니다",
+                    device.hasObject(By.pkg(appPackage).text("기기에 저장된 마지막 확인 상태")))
+                assertVisibleByScrolling("로그인 없이 사용")
+                assertFalse("비회원에게 계정 삭제 진입 버튼이 표시되면 안 됩니다",
+                    device.hasObject(By.pkg(appPackage).text("계정 삭제")))
+
+                runBlocking { preferences.setThemeMode(ThemeMode.DARK) }
+                scenario.recreate()
+                device.executeShellCommand("wm dismiss-keyguard")
+                device.executeShellCommand("cmd statusbar collapse")
+                assertVisible("계정", 30_000)
+                assertVisible("계정 상태")
+                assertVisible("로그인하지 않음")
+                captureTheme(false, "D23-guest-account-dark")
             }
-            assertVisibleByScrolling("이 기기의 기록")
-            assertVisibleByScrolling("Google 계정으로 시작")
-            assertVisibleByScrolling("삭제 처리 상태 확인")
-            assertVisibleByScrolling("기기 인증 후 상태 확인")
-            assertFalse("명시적인 기기 인증 전 저장 상태를 표시하면 안 됩니다",
-                device.hasObject(By.pkg(appPackage).text("기기에 저장된 마지막 확인 상태")))
-            assertVisibleByScrolling("로그인 없이 사용")
-            assertFalse("비회원에게 계정 삭제 진입 버튼이 표시되면 안 됩니다",
-                device.hasObject(By.pkg(appPackage).text("계정 삭제")))
+        } finally {
+            runBlocking { preferences.setThemeMode(oldTheme) }
         }
     }
 }
