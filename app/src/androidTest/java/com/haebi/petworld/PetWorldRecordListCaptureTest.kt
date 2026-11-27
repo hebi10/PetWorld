@@ -49,13 +49,21 @@ class PetWorldRecordListCaptureTest {
 
                     tap("기간: 7일")
                     seen("조회 기간")
+                    seen("7일 · 선택됨")
                     capture(folder, "S13-range-picker")
+                    tap("닫기")
+                    seen("기간: 7일")
+                    tap("기간: 7일")
                     tap("오늘")
                     seen("기간: 오늘")
 
                     tap("유형: 전체")
                     seen("기록 유형")
+                    seen("전체 유형 · 선택됨")
                     capture(folder, "S13-type-picker")
+                    tap("닫기")
+                    seen("유형: 전체")
+                    tap("유형: 전체")
                     tap("음수")
                     seen("유형: 음수")
                     seen("기록 1건")
@@ -71,12 +79,24 @@ class PetWorldRecordListCaptureTest {
                     tap("120mL")
                     seen("음수 기록")
                     seen("발생 시각")
-                    seen("시간대 · ${ZoneId.systemDefault().id}")
+                    seen("시간대")
+                    seen(ZoneId.systemDefault().id)
+                    seen("관찰 메모")
+                    seen("아침에 물을 잘 마셨어요.")
+                    seen("수정 내역 없음")
                     capture(folder, "S12-record-detail")
+                    tap("수정")
+                    seen("나비 · 음수 수정")
+                    seen("변경 저장")
+                    seen("120")
+                    capture(folder, "S12-record-edit")
+                    tap("닫기")
+                    seen("음수 기록")
                     tap("기록 삭제")
                     seen("이 기록을 삭제할까요?")
                     seen("삭제 대상 · 음수 기록")
-                    seen("기록 값 · 120mL")
+                    seen("기록 값")
+                    seen("120mL")
                     seen("삭제한 기록은 복구할 수 없으며")
                     capture(folder, "S33-record-delete-dialog")
                     tap("취소")
@@ -88,6 +108,7 @@ class PetWorldRecordListCaptureTest {
                 assertTrue(File(folder, "S13-range-picker.png").isFile)
                 assertTrue(File(folder, "S13-type-picker.png").isFile)
                 assertTrue(File(folder, "S12-record-detail.png").isFile)
+                assertTrue(File(folder, "S12-record-edit.png").isFile)
                 assertTrue(File(folder, "S33-record-delete-dialog.png").isFile)
             }
         } finally {
@@ -116,7 +137,8 @@ class PetWorldRecordListCaptureTest {
                 occurredAt = now - 120_000L, timezoneId = zone,
                 amount = "40", consumedAmount = "30"),
             CareDraft(petId = "ui03-cat", type = CareType.WATER,
-                occurredAt = now - 60_000L, timezoneId = zone, amount = "120"),
+                occurredAt = now - 60_000L, timezoneId = zone, amount = "120",
+                note = "아침에 물을 잘 마셨어요."),
             CareDraft(petId = "ui03-cat", type = CareType.ELIMINATION,
                 occurredAt = now - 180_000L, timezoneId = zone, amount = "1"),
             CareDraft(petId = "ui03-cat", type = CareType.ACTIVITY,
