@@ -177,7 +177,9 @@ class PetWorldScreenCaptureTest {
 
                 tap("건강")
                 mustSee("나비의 체중·건강")
-                mustSee("최근 체중 4.5kg")
+                mustSee("최근 체중")
+                mustSee("4.5")
+                mustSee("kg")
                 ensureVisible("이전 체중 4.4kg")
                 ensureVisible("변화량 +0.1kg")
                 shot(folder, "S18-health")
@@ -190,9 +192,11 @@ class PetWorldScreenCaptureTest {
                 shot(folder, "S14-statistics")
                 assertExpandedPaneOrder("체중 변화", "생활 기록 요약", folder, "UI10D-statistics-wide")
                 tap("더보기")
-                mustSee("데이터 관리")
+                ensureVisible("데이터 관리")
+                ensureVisible("백업 파일 복원")
+                scrollToTop()
                 if (context.resources.configuration.fontScale >= 1.3f) {
-                    mustSee("추가")
+                    mustSee("반려동물 추가")
                     shot(folder, "UI10C-settings-compact")
                 }
                 shot(folder, "S30-settings")
@@ -206,7 +210,7 @@ class PetWorldScreenCaptureTest {
                 shot(folder, "S31-restore-file-picker")
                 device.pressBack()
                 dismissSystemAnr()
-                mustSee("설정")
+                ensureVisible("화면 설정")
 
                 tap("홈")
                 tap("수정")

@@ -4,17 +4,23 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.RectangleShape
@@ -49,6 +55,8 @@ fun PetPrimaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    prominent: Boolean = false,
+    leadingIcon: ImageVector? = null,
 ) {
     Button(
         onClick = onClick,
@@ -58,7 +66,11 @@ fun PetPrimaryButton(
         elevation = null,
         contentPadding = PaddingValues(horizontal = PetSpacing.large),
     ) {
-        Text(label)
+        Row(horizontalArrangement = Arrangement.spacedBy(PetSpacing.small), verticalAlignment = Alignment.CenterVertically) {
+            leadingIcon?.let { Icon(it, contentDescription = null, modifier = Modifier.size(20.dp)) }
+            if (prominent) Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            else Text(label)
+        }
     }
 }
 

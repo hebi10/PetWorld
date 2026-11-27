@@ -1,6 +1,8 @@
 package com.haebi.petworld.data
 
 import android.content.Context
+import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.account.selectedPetPreferenceKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -11,9 +13,12 @@ import kotlinx.coroutines.flow.map
 
 private val Context.petWorldDataStore by preferencesDataStore(name = "petworld_settings")
 
-class ThemePreferences(private val context: Context) {
+class ThemePreferences(
+    private val context: Context,
+    private val scope: LocalAccountScope = LocalAccountScope.Guest,
+) {
     private val themeModeKey = stringPreferencesKey("theme_mode")
-    private val selectedPetKey = stringPreferencesKey("selected_pet_id")
+    private val selectedPetKey = stringPreferencesKey(scope.selectedPetPreferenceKey)
 
     val themeMode = context.petWorldDataStore.data.map { preferences ->
         ThemeMode.fromStoredValue(preferences[themeModeKey])
@@ -36,6 +41,14 @@ class ThemePreferences(private val context: Context) {
             if (id == null) preferences.remove(selectedPetKey)
             else preferences[selectedPetKey] = id
         }
+    }
+
+    /** Called only while the global mutation gate is already held.
+     * Keep the global appearance preference and all other accounts unchanged.
+     */
+    internal suspend fun clearAccountSelectionUnderGate() {
+        check(scope is LocalAccountScope.SignedIn)
+        context.petWorldDataStore.edit { it.remove(selectedPetKey) }
     }
 
     /** Called only while the global mutation gate is already held. */

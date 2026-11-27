@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 1,
+  "repository": "hebi10/PetWorld",
+  "baselineMain": "8e67ce4d3fa143524556e65076d92a6134d245a5",
+  "featureTip": "175a743ac9d13d12e047f50ef5d46d294ced8a43",
+  "integratedTreeCommit": "e753e9d4da3a9f2413f048d6b8aebc36f25809bc",
+  "sourcePrs": [
+    {
+      "number": 55,
+      "head": "21aefd6d4ce706c4c6aa49e76899d67c67af8c07"
+    },
+    {
+      "number": 56,
+      "head": "cdf613d63da6a3592dcf3f052d384e54e6dc91b2"
+    },
+    {
+      "number": 57,
+      "head": "47725b51495b30787569ebebf9acec6ccec036de"
+    },
+    {
+      "number": 58,
+      "head": "2b0c23410835a713d10d924253bf1e29ed452e7b"
+    },
+    {
+      "number": 59,
+      "head": "98874b9b6e78ab613fd96caa3cda183bc9d87188"
+    },
+    {
+      "number": 60,
+      "head": "14923743050c349b83e7d8a05a5096f31b1c7151"
+    },
+    {
+      "number": 61,
+      "head": "a6e298f043e2e4b9a9e7806fc4277fbea2980dd2"
+    },
+    {
+      "number": 62,
+      "head": "ff250136b55fdcfda246d1ebfcf49b88800a9e23"
+    },
+    {
+      "number": 63,
+      "head": "55d41ececc4d9c26d1c40ee8bdfb69e3c1911d30"
+    },
+    {
+      "number": 64,
+      "head": "ac8dfdd1b30a73c2fd1330d000791bc99d492f01"
+    },
+    {
+      "number": 65,
+      "head": "25a4b166defef1884f935fc0a3dcf96d8c6d8fcf"
+    },
+    {
+      "number": 66,
+      "head": "5affb5ee41d2bf37167a1d00e2d1a7bfda7da0ff"
+    },
+    {
+      "number": 68,
+      "head": "24cb030320a1ba2094b87e3b80d8686c171ebf2c"
+    },
+    {
+      "number": 69,
+      "head": "890fdf118aabafdbacbeea0a880fd5e6fb0ecdab"
+    },
+    {
+      "number": 71,
+      "head": "532d565520dcec1fced408b561edf0ea5e2f13f6"
+    },
+    {
+      "number": 72,
+      "head": "0bd55c3f5a5e0f5e95cc38b4fdf45124fbcbeb8e"
+    },
+    {
+      "number": 73,
+      "head": "b0ecf3ff663157e4c0d51044ebb706d59ae0b08c"
+    },
+    {
+      "number": 74,
+      "head": "348bbcfd37809f84724839387f5fcc516fc5a6ed"
+    },
+    {
+      "number": 75,
+      "head": "8c6afe63fd208b6c77aac62c21e763805cd55494"
+    },
+    {
+      "number": 76,
+      "head": "ea46fa3951bf3ccdad9d30624778e94a538ba086"
+    },
+    {
+      "number": 77,
+      "head": "a51fb435b2f73e03c05ed35c1c7eed95091decb8"
+    },
+    {
+      "number": 78,
+      "head": "8194a215ef031cfa6bf8a88bc2e5c92c18b2c3ed"
+    },
+    {
+      "number": 79,
+      "head": "1f8cbfa8f6d65991086ec7e639951e928608e8a6"
+    },
+    {
+      "number": 80,
+      "head": "f02c6b8cf9d2bc5b4dc7a39573ff38e612790c3d"
+    },
+    {
+      "number": 81,
+      "head": "1b0b21aa3453d9c76a629a82b5a2fed1d5e2cb72"
+    },
+    {
+      "number": 82,
+      "head": "ce9355d20956574d6fa790bb07bf923dc1c60dbb"
+    },
+    {
+      "number": 83,
+      "head": "5b266ecf99088fc5094a806db0e46eabf1231857"
+    },
+    {
+      "number": 84,
+      "head": "bb1369949e53fcccaca48442833b12d6bd097403"
+    },
+    {
+      "number": 85,
+      "head": "175a743ac9d13d12e047f50ef5d46d294ced8a43"
+    }
+  ],
+  "earlierReviewedSources": [
+    {
+      "number": 37,
+      "head": "22a2a47e4d12626af4dfa37ff4aa598ef7415fbb"
+    },
+    {
+      "number": 54,
+      "head": "8efea01819b3371934baa8cbf5290d487850340c"
+    }
+  ],
+  "protectedMainPaths": [
+    ".github/workflows/fb04-device-apk.yml",
+    ".github/workflows/fb04-device-apk-static-qa.yml",
+    "scripts/fb04/qa_workflow.py",
+    "docs/firebase/FB-04-REAL-QA-DEVICE_signed_APK_workflow.md",
+    ".github/workflows/final-device-qa.yml",
+    ".github/workflows/release-build.yml",
+    ".github/workflows/play-internal.yml",
+    ".github/workflows/play-promote.yml",
+    ".github/workflows/internal-release-once.yml",
+    "AGENTS.md"
+  ],
+  "requiredPrWorkflows": [
+    "Android CI",
+    "Firebase Rules CI",
+    "Android Backup Restore Emulator QA",
+    "PetWorld Firebase account UI smoke QA",
+    "PetWorld FB-03 scoped data isolation QA",
+    "PetWorld isolated Android SDK emulator QA",
+    "PetWorld local account deletion E2E QA",
+    "PetWorld external deletion browser QA",
+    "PetWorld firebaseDev signing fingerprints",
+    "Android Quick Record Sheet UI QA",
+    "Android Settings and Profile Manager UI QA",
+    "Play exact-source verification",
+    "OPS-07 integrated offline Play release policy QA",
+    "OPS-09 offline single-approval internal release safety",
+    "PetWorld FB-08 integrated candidate offline gate"
+  ],
+  "requiredAccountIsolationApis": [
+    29,
+    35,
+    36
+  ],
+  "liveGates": {
+    "googleAndAppCheck": false,
+    "storageRetentionAndIam": false,
+    "httpsAndWorker": false,
+    "legacyCacheAndDeviceCredential": false,
+    "webHostingAndOAuth": false,
+    "finalMainQa": false,
+    "releaseApproved": false
+  },
+  "excludedQaOnlyBranches": [
+    {
+      "number": 67,
+      "reason": "Older failed capture; superseded by candidate-specific final capture; not product code"
+    },
+    {
+      "number": 70,
+      "reason": "Successful responsive QA evidence branch; not product code"
+    }
+  ]
+}

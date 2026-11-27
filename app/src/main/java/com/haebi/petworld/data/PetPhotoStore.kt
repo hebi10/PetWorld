@@ -1,12 +1,17 @@
 package com.haebi.petworld.data
 
 import android.content.Context
+import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.account.photoDirectoryName
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.media.ExifInterface
 import android.net.Uri
 import android.provider.OpenableColumns
+import com.haebi.petworld.data.sync.cloudJpegEvidence
+import com.haebi.petworld.data.sync.readCloudJpeg
+import com.haebi.petworld.data.sync.validCloudPhotoName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -75,8 +80,11 @@ internal fun photoOrientationMatrix(orientation: Int): Matrix = Matrix().apply {
     }
 }
 
-class PetPhotoStore(private val context: Context) {
-    private val directory get() = File(context.filesDir, "pet_photos").apply {
+class PetPhotoStore(
+    private val context: Context,
+    private val scope: LocalAccountScope = LocalAccountScope.Guest,
+) {
+    private val directory get() = File(context.filesDir, scope.photoDirectoryName).apply {
         check(isDirectory || mkdirs()) { "사진 저장 폴더를 준비하지 못했습니다." }
     }
 
@@ -158,6 +166,37 @@ class PetPhotoStore(private val context: Context) {
             source.delete()
         }
     }
+
+    /** Install verified cloud JPEG bytes without decoding/recompressing the original.
+     * Never overwrite an existing file with different content.
+     * Caller serializes file mutations using PetWorldMutationGate.
+     */
+    internal suspend fun installVerifiedJpeg(name: String, bytes: ByteArray, expectedSha256: String): Boolean =
+        withContext(Dispatchers.IO) {
+            require(scope is LocalAccountScope.SignedIn) { "Cloud photo installation requires account storage" }
+            require(validCloudPhotoName(name))
+            val evidence = cloudJpegEvidence(bytes)
+            require(evidence.sha256 == expectedSha256)
+            val target = requireNotNull(fileFor(name))
+            if (target.exists()) {
+                return@withContext try {
+                    readCloudJpeg(target).evidence == evidence
+                } catch (_: IllegalArgumentException) {
+                    false
+                }
+            }
+            val pending = File.createTempFile(".pet-download-", ".tmp", directory)
+            try {
+                FileOutputStream(pending).use { stream ->
+                    stream.write(bytes)
+                    stream.fd.sync()
+                }
+                check(!target.exists() && pending.renameTo(target))
+                true
+            } finally {
+                pending.delete()
+            }
+        }
 
     suspend fun delete(name: String?) = withContext(Dispatchers.IO) {
         fileFor(name)?.delete()

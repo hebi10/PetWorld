@@ -1,6 +1,16 @@
 package com.haebi.petworld.data.room
 
 import android.content.Context
+import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.account.databaseFileName
+import com.haebi.petworld.data.sync.SyncOutboxDao
+import com.haebi.petworld.data.sync.SyncOutboxEntry
+import com.haebi.petworld.data.sync.SyncInboundDao
+import com.haebi.petworld.data.sync.SyncInboundEntry
+import com.haebi.petworld.data.sync.SyncScanDao
+import com.haebi.petworld.data.sync.SyncScanState
+import com.haebi.petworld.data.sync.SyncPhotoDao
+import com.haebi.petworld.data.sync.SyncPhotoEntry
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
@@ -82,6 +92,9 @@ data class CareEntity(
 
 @Dao
 interface PetDao {
+    @Query("SELECT EXISTS(SELECT 1 FROM pets WHERE photo_file = :name)")
+    suspend fun referencesPhoto(name: String): Boolean
+
     @Query("SELECT * FROM pets ORDER BY is_archived ASC, created_at ASC")
     suspend fun list(): List<PetEntity>
 
@@ -114,6 +127,9 @@ data class CareHistoryIndex(
 
 @Dao
 interface CareDao {
+    @Query("SELECT EXISTS(SELECT 1 FROM care_entries WHERE photo_file = :name)")
+    suspend fun referencesPhoto(name: String): Boolean
+
     @Query("SELECT * FROM care_entries ORDER BY occurred_at DESC, created_at DESC")
     fun observeAll(): Flow<List<CareEntity>>
 
@@ -216,29 +232,134 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
     }
 }
 
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS `sync_outbox` (
+                `sequence` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `op_id` TEXT NOT NULL,
+                `account_key` TEXT NOT NULL,
+                `entity_kind` TEXT NOT NULL,
+                `pet_id` TEXT NOT NULL,
+                `entity_id` TEXT NOT NULL,
+                `operation` TEXT NOT NULL,
+                `before_json` TEXT,
+                `after_json` TEXT,
+                `expected_revision` INTEGER,
+                `created_at` INTEGER NOT NULL,
+                `status` TEXT NOT NULL,
+                `attempt` INTEGER NOT NULL
+            )""".trimIndent()
+        )
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_sync_outbox_op_id` ON `sync_outbox` (`op_id`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_sync_outbox_account_key_sequence` ON `sync_outbox` (`account_key`, `sequence`)")
+    }
+}
+
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS `sync_inbound` (
+                `sequence` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `account_key` TEXT NOT NULL,
+                `entity_kind` TEXT NOT NULL,
+                `pet_id` TEXT NOT NULL,
+                `entity_id` TEXT NOT NULL,
+                `revision` INTEGER NOT NULL,
+                `payload_digest` TEXT NOT NULL,
+                `remote_json` TEXT NOT NULL,
+                `local_json` TEXT,
+                `tombstone` INTEGER NOT NULL,
+                `status` TEXT NOT NULL
+            )""".trimIndent()
+        )
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `idx_sync_inbound_identity` ON `sync_inbound` (`account_key`, `entity_kind`, `pet_id`, `entity_id`, `revision`, `payload_digest`)")
+    }
+}
+
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS `sync_scan` (
+                `account_key` TEXT NOT NULL PRIMARY KEY,
+                `round` INTEGER NOT NULL,
+                `pet_cursor` TEXT,
+                `pending_parents_json` TEXT NOT NULL,
+                `record_cursor` TEXT,
+                `root_exhausted` INTEGER NOT NULL
+            )""".trimIndent()
+        )
+    }
+}
+
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS `sync_photos` (
+                `account_key` TEXT NOT NULL,
+                `pet_id` TEXT NOT NULL,
+                `file_name` TEXT NOT NULL,
+                `sha256` TEXT,
+                `size_bytes` INTEGER,
+                `width` INTEGER,
+                `height` INTEGER,
+                `status` TEXT NOT NULL,
+                `retired` INTEGER NOT NULL,
+                PRIMARY KEY(`account_key`, `pet_id`, `file_name`)
+            )""".trimIndent()
+        )
+    }
+}
+
 @Database(
-    entities = [PetEntity::class, CareEntity::class],
-    version = 2,
+    entities = [PetEntity::class, CareEntity::class, SyncOutboxEntry::class,
+        SyncInboundEntry::class, SyncScanState::class, SyncPhotoEntry::class],
+    version = 6,
     exportSchema = false,
 )
 abstract class PetWorldDatabase : RoomDatabase() {
     abstract fun petDao(): PetDao
     abstract fun careDao(): CareDao
+    abstract fun syncOutboxDao(): SyncOutboxDao
+    abstract fun syncInboundDao(): SyncInboundDao
+    abstract fun syncScanDao(): SyncScanDao
+    abstract fun syncPhotoDao(): SyncPhotoDao
 
     companion object {
-        private const val DATABASE_NAME = "petworld_profiles.db"
-        @Volatile private var instance: PetWorldDatabase? = null
+        private val instances = mutableMapOf<String, PetWorldDatabase>()
+        private val cleanupReserved = mutableSetOf<String>()
 
-        fun get(context: Context): PetWorldDatabase =
-            instance ?: synchronized(this) {
-                instance ?: Room.databaseBuilder(
+        fun get(context: Context): PetWorldDatabase = get(context, LocalAccountScope.Guest)
+
+        @Synchronized
+        fun get(context: Context, scope: LocalAccountScope): PetWorldDatabase {
+            val name = scope.databaseFileName
+            check(name !in cleanupReserved) { "Account database is reserved for local cleanup." }
+            return instances.getOrPut(name) {
+                Room.databaseBuilder(
                     context.applicationContext,
                     PetWorldDatabase::class.java,
-                    DATABASE_NAME,
+                    name,
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .build()
-                    .also { instance = it }
             }
+        }
+
+        @Synchronized
+        fun closeScope(scope: LocalAccountScope) {
+            instances.remove(scope.databaseFileName)?.close()
+        }
+
+        /** Requires the account-switch coordinator to have drained its old holders.
+         * Never close a live instance implicitly. Keep the process reservation across retries.
+         */
+        @Synchronized
+        internal fun reserveClosedAccountForCleanup(scope: LocalAccountScope.SignedIn): Boolean {
+            val name = scope.databaseFileName
+            if (instances.containsKey(name)) return false
+            cleanupReserved.add(name)
+            return true
+        }
     }
 }

@@ -1,0 +1,30 @@
+name: PetWorld FB-08 integrated candidate offline gate
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  exact-candidate:
+    if: github.repository == 'hebi10/PetWorld' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feature/fb08-integrated-qa-20261125'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact candidate with complete ancestry
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify combined source and disabled activation
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 scripts/fb08/check_integrated_candidate.py --head "$HEAD_SHA" --base "$BASE_SHA"

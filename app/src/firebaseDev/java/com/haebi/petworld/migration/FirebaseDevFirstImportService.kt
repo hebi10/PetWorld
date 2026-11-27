@@ -1,0 +1,469 @@
+package com.haebi.petworld.migration
+
+import android.content.Context
+import android.net.Uri
+import androidx.room.withTransaction
+import com.google.android.gms.tasks.Task
+import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.Source
+import com.google.firebase.storage.StorageException
+import com.google.firebase.storage.StorageMetadata
+import com.haebi.petworld.data.ThemePreferences
+import com.haebi.petworld.data.backup.PetWorldBackupRestorer
+import com.haebi.petworld.data.migration.FirstImportBackupEvidence
+import com.haebi.petworld.data.migration.FirstImportBackupVerifier
+import com.haebi.petworld.data.account.LocalAccountScope
+import com.haebi.petworld.data.account.CloudWorkKind
+import com.haebi.petworld.auth.FirebaseDevCloudWork
+import com.haebi.petworld.auth.FirebaseDevAccountSdkSessions
+import com.haebi.petworld.auth.awaitTrackedFirebaseTask
+import kotlinx.coroutines.CancellationException
+import com.haebi.petworld.data.account.AccountDeletionJournal
+import com.haebi.petworld.data.account.photoDirectoryName
+import com.haebi.petworld.data.backup.PetWorldMutationGate
+import com.haebi.petworld.data.migration.FirstImportGuards
+import com.haebi.petworld.data.migration.FirstImportPayloads
+import com.haebi.petworld.data.room.CareEntity
+import com.haebi.petworld.data.room.PetEntity
+import com.haebi.petworld.data.room.PetWorldDatabase
+import java.io.File
+import java.security.MessageDigest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+
+data class FirstImportPreview(
+    val petCount: Int,
+    val recordCount: Int,
+    val photoCount: Int,
+    val matchingCloudDocuments: Int,
+    val extraCloudDocuments: Int,
+    val conflicts: Int,
+    val sourceFingerprint: String,
+    val accountFingerprint: String,
+) {
+    val canImport: Boolean get() = petCount > 0 && conflicts == 0
+}
+
+data class FirstImportResult(
+    val confirmedPets: Int,
+    val confirmedRecords: Int,
+    val confirmedPhotos: Int,
+)
+
+class FirstImportConflict : IllegalStateException(
+    "계정에 같은 ID의 다른 기록이나 사진이 있습니다. 기존 데이터를 변경하지 않았습니다."
+)
+
+/**
+ * This is explicitly invoked from the development account screen after a fresh preview
+ * and backup confirmation. It is not a background sync and never deletes Guest data.
+ */
+class FirebaseDevFirstImportService(private val context: Context) {
+    private val gate = Mutex()
+    private val binding = FirebaseDevAccountSdkSessions.binding(context.applicationContext)
+    private val firebase = binding.app
+    private val auth = binding.auth
+    private val firestore get() = binding.firestore
+    private val storage get() = binding.storage
+    private val checkpoint = context.getSharedPreferences("petworld_fb04_import", Context.MODE_PRIVATE)
+
+    private data class PhotoEvidence(
+        val petId: String,
+        val name: String,
+        val file: File,
+        val bytes: Long,
+        val digest: String,
+    )
+
+    private data class Snapshot(
+        val pets: List<PetEntity>,
+        val records: List<CareEntity>,
+        val photos: List<PhotoEvidence>,
+        val selectedPetId: String?,
+        val fingerprint: String,
+    )
+
+    private data class RemoteReview(
+        val matching: Int,
+        val extra: Int,
+        val conflicts: Int,
+    )
+
+    private val validPhotoName = Regex("pet_[0-9a-f-]{36}\\.jpg")
+    private val maximumPhotoSize = 5L * 1024L * 1024L
+
+    private fun checkedUid(): String {
+        check(context.packageName == "com.haebi.petworld.dev")
+        check(firebase.options.projectId == "petworld-dev")
+        check(!firebase.options.storageBucket.isNullOrBlank()) {
+            "개발 Firebase Storage 설정이 필요합니다."
+        }
+        val user = auth.currentUser
+            ?: error("Google 계정으로 먼저 로그인해 주세요.")
+        check(!user.isAnonymous && user.providerData.any { it.providerId == "google.com" }) {
+            "Google 계정으로 로그인한 뒤에만 기록을 이전할 수 있습니다."
+        }
+        val uid = user.uid.takeIf { it.isNotBlank() }
+            ?: error("Google 계정 인증을 다시 확인해 주세요.")
+        val scope = LocalAccountScope.fromFirebaseUid(uid) as LocalAccountScope.SignedIn
+        check(binding.currentUid(scope) == uid &&
+            !FirebaseDevCloudWork.tracker.isBlocked(scope) &&
+            !AccountDeletionJournal(context.applicationContext).blocksCloud(scope)) {
+            "계정 삭제 요청 상태를 확인할 때까지 클라우드 보관을 사용할 수 없습니다."
+        }
+        return uid
+    }
+
+    private fun assertSameUser(uid: String) {
+        check(checkedUid() == uid) {
+            "이전 중 Google 계정이 변경됐습니다. 작업을 중단합니다."
+        }
+    }
+
+    private fun digest(file: File): String {
+        val md = MessageDigest.getInstance("SHA-256")
+        file.inputStream().buffered().use { input ->
+            val chunk = ByteArray(32 * 1024)
+            while (true) {
+                val n = input.read(chunk)
+                if (n == -1) break
+                if (n > 0) md.update(chunk, 0, n)
+            }
+        }
+        return hex(md.digest())
+    }
+
+    private fun hex(value: ByteArray): String =
+        value.joinToString("") { "%02x".format(it.toInt() and 0xff) }
+
+    private suspend fun guestSnapshotLocked(): Snapshot = withContext(Dispatchers.IO) {
+        val db = PetWorldDatabase.get(context, LocalAccountScope.Guest)
+        val (pets, records) = db.withTransaction {
+            db.petDao().list() to db.careDao().listAll()
+        }
+        val petIds = pets.map { it.id }.toSet()
+        require(petIds.size == pets.size)
+        require(records.map { it.id }.toSet().size == records.size)
+        require(records.all { it.petId in petIds }) {
+            "반려동물과 연결되지 않은 기록이 있습니다."
+        }
+        pets.forEach(FirstImportPayloads::pet)
+        records.forEach(FirstImportPayloads::record)
+        val selected = ThemePreferences(context, LocalAccountScope.Guest).selectedPetId.first()
+        require(selected == null || selected in petIds) {
+            "선택된 반려동물 정보를 확인해 주세요."
+        }
+
+        val perPet = mutableSetOf<Pair<String, String>>()
+        pets.forEach { pet ->
+            pet.photoFile?.let { perPet += pet.id to it }
+        }
+        records.forEach { record ->
+            record.photoFile?.let { perPet += record.petId to it }
+        }
+        val directory = File(context.filesDir, LocalAccountScope.Guest.photoDirectoryName)
+        val photos = perPet.sortedWith(compareBy({ it.first }, { it.second })).map { (petId, name) ->
+            require(validPhotoName.matches(name)) { "저장된 사진 이름을 확인해 주세요." }
+            val file = File(directory, name)
+            require(file.isFile && file.canRead()) { "참조된 사진을 읽지 못했습니다." }
+            require(file.length() in 1..maximumPhotoSize) {
+                "사진이 누락됐거나 클라우드 허용 크기(5MB)를 초과했습니다."
+            }
+            PhotoEvidence(petId, name, file, file.length(), digest(file))
+        }
+        val photoHashes = photos.associate { "${it.petId}/${it.name}" to it.digest }
+        Snapshot(
+            pets = pets.sortedBy { it.id },
+            records = records.sortedBy { it.id },
+            photos = photos,
+            selectedPetId = selected,
+            fingerprint = FirstImportPayloads.fingerprint(pets, records, photoHashes, selected),
+        )
+    }
+
+    private suspend fun remoteReview(uid: String, source: Snapshot): RemoteReview {
+        val petsRef = firestore.collection("users").document(uid).collection("pets")
+        val cloudPets = sdk(uid) { petsRef.get(Source.SERVER) }.documents
+        val cloudPetIds = cloudPets.map { it.id }.toSet()
+        val localIds = source.pets.map { it.id }.toSet()
+        var matching = 0
+        var extra = cloudPetIds.count { it !in localIds }
+        var conflicts = 0
+
+        for (pet in source.pets) {
+            assertSameUser(uid)
+            val ref = petsRef.document(pet.id)
+            val remote = cloudPets.firstOrNull { it.id == pet.id }
+            if (remote != null) {
+                if (FirstImportPayloads.sameRemote(FirstImportPayloads.pet(pet), remote.data)) {
+                    matching++
+                } else {
+                    conflicts++
+                }
+            }
+            val existingRecords = sdk(uid) { ref.collection("records").get(Source.SERVER) }.documents
+            val localRecords = source.records.filter { it.petId == pet.id }
+            val expectedIds = localRecords.map { it.id }.toSet()
+            extra += existingRecords.count { it.id !in expectedIds }
+            for (record in localRecords) {
+                val existing = existingRecords.firstOrNull { it.id == record.id }
+                if (existing != null) {
+                    if (FirstImportPayloads.sameRemote(FirstImportPayloads.record(record), existing.data)) {
+                        matching++
+                    } else {
+                        conflicts++
+                    }
+                }
+            }
+        }
+
+        for (photo in source.photos) {
+            assertSameUser(uid)
+            val ref = photoRef(uid, photo)
+            if (photoExists(uid, ref)) {
+                if (remotePhotoMatches(uid, ref, photo)) matching++ else conflicts++
+            }
+        }
+        return RemoteReview(matching, extra, conflicts)
+    }
+
+    private fun photoRef(uid: String, photo: PhotoEvidence) = storage.reference
+        .child("users/${uid}/pets/${photo.petId}/photos/${photo.name}")
+
+    private suspend fun photoExists(uid: String, ref: com.google.firebase.storage.StorageReference): Boolean =
+        try {
+            sdk(uid) { ref.metadata }
+            true
+        } catch (error: StorageException) {
+            if (error.errorCode == StorageException.ERROR_OBJECT_NOT_FOUND) false else throw error
+        }
+
+    private suspend fun remotePhotoMatches(
+        uid: String,
+        ref: com.google.firebase.storage.StorageReference,
+        photo: PhotoEvidence,
+    ): Boolean {
+        val metadata = sdk(uid) { ref.metadata }
+        if (metadata.sizeBytes != photo.bytes || metadata.contentType != "image/jpeg") return false
+        val recordedHash = metadata.getCustomMetadata("sha256")
+        if (recordedHash != null && recordedHash != photo.digest) return false
+        val downloaded = sdk(uid) { ref.getBytes(maximumPhotoSize) }
+        return downloaded.size.toLong() == photo.bytes &&
+            hex(MessageDigest.getInstance("SHA-256").digest(downloaded)) == photo.digest
+    }
+
+    suspend fun preview(): FirstImportPreview = trackedImport { uid ->
+        val source = PetWorldMutationGate.mutex.withLock { guestSnapshotLocked() }
+        val remote = remoteReview(uid, source)
+        assertSameUser(uid)
+        FirstImportPreview(
+            petCount = source.pets.size,
+            recordCount = source.records.size,
+            photoCount = source.photos.size,
+            matchingCloudDocuments = remote.matching,
+            extraCloudDocuments = remote.extra,
+            conflicts = remote.conflicts,
+            sourceFingerprint = source.fingerprint,
+            accountFingerprint = FirstImportGuards.accountFingerprint(uid),
+        )
+    }
+
+    /** Inspect a user-selected .petworld file locally; no restore or remote writes. */
+    suspend fun verifyEncryptedBackup(
+        preview: FirstImportPreview,
+        sourceUri: Uri,
+        password: CharArray,
+    ): FirstImportBackupEvidence = trackedImport { uid ->
+        require(preview.canImport)
+        FirstImportGuards.requireSameAccount(preview.accountFingerprint, uid)
+        val source = PetWorldMutationGate.mutex.withLock { guestSnapshotLocked() }
+        FirstImportGuards.requireFreshSource(preview.sourceFingerprint, source.fingerprint)
+        val inspected = PetWorldBackupRestorer(context).inspectFromUri(sourceUri, password)
+        FirstImportGuards.requireSameAccount(preview.accountFingerprint, checkedUid())
+        FirstImportBackupVerifier.verify(
+            approvedSourceFingerprint = preview.sourceFingerprint,
+            approvedAccountFingerprint = preview.accountFingerprint,
+            latestSourceFingerprint = source.fingerprint,
+            backup = inspected,
+        )
+    }
+
+    suspend fun commit(
+        preview: FirstImportPreview,
+        backupEvidence: FirstImportBackupEvidence,
+        allowCloudExtras: Boolean,
+        onProgress: (String) -> Unit,
+    ): FirstImportResult = trackedImport { uid ->
+        FirstImportBackupVerifier.requireApproved(
+            preview.sourceFingerprint, preview.accountFingerprint, backupEvidence,
+        )
+        require(preview.canImport) {
+            "이전할 기록이 없거나 충돌이 있어 진행할 수 없습니다."
+        }
+        require(preview.extraCloudDocuments == 0 || allowCloudExtras) {
+            "계정에 다른 데이터가 있습니다. 추가 방식의 이전을 선택해 주세요."
+        }
+        FirstImportGuards.requireSameAccount(preview.accountFingerprint, uid)
+        val onlineUid = auth.currentUser?.also { user ->
+            sdk<com.google.firebase.auth.GetTokenResult>(uid) { user.getIdToken(true) }
+        }?.uid
+        check(onlineUid == uid) {
+            "Firebase 인증이 변경됐습니다. 다시 로그인하고 미리보기를 확인해 주세요."
+        }
+        PetWorldMutationGate.mutex.withLock {
+            val source = guestSnapshotLocked()
+            FirstImportGuards.requireFreshSource(preview.sourceFingerprint, source.fingerprint)
+            val current = remoteReview(uid, source)
+            if (current.conflicts > 0) throw FirstImportConflict()
+            FirstImportGuards.requireFreshReview(
+                approvedMatching = preview.matchingCloudDocuments,
+                approvedExtra = preview.extraCloudDocuments,
+                approvedConflicts = preview.conflicts,
+                latestMatching = current.matching,
+                latestExtra = current.extra,
+                latestConflicts = current.conflicts,
+                allowCloudExtras = allowCloudExtras,
+            )
+            val scope = LocalAccountScope.fromFirebaseUid(uid) as LocalAccountScope.SignedIn
+            check(checkpoint.edit().putString(scope.key, source.fingerprint).commit()) {
+                "재시도 체크포인트를 저장하지 못했습니다."
+            }
+            assertSameUser(uid)
+            onProgress("사진 무결성 확인·복사")
+            for (photo in source.photos) {
+                assertSameUser(uid)
+                require(photo.file.length() == photo.bytes && digest(photo.file) == photo.digest) {
+                    "업로드 전 사진이 변경됐습니다. 다시 미리보기를 진행해 주세요."
+                }
+                val target = photoRef(uid, photo)
+                if (!photoExists(uid, target)) {
+                    val metadata = StorageMetadata.Builder()
+                        .setContentType("image/jpeg")
+                        .build()
+                    try {
+                        sdk(uid, cancelStorage = true) { target.putFile(Uri.fromFile(photo.file), metadata) }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        // A competing upload may have succeeded. Only matching bytes are reusable.
+                        if (!photoExists(uid, target) || !remotePhotoMatches(uid, target, photo)) throw error
+                    }
+                }
+                if (!remotePhotoMatches(uid, target, photo)) throw FirstImportConflict()
+            }
+            assertSameUser(uid)
+            onProgress("Firestore 기록 복사")
+            val userRef = firestore.collection("users").document(uid)
+            ensureUser(uid, userRef)
+            for (pet in source.pets) {
+                assertSameUser(uid)
+                createIfAbsentOrEqual(uid, userRef.collection("pets").document(pet.id),
+                    FirstImportPayloads.pet(pet))
+            }
+            for (record in source.records) {
+                assertSameUser(uid)
+                createIfAbsentOrEqual(
+                    uid,
+                    userRef.collection("pets").document(record.petId).collection("records")
+                        .document(record.id),
+                    FirstImportPayloads.record(record),
+                )
+            }
+
+            onProgress("서버 재조회 및 원본 대조")
+            val after = remoteReview(uid, source)
+            if (after.conflicts > 0 ||
+                after.matching != source.pets.size + source.records.size + source.photos.size
+            ) throw FirstImportConflict()
+            require(guestSnapshotLocked().fingerprint == source.fingerprint) {
+                "이전 중 원본 자료가 변경됐습니다. 자료를 삭제하지 않고 중단합니다."
+            }
+            markReady(uid, userRef)
+            check(checkpoint.edit().remove(scope.key).commit()) {
+                "서버 검증 후 로컬 체크포인트를 정리하지 못했습니다."
+            }
+            onProgress("원본 보존·서버 재조회 완료")
+            FirstImportResult(
+                confirmedPets = source.pets.size,
+                confirmedRecords = source.records.size,
+                confirmedPhotos = source.photos.size,
+            )
+        }
+    }
+
+    private suspend fun ensureUser(uid: String, ref: DocumentReference) {
+        assertSameUser(uid)
+        sdk(uid) { firestore.runTransaction { transaction ->
+            assertSameUser(uid)
+            val existing = transaction.get(ref)
+            if (!existing.exists()) {
+                transaction.set(ref, mapOf(
+                    "schemaVersion" to 1,
+                    "createdAtMs" to System.currentTimeMillis(),
+                    "migrationState" to "pending",
+                    "revision" to 0,
+                ))
+            }
+            true
+        } }
+    }
+
+    private suspend fun createIfAbsentOrEqual(
+        uid: String,
+        ref: DocumentReference,
+        expected: Map<String, Any?>,
+    ) {
+        sdk(uid) { firestore.runTransaction { transaction ->
+            assertSameUser(uid)
+            val current = transaction.get(ref)
+            if (current.exists()) {
+                if (!FirstImportPayloads.sameRemote(expected, current.data)) {
+                    throw FirstImportConflict()
+                }
+            } else {
+                transaction.set(ref, expected)
+            }
+            true
+        } }
+    }
+
+    private suspend fun markReady(uid: String, ref: DocumentReference) {
+        assertSameUser(uid)
+        sdk(uid) { firestore.runTransaction { transaction ->
+            assertSameUser(uid)
+            val current = transaction.get(ref)
+            check(current.exists()) { "이전 상태 문서를 찾을 수 없습니다." }
+            if (current.getString("migrationState") != "ready") {
+                val revision = current.getLong("revision")
+                    ?: error("이전 상태 버전이 없습니다.")
+                transaction.update(ref, mapOf(
+                    "migrationState" to "ready",
+                    "revision" to revision + 1,
+                ))
+            }
+            true
+        } }
+    }
+    private suspend fun <T> trackedImport(action: suspend (String) -> T): T = gate.withLock {
+        val uid = checkedUid()
+        val account = LocalAccountScope.fromFirebaseUid(uid) as LocalAccountScope.SignedIn
+        val permit = FirebaseDevCloudWork.tracker.tryBegin(account, CloudWorkKind.FIRST_IMPORT)
+            ?: error("Account cloud work is blocked")
+        try {
+            assertSameUser(uid)
+            action(uid)
+        } finally {
+            permit.close()
+        }
+    }
+
+    private suspend fun <T> sdk(uid: String, cancelStorage: Boolean = false, start: () -> Task<T>): T {
+        assertSameUser(uid)
+        val account = LocalAccountScope.fromFirebaseUid(uid) as LocalAccountScope.SignedIn
+        return awaitTrackedFirebaseTask(account, permitted = { checkedUid() == uid },
+            cancelStorage = cancelStorage, start = start)
+    }
+}

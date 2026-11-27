@@ -1,7 +1,48 @@
+import com.google.gms.googleservices.GoogleServicesPlugin.GoogleServicesPluginConfig
+import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import groovy.json.JsonSlurper
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.ksp.plugin)
+    alias(libs.plugins.google.services) apply false
+}
+
+fun firebaseConfigAvailable(config: File, expectedProject: String): Boolean {
+    if (!config.isFile) return false
+    val data = try {
+        JsonSlurper().parse(config) as? Map<*, *>
+    } catch (_: Exception) {
+        throw GradleException("${config.parentFile.name}/google-services.json is not valid JSON")
+    }
+    val project = data?.get("project_info") as? Map<*, *>
+    if (project?.get("project_id") != expectedProject) {
+        throw GradleException("${config.parentFile.name}/google-services.json must use Firebase project $expectedProject")
+    }
+    return true
+}
+
+val sharedFirebasePaths = listOf(
+    "google-services.json",
+    "src/main/google-services.json",
+    "src/debug/google-services.json",
+)
+if (sharedFirebasePaths.any { file(it).isFile }) {
+    throw GradleException("Place Firebase settings in src/firebaseDev or src/release for the matching app")
+}
+
+val firebaseDevConfigured = firebaseConfigAvailable(
+    file("src/firebaseDev/google-services.json"), "petworld-dev",
+)
+val firebaseReleaseConfigured = firebaseConfigAvailable(
+    file("src/release/google-services.json"), "petworld-prod-3b5c5",
+)
+if (firebaseDevConfigured || firebaseReleaseConfigured) {
+    apply(plugin = "com.google.gms.google-services")
+    configure<GoogleServicesPluginConfig> {
+        missingGoogleServicesStrategy = MissingGoogleServicesStrategy.IGNORE
+    }
 }
 
 val releaseStore = providers.environmentVariable("ANDROID_RELEASE_KEYSTORE_PATH").orNull
@@ -10,6 +51,23 @@ val releaseAlias = providers.environmentVariable("ANDROID_RELEASE_KEY_ALIAS").or
 val releaseKeyPassword = providers.environmentVariable("ANDROID_RELEASE_KEY_PASSWORD").orNull
 val releaseSigningReady = listOf(releaseStore, releaseStorePassword, releaseAlias, releaseKeyPassword)
     .all { !it.isNullOrBlank() }
+
+val devStorePath = providers.environmentVariable("PETWORLD_DEV_KEYSTORE_PATH").orNull
+val devStorePassword = providers.environmentVariable("PETWORLD_DEV_STORE_PASSWORD").orNull
+val devKeyAlias = providers.environmentVariable("PETWORLD_DEV_KEY_ALIAS").orNull
+val devKeyPassword = providers.environmentVariable("PETWORLD_DEV_KEY_PASSWORD").orNull
+val devSignerFields = listOf(devStorePath, devStorePassword, devKeyAlias, devKeyPassword)
+val devSignerProvided = devSignerFields.count { !it.isNullOrBlank() }
+val devSigningReady = devSignerProvided == devSignerFields.size
+val requireFixedDevSigning = providers.environmentVariable("PETWORLD_DEV_REQUIRE_STABLE_SIGNING")
+    .orElse("false").get().equals("true", ignoreCase = true)
+
+if (firebaseDevConfigured && (devSignerProvided in 1..3 || (requireFixedDevSigning && !devSigningReady))) {
+    throw GradleException("firebaseDev requires all four dedicated development signing settings")
+}
+if (firebaseDevConfigured && devSigningReady && !file(devStorePath!!).isFile) {
+    throw GradleException("Dedicated firebaseDev keystore file does not exist")
+}
 val releaseVersionCode = providers.environmentVariable("ANDROID_VERSION_CODE").orElse("1").get()
     .toIntOrNull()?.takeIf { it in 1..2100000000 }
     ?: throw GradleException("ANDROID_VERSION_CODE must be a positive supported integer")
@@ -21,6 +79,11 @@ if (gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = tr
 android {
     namespace = "com.haebi.petworld"
     compileSdk = 37
+    if (firebaseDevConfigured && gradle.startParameter.taskNames.any {
+            it.contains("FirebaseDevAndroidTest", ignoreCase = true)
+        }) {
+        testBuildType = "firebaseDev"
+    }
 
     defaultConfig {
         applicationId = "com.haebi.petworld"
@@ -40,9 +103,27 @@ android {
                 keyPassword = releaseKeyPassword
             }
         }
+        if (firebaseDevConfigured && devSigningReady) {
+            create("firebaseDevFixed") {
+                storeFile = file(devStorePath!!)
+                storePassword = devStorePassword
+                keyAlias = devKeyAlias
+                keyPassword = devKeyPassword
+            }
+        }
     }
 
     buildTypes {
+        if (firebaseDevConfigured) {
+            create("firebaseDev") {
+                initWith(getByName("debug"))
+                applicationIdSuffix = ".dev"
+                matchingFallbacks += "debug"
+                if (devSigningReady) {
+                    signingConfig = signingConfigs.getByName("firebaseDevFixed")
+                }
+            }
+        }
         release {
             isMinifyEnabled = false
             if (releaseSigningReady) {
@@ -66,6 +147,21 @@ android {
 }
 
 dependencies {
+    if (firebaseDevConfigured) {
+        add("firebaseDevImplementation", platform(libs.firebase.bom))
+        add("firebaseDevImplementation", libs.firebase.auth)
+        add("firebaseDevImplementation", libs.firebase.firestore)
+        add("firebaseDevImplementation", libs.firebase.storage)
+        add("firebaseDevImplementation", libs.credentials)
+        add("firebaseDevImplementation", libs.credentials.play.services.auth)
+        add("firebaseDevImplementation", libs.googleid)
+        add("firebaseDevImplementation", libs.work.runtime)
+    }
+    if (firebaseReleaseConfigured) {
+        add("releaseImplementation", platform(libs.firebase.bom))
+        add("releaseImplementation", libs.firebase.auth)
+    }
+
     implementation(libs.activity.compose)
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.lifecycle.viewmodel)

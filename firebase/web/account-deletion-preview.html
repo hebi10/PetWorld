@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>PetWorld 계정 삭제 안내 — 미게시 검토용</title>
+<style>
+:root {color-scheme: light dark; font-family: system-ui,sans-serif; line-height:1.65}
+body {margin:0 auto;max-width:42rem;padding:1.5rem;background:Canvas;color:CanvasText}
+h1 {font-size:1.8rem;line-height:1.3}
+h2 {font-size:1.25rem;margin-top:1.5rem}
+section {border:1px solid GrayText;padding:1rem;margin:1rem 0}
+p {margin:.5rem 0}
+label {display:block;margin:1rem 0 .25rem}
+label.choice {display:flex;align-items:flex-start;gap:.5rem}
+input:not([type=checkbox]),button {box-sizing:border-box;width:100%;font:inherit;min-height:44px;padding:.5rem;border:1px solid GrayText}
+button {margin:.5rem 0;background:Canvas;color:CanvasText}
+button:disabled,input:disabled {opacity:.55}
+button:focus-visible,input:focus-visible {outline:2px solid currentColor;outline-offset:2px}
+</style>
+</head>
+<body>
+<main>
+<p>PetWorld / 미게시 검토용</p>
+<h1>계정 삭제 안내</h1>
+<section aria-labelledby="availability">
+<h2 id="availability">현재 삭제 요청을 제공하지 않습니다</h2>
+<p id="availability-detail">이 페이지는 외부 삭제 요청 화면의 개발 초안입니다. 실제 로그인·삭제 요청·상태 조회는 아직 연결하지 않았습니다. 이 페이지를 열어도 데이터는 변경되지 않습니다.</p>
+</section>
+<h2>삭제 대상</h2>
+<p>연결된 PetWorld 계정의 인증 정보, 클라우드 반려동물 프로필, 생활 기록, 사진 및 동기화 관련 자료. Google 계정 자체는 삭제하지 않습니다.</p>
+<h2>별도 보관 자료</h2>
+<p>비회원 기록, 다른 계정의 자료 및 외부에 저장한 암호화 백업은 이 요청으로 삭제되지 않습니다. 기기 캐시와 서버 보존 정책은 실제 검증 후 안내합니다.</p>
+<h2>제공 예정 절차</h2>
+<ol><li>Google 계정 재인증 및 삭제 범위 확인</li><li>삭제 요청 접수 및 접근 차단</li><li>서버 기록·사진·인증 정보 삭제</li><li>남은 자료와 보존 정책 확인 및 결과 조회</li></ol>
+<p>삭제 요청이 접수되거나 인증 계정이 삭제된 것만으로 전체 삭제 완료라고 안내하지 않습니다.</p>
+<section aria-labelledby="request-title">
+<h2 id="request-title">삭제 요청</h2>
+<p id="account-status">로그인 연결 준비 중</p>
+<button type="button" id="connect-existing" disabled>기존 Google 계정 인증</button>
+<p>이미 PetWorld에 연결된 계정만 확인하며, 웹 삭제 화면에서 신규 PetWorld 계정을 만들지 않습니다.</p>
+<p>삭제 요청 전 암호화된 복구 파일을 저장하고 아래 복구 파일 확인에서 다시 열어 주세요. 계정 인증이 삭제된 뒤에도 파일과 비밀번호로 진행 상태를 확인할 수 있습니다.</p>
+<label for="recovery-password">복구 파일 비밀번호 (12자 이상)</label>
+<input id="recovery-password" type="password" autocomplete="new-password" minlength="12" maxlength="256" disabled>
+<button type="button" id="prepare-recovery" disabled>암호화 복구 파일 저장</button>
+<label class="choice"><input id="saved-recovery" type="checkbox" disabled> 저장한 복구 파일을 다시 확인했으며 파일과 비밀번호를 별도 보관했습니다.</label>
+<label class="choice"><input id="confirm-deletion" type="checkbox" disabled> 클라우드 기록과 PetWorld 계정이 삭제되고 복구할 수 없음을 확인했습니다.</label>
+<button type="button" id="submit-deletion" disabled>Google 재인증 후 삭제 요청</button>
+<p>최근 Google 본인 인증을 확인할 수 없으면 삭제 요청을 진행하지 않습니다. 복구 파일을 보존하고 다시 인증해 주세요.</p>
+</section>
+<section aria-labelledby="restore-title">
+<h2 id="restore-title">삭제 처리 상태 확인</h2>
+<p>저장한 복구 파일과 비밀번호를 확인합니다. 파일 확인만으로는 새 삭제 요청을 생성하지 않습니다. 요청을 재시도할 때는 먼저 기존 Google 계정을 인증해 주세요.</p>
+<label for="recovery-file">저장한 복구 파일</label>
+<input id="recovery-file" type="file" accept=".json,application/json" disabled>
+<label for="restore-password">복구 파일 비밀번호</label>
+<input id="restore-password" type="password" autocomplete="off" maxlength="256" disabled>
+<button type="button" id="restore-recovery" disabled>복구 파일 확인</button>
+<button type="button" id="refresh-status" disabled>서버 처리 상태 확인</button>
+<p id="result-status" role="status" aria-live="polite">실제 인증 환경이 검증될 때까지 요청 및 조회가 비활성화되어 있습니다.</p>
+</section>
+</main>
+</body>
+</html>
