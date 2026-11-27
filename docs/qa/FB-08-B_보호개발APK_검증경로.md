@@ -21,3 +21,7 @@ PR #86의 검토한 소스에서 `com.haebi.petworld.dev` APK를 만들고 기�
 node scripts/fb08/qa_device_artifact_cipher.mjs decrypt signed-apk \
   PetWorld-fb08-device-qa.apk.encrypted PetWorld-fb08-device-qa.apk
 ```
+
+## 2026-11-27 동기화 후 preflight 정정
+
+검토한 기준 main `8e67ce4d3fa143524556e65076d92a6134d245a5`와 #86 HEAD `e9f8f988731123065f87a81940a0ca8041dcb549`의 merge-base가 동일하며 main-only 파일 0개임을 확인했다. 기존 45ba20d7 검사는 이 정상 동기화 상태를 거부했다. 새 preflight는 이 #86 HEAD와 동기화 기준을 명시적으로 고정하고, main의 추가 변경을 이 워크플로·이 문서·오프라인 회귀 테스트 세 파일로 정확히 제한한다. 기존 수동 승인, 필수 CI, 계정 격리, 암호화, 보호 환경 및 서명 분리는 유지한다. 다른 후보 SHA는 별도 신뢰 검토 없이 승인하지 않는다. 실제 개발 APK 서명이나 환경/Secrets 설정은 이 변경으로 승인되지 않는다. #93 이후 통합 최종 후보는 별도 검토와 실기기 증빙이 필요하다.
