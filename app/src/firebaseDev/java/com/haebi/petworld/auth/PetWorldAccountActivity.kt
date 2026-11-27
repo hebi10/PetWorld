@@ -1,5 +1,6 @@
 package com.haebi.petworld.auth
 
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -35,6 +36,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
@@ -82,12 +84,16 @@ class PetWorldAccountActivity : ComponentActivity() {
             val mode by themePreferences.themeMode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
             val dark = mode.shouldUseDark(isSystemInDarkTheme())
             PetWorldTheme(themeMode = mode) {
+                val background = MaterialTheme.colorScheme.background
+                val windowBackground = remember(background) { ColorDrawable(background.toArgb()) }
                 SideEffect {
+                    // Keep the background behind the transparent system bars in the app theme.
+                    window.setBackgroundDrawable(windowBackground)
                     val controller = WindowCompat.getInsetsController(window, window.decorView)
                     controller.isAppearanceLightStatusBars = !dark
                     controller.isAppearanceLightNavigationBars = !dark
                 }
-                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                Surface(modifier = Modifier.fillMaxSize(), color = background) {
                     AccountContent(
                         auth = firebaseAuth,
                         recoveryAccess = recoveryAccess,

@@ -1,7 +1,12 @@
 package com.haebi.petworld
 
+import android.graphics.BitmapFactory
 import androidx.test.core.app.ActivityScenario
+import androidx.core.graphics.ColorUtils
+import androidx.core.graphics.Insets
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import com.haebi.petworld.data.ThemePreferences
 import com.haebi.petworld.ui.theme.ThemeMode
 import kotlinx.coroutines.flow.first
@@ -176,19 +181,42 @@ class FirebaseDevAccountSmokeTest {
                 val screenshotFolder = java.io.File(screenshotRoot, "audit-d-account").apply { mkdirs() }
                 fun captureTheme(light: Boolean, fileName: String) {
                     var matches = false
-                    repeat(40) {
+                    var systemBars = Insets.NONE
+                    for (attempt in 1..40) {
                         scenario.onActivity { activity ->
-                            val controller = WindowCompat.getInsetsController(activity.window, activity.window.decorView)
+                            val decor = activity.window.decorView
+                            val controller = WindowCompat.getInsetsController(activity.window, decor)
                             matches = controller.isAppearanceLightStatusBars == light &&
                                 controller.isAppearanceLightNavigationBars == light
+                            systemBars = ViewCompat.getRootWindowInsets(decor)
+                                ?.getInsets(WindowInsetsCompat.Type.systemBars()) ?: Insets.NONE
                         }
-                        if (matches) return@repeat
+                        if (matches && systemBars.top > 1 && systemBars.bottom > 1) break
                         Thread.sleep(100)
                     }
                     assertTrue("계정 시스템 바 명도 불일치: light=$light", matches)
+                    assertTrue(
+                        "계정 화면의 상단·하단 시스템 바를 확인할 수 없습니다",
+                        systemBars.top > 1 && systemBars.bottom > 1,
+                    )
                     device.waitForIdle()
                     val png = java.io.File(screenshotFolder, "$fileName.png")
                     assertTrue("비회원 계정 화면 캡처 실패", device.takeScreenshot(png) && png.length() > 10_000)
+                    val bitmap = checkNotNull(BitmapFactory.decodeFile(png.path))
+                    try {
+                        val x = bitmap.width / 3
+                        val top = ColorUtils.calculateLuminance(bitmap.getPixel(x, systemBars.top / 2))
+                        val bottom = ColorUtils.calculateLuminance(
+                            bitmap.getPixel(x, bitmap.height - systemBars.bottom / 2),
+                        )
+                        val backgroundRange = if (light) 0.7..1.0 else 0.0..0.15
+                        assertTrue(
+                            "계정 시스템 바 배경 명도 불일치: light=$light, top=$top, bottom=$bottom",
+                            top in backgroundRange && bottom in backgroundRange,
+                        )
+                    } finally {
+                        bitmap.recycle()
+                    }
                     device.dumpWindowHierarchy(java.io.File(screenshotFolder, "$fileName.xml"))
                 }
                 captureTheme(true, "D23-guest-account")
